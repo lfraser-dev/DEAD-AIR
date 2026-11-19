@@ -104,6 +104,7 @@ export class HeliGame {
     const sd = on ? SUN : [0.45, 0.8, 0.38], l = Math.hypot(...sd);
     this.r.sunDir = sd.map((v) => v / l);
     gl.uniform3fv(this.r.u.uSunDir, this.r.sunDir);
+    this.sunNow = null;
   }
 
   // ---------------------------------------------------------------- input
@@ -176,7 +177,7 @@ export class HeliGame {
         <button class="da-deploy" data-da="deploy" type="button">TAKE OFF ▶</button>
       </div>
       <div class="da-hud hidden" data-da="hud">
-        <div class="da-dmg" data-da="dmg"></div>
+        <div class="da-dmg" data-da="dmg"></div><div class="da-white" data-da="white"></div>
         <div data-da="marks"></div>
         <div class="da-cross" data-da="cross"></div><div class="da-hit" data-da="hit"></div>
         <div class="da-evs" data-da="evs"></div>
@@ -188,6 +189,7 @@ export class HeliGame {
         <div class="da-help" data-da="help"></div>
         <div class="da-left">
           <div class="da-meter fuel" data-da="fuelm" style="--c:#ff9f3a">FUEL <b data-da="fueltxt"></b><i></i></div>
+          <div class="da-meter hidden" data-da="shm" style="--c:#5ad8ff">SHIELD<i></i></div>
           <div class="da-meter" data-da="hpm" style="--c:#7dff9a">CHOPPER<i></i></div>
           <div class="da-meter" data-da="heatm" style="--c:#ffcf3a">GUN HEAT<i></i></div>
           <div class="da-meter hidden" data-da="boostm" style="--c:#8fd0ff">AFTERBURNER<i></i></div>
@@ -335,6 +337,8 @@ export class HeliGame {
     this.heat = 0; this.overT = 0; this.gunT = 0; this.spinV = 0; this.flashT = 0;
     this.rockets = S.rockets; this.rocketT = 0; this.rocketRegen = 0; this.rocketSide = 0;
     this.bombs = S.bombs; this.bombT = 0;
+    this.shield = S.shield; this.shieldHit = 0; this.shieldT = 0; this.flaresLeft = S.flares; this.flareRegen = 0; this.mag = []; this.beams = [];
+    this.splats = this.splats || [];
     this.boardT = 0; this.unloadT = 0; this.unloading = false; this.boarding = false;
     this.doorAim = [[-Math.PI / 2, -0.3], [Math.PI / 2, -0.3]]; this.doorT = [0, 0]; this.doorTgt = [null, null]; this.doorFlash = [0, 0];
     this.shake = 0; this.dmgT = 0; this.camMode = this.camMode || 0; this.camEye = null; this.camLook = null;
@@ -348,7 +352,7 @@ export class HeliGame {
     const h = this.$('help');
     const mode = this.save.flight;
     h.innerHTML = mode === 'easy'
-      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>C</kbd> CAMERA · LAND TO SEE WHAT YOU CAN DO'
+      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>X</kbd> FLARES · <kbd>M</kbd> MAGNET · <kbd>C</kbd> CAMERA'
       : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>C</kbd> CAMERA · LAND TO SEE WHAT YOU CAN DO';
     this.helpT = on ? 22 : 0;
   }
@@ -388,12 +392,14 @@ export class HeliGame {
       const easy = this.save.flight === 'easy';
       for (const ev of H.events) {
         if (ev.type === 'impact') { this.hurt(ev.speed * (ev.hard ? 14 : 9) * (easy ? 0.5 : 1), ev.point); this.fx.sparks(ev.point, 12, [1, 0.8, 0.4], 7, 0.5, 0.05, 2); this.snd.meleeWall?.('smash'); this.shake = Math.max(this.shake, 0.5); }
+        else if (ev.type === 'rotor' && S.shredder) { this.fx.sparks(ev.point, 4, [1, 0.85, 0.5], 9, 0.3, 0.04, 1); }
         else if (ev.type === 'rotor') { this.rotorHitT = (this.rotorHitT || 0) - dt; if (this.rotorHitT <= 0) { this.rotorHitT = 0.15; this.hurt(easy ? 7 : 14, ev.point); this.fx.sparks(ev.point, 10, [1, 0.85, 0.5], 9, 0.4, 0.04, 1); this.snd.click?.(3600, 0.4, 3); this.shake = Math.max(this.shake, 0.4); } }
       }
       H.events.length = 0;
       if (H.dead && this.mode !== 'down' && (H.contacts || H.pos[1] < 1)) this.crash();
       this.burnFuel(dt, ctl);
       if (live && !H.dead && !this.panel) this.weapons(dt);
+      this.upkeep(dt);
       this.doorGuns(dt);
       this.turrets(dt);
       this.updateShots(dt);
@@ -444,6 +450,12 @@ export class HeliGame {
 
   hurt(dmg, at) {
     if (this.heli.dead || this.mode === 'down') return;
+    if (this.shield > 0) {
+      const take = Math.min(this.shield, dmg);
+      this.shield -= take; dmg -= take; this.shieldHit = 1; this.shieldT = 0;
+      if (this.shield <= 0) { this.feed('SHIELD DOWN', 'r'); this.snd.fail?.(); }
+      if (dmg <= 0) { this.snd.tone?.(1200, 400, 0.12, 0.08); return; }
+    }
     this.hp -= dmg; this.dmgT = Math.min(1, this.dmgT + dmg / 60);
     this.shake = Math.max(this.shake, Math.min(0.8, dmg / 60));
     this.snd.hurt?.();
@@ -492,6 +504,74 @@ export class HeliGame {
   }
 
   // ---------------------------------------------------------------- aiming and weapons
+  upkeep(dt) {
+    const H = this.heli, S = this.S;
+    this.shieldT += dt; this.shieldHit = Math.max(0, this.shieldHit - dt * 2.5);
+    if (S.shield && this.shieldT > 3 && this.shield < S.shield) this.shield = Math.min(S.shield, this.shield + S.shieldRegen * dt);
+    if (S.flares && this.flaresLeft < S.flares) { this.flareRegen += dt; if (this.flareRegen > 15) { this.flareRegen = 0; this.flaresLeft++; } }
+    if (S.recycle && this.fuel > 0) this.fuelUp(0.28 * dt);
+    if (this.mag.length) {
+      this.mag = this.mag.filter((z) => z.alive);
+      this.mag.forEach((z, i) => {
+        const p = H.toWorld([2.15 + (i - 1) * 0.5, -5.2 - (i % 2) * 0.6, (i - 1) * 0.4]);
+        z.x = p[0]; z.y = p[1] - z.s * 1.6; z.z = p[2]; z.ph += dt * 10; z.st = 'mag';
+      });
+    }
+    if (S.shredder && H.rpm > 0.6 && !H.dead) {
+      const hub = H.toWorld([0, 2.3, 0.3]), up = H.up, Rr = 7.3;
+      for (const z of this.horde.list) {
+        if (!z.alive || z.type === 'titan') continue;
+        const v = [z.x - hub[0], z.y + z.s * 1.8 - hub[1], z.z - hub[2]];
+        const h = v[0] * up[0] + v[1] * up[1] + v[2] * up[2];
+        if (h < -3.2 || h > 1.2) continue;                  // the blades (and their wash) reach a head's height under them
+        const rr = Math.hypot(v[0] - up[0] * h, v[1] - up[1] * h, v[2] - up[2] * h);
+        if (rr > Rr) continue;
+        const k = this.horde.damage(z, 999, [v[0] * 3, 6, v[2] * 3], 'rotor');
+        if (k) { this.hitMark(true); this.fx.sparks([z.x, z.y + z.s, z.z], 8, [0.5, 0.05, 0.04], 6, 0.6, 0.1, 2); this.snd.meleeWall?.('smash'); }
+      }
+    }
+    for (let i = this.beams.length - 1; i >= 0; i--) { this.beams[i].t -= dt; if (this.beams[i].t <= 0) this.beams.splice(i, 1); }
+    for (let i = this.splats.length - 1; i >= 0; i--) { this.splats[i].t += dt; if (this.splats[i].t > 30) this.splats.splice(i, 1); }
+    this.whiteT = Math.max(0, (this.whiteT || 0) - dt * 0.8);
+  }
+  fireFlares() {
+    const H = this.heli, S = this.S;
+    if (!S.flares) { this.feed('NO FLARES FITTED · BUY THEM IN THE HANGAR', 'y'); return; }
+    if (this.flaresLeft <= 0) { this.feed('OUT OF FLARES', 'y'); return; }
+    this.flaresLeft--;
+    let n = 0;
+    for (let i = this.horde.shots.length - 1; i >= 0; i--) {
+      const sh = this.horde.shots[i];
+      if (Math.hypot(sh.pos[0] - H.pos[0], sh.pos[1] - H.pos[1], sh.pos[2] - H.pos[2]) < 90) { this.fx.sparks(sh.pos, 14, [1, 0.8, 0.3], 6, 0.5, 0.1, 1); this.horde.shots.splice(i, 1); n++; }
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      this.shots.push({ kind: 'flare', pos: H.toWorld([Math.cos(a) * 0.6, 0, 3.4]), vel: [H.vel[0] + Math.cos(a) * 9, H.vel[1] - 2 + Math.random() * 4, H.vel[2] + Math.sin(a) * 9], life: 3 });
+    }
+    if (S.megaFlare) for (const z of this.horde.list) if (z.alive && z.type !== 'titan' && Math.hypot(z.x - H.pos[0], z.z - H.pos[2]) < 40) z.stun = 3.5;
+    this.feed(n ? `FLARES · ${n} INCOMING STOPPED` : 'FLARES', 'y');
+    this.snd.launch?.(); this.snd.tone?.(1800, 900, 0.3, 0.1);
+  }
+  toggleMagnet() {
+    const H = this.heli, S = this.S;
+    if (!S.magnet) { this.feed(S.winch ? 'YOUR WINCH HAS NO MAGNET · UPGRADE IT' : 'NO MAGNET FITTED · BUY A WINCH + MAGNET', 'y'); return; }
+    if (this.mag.length) {
+      const h = this.agl;
+      for (const z of this.mag) { z.st = 'fall'; z.vel = [H.vel[0], H.vel[1] - 2, H.vel[2]]; }
+      this.feed(h > 15 ? `DROPPED ${this.mag.length} FROM ${Math.round(h)}M!` : 'DROPPED · GO HIGHER TO SPLAT THEM', 'y');
+      this.mag = []; this.snd.grappleRelease?.();
+      return;
+    }
+    const got = this.horde.list.filter((z) => z.alive && z.type !== 'titan' && z.st !== 'mag' && z.st !== 'grab' && Math.hypot(z.x - H.pos[0], z.z - H.pos[2]) < 12 && H.pos[1] - z.y > 3 && H.pos[1] - z.y < 30)
+      .sort((a, b) => Math.hypot(a.x - H.pos[0], a.z - H.pos[2]) - Math.hypot(b.x - H.pos[0], b.z - H.pos[2])).slice(0, 3);
+    if (!got.length) { this.feed('NOTHING UNDER THE MAGNET · FLY LOW OVER ZOMBIES', 'y'); return; }
+    for (const z of got) { z.st = 'mag'; z.keep = true; }
+    this.mag = got;
+    this.feed(`MAGNET GOT ${got.length} · FLY UP AND PRESS M TO DROP THEM`, 'g');
+    this.snd.grab?.();
+  }
+  splat(p, killed) { if (killed && this.splats) { if (this.splats.length > 140) this.splats.shift(); this.splats.push({ x: p[0], y: this.groundAt(p[0], p[2]) + 0.05, z: p[2], r: 0.8 + Math.random() * 1.2, t: 0 }); } }
+
   bore() {
     const H = this.heli, a = 0.13;
     return { o: H.toWorld([0, -1.05, -5.0]), d: qrot(H.q, [0, -Math.sin(a), -Math.cos(a)]) };
@@ -535,8 +615,9 @@ export class HeliGame {
       this.rocketRegen += dt;
       if (this.rocketRegen > 8 && this.rockets < S.rockets) { this.rocketRegen = 0; this.rockets++; }
       if ((this.btn.has(2) || this.clk.has(2) || this.key('KeyR')) && this.locked && this.rocketT <= 0 && this.rockets > 0) {
-        this.rocketT = S.homing ? 0.42 : 0.24; this.rockets--; this.rocketRegen = 0;
-        this.fireRocket();
+        this.rocketRegen = 0;
+        if (S.swarm) { this.rocketT = 0.9; const n = Math.min(6, this.rockets); this.rockets -= n; this.fireSwarm(n); }
+        else { this.rocketT = S.homing ? 0.42 : 0.24; this.rockets--; this.fireRocket(); }
       }
     } else if (this.clk.has(2)) this.feed('NO ROCKETS FITTED · BUY THEM IN THE HANGAR', 'y');
     this.bombT -= dt;
@@ -550,6 +631,8 @@ export class HeliGame {
       } else if (this.bombs <= 0) this.feed('OUT OF BOMBS · LAND AT A BASE', 'y');
     }
     if (this.hit('KeyC')) this.camMode = (this.camMode + 1) % 3;
+    if (this.hit('KeyX')) this.fireFlares();
+    if (this.hit('KeyM')) this.toggleMagnet();
   }
 
   fireGun() {
@@ -572,6 +655,29 @@ export class HeliGame {
     const sp = G.spread;
     const dir = norm([d[0] + (Math.random() - 0.5) * sp * 2, d[1] + (Math.random() - 0.5) * sp * 2, d[2] + (Math.random() - 0.5) * sp * 2]);
     this.flashT = 0.04;
+    if (G.rail) {
+      // straight through everything in a line, up to the first wall
+      const w = this.world.raycast(o, dir, 450), end = w ? w.t : 450;
+      let n = 0;
+      for (const z of this.rayAll(o, dir, end)) { if (this.horde.damage(z, G.dmg, [dir[0] * 14, 4, dir[2] * 14], 'gun')) n++; }
+      for (const sh of this.director.shootables()) { const v = [sh.pos[0] - o[0], sh.pos[1] - o[1], sh.pos[2] - o[2]], tc = v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2]; if (tc > 0 && tc < end && Math.hypot(v[0] - dir[0] * tc, v[1] - dir[1] * tc, v[2] - dir[2] * tc) < sh.r) sh.hit(G.dmg, this); }
+      const to = o.map((c, i) => c + dir[i] * end);
+      this.beam(o, to, [0.5, 0.9, 1], 0.32, 0.35);
+      if (w) { this.fx.sparks(to, 16, [0.5, 0.9, 1], 9, 0.5, 0.08, 1); this.fx.impact(to, w.normal, w.box.color); }
+      this.hitMark(n > 0); this.shake = Math.max(this.shake, 0.25);
+      this.snd.tone?.(2400, 120, 0.3, 0.2, 'sawtooth'); this.snd.boom?.(0.25);
+      return;
+    }
+    if (G.laser) {
+      const h = this.rayHit(o, dir, 320);
+      if (h.z) this.hitZombie(h.z, G.dmg, [dir[0] * 2, 1, dir[2] * 2], h.p, 'gun');
+      else if (h.sh) h.sh.hit(G.dmg, this);
+      this.beam(o, h.p, [1, 0.2, 0.12], 0.16, 0.06);
+      if (Math.random() < 0.5) this.fx.sparks(h.p, 3, [1, 0.5, 0.2], 5, 0.3, 0.05, 1);
+      this.sndN = (this.sndN || 0) + 1;
+      if (this.sndN % 6 === 0) this.snd.tone?.(700 + Math.random() * 60, 600, 0.12, 0.06, 'sawtooth');
+      return;
+    }
     if (G.plasma) {
       this.shots.push({ kind: 'plasma', pos: o, vel: [H.vel[0] + dir[0] * 260, H.vel[1] + dir[1] * 260, H.vel[2] + dir[2] * 260], life: 2 });
       this.snd.tone?.(900, 200, 0.18, 0.12, 'sawtooth');
@@ -579,11 +685,31 @@ export class HeliGame {
     }
     const h = this.rayHit(o, dir, 420);
     if (Math.random() < 0.6) this.tracer(o, dir, h.t, -1);
+    // brass casings spill out of the gun
+    if (Math.random() < 0.5) {
+      const r = qrot(H.q, [1, 0, 0]);
+      this.fx.spawnPiece(H.toWorld([x + 0.25, -1.2, -3.4]), [0.05, 0.05, 0.13], [H.vel[0] + r[0] * 3 + (Math.random() - 0.5), H.vel[1] - 1, H.vel[2] + r[2] * 3 + (Math.random() - 0.5)], [0.85, 0.65, 0.25], 1.4);
+    }
     if (h.z) this.hitZombie(h.z, G.dmg, [dir[0] * 6, 2, dir[2] * 6], h.p, 'gun');
     else if (h.sh) { h.sh.hit(G.dmg, this); this.hitMark(false); this.fx.sparks(h.p, 3, [0.5, 1, 0.3], 4, 0.4, 0.06, 1); }
     else if (h.w) { this.fx.impact(h.p, h.w.normal, h.w.box.color); if (Math.random() < 0.3) this.fx.dust(h.p, 2); }
     this.sndN = (this.sndN || 0) + 1;
     if (G.rate < 20 || this.sndN % 2 === 0) { this.snd.burst?.(0.06, 1500, 0.22); this.snd.burst?.(0.03, 5000, 0.08, 'highpass'); }
+  }
+  // every zombie a ray passes through (for the railgun), nearest first
+  rayAll(o, d, maxT) {
+    const out = [];
+    for (const z of this.horde.list) {
+      if (!z.alive) continue;
+      const r = 0.6 * z.s, c = [z.x - o[0], z.y + z.s - o[1], z.z - o[2]], tc = c[0] * d[0] + c[1] * d[1] + c[2] * d[2];
+      if (tc < 0 || tc > maxT) continue;
+      if (Math.hypot(c[0] - d[0] * tc, (c[1] - d[1] * tc) / 1.7, c[2] - d[2] * tc) < r) out.push([tc, z]);
+    }
+    return out.sort((a, b) => a[0] - b[0]).map((a) => a[1]);
+  }
+  beam(from, to, col, w, life) {
+    (this.beams = this.beams || []).push({ from, to, col, w, t: life, life });
+    if (this.nfx) this.nfx.push(['L', ...from.map(q1), ...to.map(q1), ...col, w, life]);
   }
   tracer(o, dir, len, seat) {
     this.tracers.push({ from: o, dir, len, d: 0 });
@@ -623,6 +749,43 @@ export class HeliGame {
     this.snd.launch?.();
   }
 
+  // MINI NUKE: a flash, a shock ring, a mushroom cloud, and nothing left standing nearby
+  nuke(p) {
+    const H = this.heli;
+    this.blastAll(p, 36, 5000, 40, 'nuke');
+    for (let i = 0; i < 4; i++) this.boom([p[0] + (Math.random() - 0.5) * 20, p[1] + Math.random() * 6, p[2] + (Math.random() - 0.5) * 20], 3);
+    this.blasts.push({ pos: [p[0], p[1] + 6, p[2]], t: 0, size: 7, col: [1, 1, 0.9] });
+    this.blasts.push({ pos: [p[0], p[1] + 0.5, p[2]], t: 0, size: 5, ring: true });
+    for (let i = 0; i < 70; i++) {
+      const h = i / 70, cap = h > 0.65, a = Math.random() * 6.28, r = cap ? 8 + Math.random() * 14 : 3 + Math.random() * 3;
+      this.smokes.push({ pos: [p[0] + Math.cos(a) * r, p[1] + h * 55, p[2] + Math.sin(a) * r], t: 0, life: 9 + Math.random() * 4, size: cap ? 9 + Math.random() * 6 : 5, drift: [(Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5], fire: h < 0.5 ? 0.6 : 0.2 });
+    }
+    this.fires.push({ pos: p, r: 26, t: 12, tick: 0, big: true });
+    const d = Math.hypot(p[0] - H.pos[0], p[1] - H.pos[1], p[2] - H.pos[2]);
+    if (d < 45) { this.hurt(260 * (1 - d / 45), H.pos); this.feed('TOO CLOSE TO THE NUKE!', 'r'); }
+    this.shake = 1; this.dmgT = 0;
+    this.whiteT = 1;
+    this.banner('NUKE!', 'EVERYTHING NEARBY IS GONE', 'good', 2.4);
+    this.snd.boom?.(1.5); setTimeout(() => this.snd.boom?.(1.2), 250);
+  }
+
+  // SWARM: little missiles that each pick a different zombie near where you're aiming
+  fireSwarm(n) {
+    const H = this.heli, { d } = this.bore(), aim = this.aimPoint();
+    const cands = this.horde.list.filter((z) => {
+      if (!z.alive) return false;
+      const v = [z.x - H.pos[0], z.y + z.s - H.pos[1], z.z - H.pos[2]], l = Math.hypot(v[0], v[1], v[2]);
+      return l < 260 && (v[0] * d[0] + v[1] * d[1] + v[2] * d[2]) / l > 0.82;
+    }).sort((a, b) => Math.hypot(a.x - aim.p[0], a.z - aim.p[2]) - Math.hypot(b.x - aim.p[0], b.z - aim.p[2]));
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 ? 1 : -1, o = H.toWorld([side * 1.75, -0.7, -0.6]);
+      const spr = [(Math.random() - 0.5) * 0.5, 0.15 + Math.random() * 0.2, (Math.random() - 0.5) * 0.5];
+      const dir = norm(d.map((c, k) => c + spr[k]));
+      this.shots.push({ kind: 'rocket', mini: true, pos: o, vel: [H.vel[0] + dir[0] * 70, H.vel[1] + dir[1] * 70, H.vel[2] + dir[2] * 70], life: 4.5, target: cands[i % Math.max(1, cands.length)] || null, homing: true });
+    }
+    this.snd.launch?.(); setTimeout(() => this.snd.launch?.(), 90);
+  }
+
   boom(p, size = 1) {
     this.blasts.push({ pos: [...p], t: 0, size });
     if (this.nfx) this.nfx.push(['b', q1(p[0]), q1(p[1]), q1(p[2]), q1(size)]);
@@ -660,7 +823,7 @@ export class HeliGame {
       if (s.kind === 'rocket') {
         if (s.homing && s.target && s.target.alive) {
           const tz = s.target, v = norm([tz.x - s.pos[0], tz.y + tz.s - s.pos[1], tz.z - s.pos[2]]), sp = Math.hypot(...s.vel);
-          const cur = norm(s.vel), k = Math.min(1, dt * 3.2);
+          const cur = norm(s.vel), k = Math.min(1, dt * (s.mini ? 6 : 3.2));
           s.vel = norm(cur.map((c, j) => c + (v[j] - c) * k)).map((c) => c * Math.min(160, sp + dt * 40));
         }
         s.vel[1] -= 2 * dt;
@@ -674,6 +837,7 @@ export class HeliGame {
           this.shots.splice(i, 1); continue;
         }
       } else if (s.kind === 'bomblet') s.vel[1] -= 9.8 * dt;
+      else if (s.kind === 'flare') { s.vel[1] -= 4 * dt; s.vel = s.vel.map((v) => v * Math.exp(-1.2 * dt)); if (Math.random() < 0.7) this.fx.sparks(s.pos, 1, [1, 0.85, 0.4], 2, 0.4, 0.06, 0); }
       else if (s.kind === 'plasma' && Math.random() < 0.7) { this.fx.spawnPiece(s.pos, [0.25, 0.25, 0.25], [0, 0, 0], [0.4, 0.9, 1], 0.25, 1); this.fx.debris[this.fx.debris.length - 1].noGravity = true; }
       for (let k = 0; k < 3; k++) s.pos[k] += s.vel[k] * dt;
       const d = [s.pos[0] - prev[0], s.pos[1] - prev[1], s.pos[2] - prev[2]], dl = Math.hypot(d[0], d[1], d[2]) || 1e-6;
@@ -689,7 +853,7 @@ export class HeliGame {
       const f = this.fires[i];
       f.t -= dt; f.tick -= dt;
       if (f.t <= 0) { this.fires.splice(i, 1); continue; }
-      for (let j = 0; j < 3; j++) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * f.r; this.fx.flame([f.pos[0] + Math.cos(a) * r, f.pos[1] + 0.2, f.pos[2] + Math.sin(a) * r], [0, 1.5, 0], 3.2); }
+      for (let j = 0; j < (f.big ? 7 : 3); j++) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * f.r; this.fx.flame([f.pos[0] + Math.cos(a) * r, f.pos[1] + 0.2, f.pos[2] + Math.sin(a) * r], [0, 1.5, 0], 3.2); }
       if (f.tick <= 0) {
         f.tick = 0.25;
         for (const z of this.horde.list) if (z.alive && z.st !== 'grab' && Math.hypot(z.x - f.pos[0], z.z - f.pos[2]) < f.r && Math.abs(z.y - f.pos[1]) < 4) { if (this.horde.damage(z, z.type === 'titan' ? 60 : 22, [0, 3, 0], 'fire')) this.hitMark(true); }
@@ -706,30 +870,88 @@ export class HeliGame {
       this.blasts.push({ pos: p, t: 0.25, size: 0.5, col: [0.5, 0.95, 1] });
       return;
     }
-    if (s.kind === 'rocket') { this.blastAll(p, S.rocketR, S.rocketDmg, 16, 'rocket'); this.boom(p, 1.2); return; }
+    if (s.kind === 'rocket') { this.blastAll(p, S.rocketR, S.rocketDmg, 16, 'rocket'); this.boom(p, s.mini ? 0.8 : 1.2); return; }
+    if (s.kind === 'flare') return;
+    if (s.kind === 'bomb' && S.nuke) { this.nuke(p); return; }
+    if (s.kind === 'bomb' && S.napalm) { this.blastAll(p, 12, 380, 14, 'bomb'); this.boom(p, 2.2); this.fires.push({ pos: p, r: 17, t: 14, tick: 0, big: true }); return; }
     if (s.kind === 'bomb') { this.blastAll(p, 10, 420, 18, 'bomb'); this.boom(p, 2.2); this.fires.push({ pos: p, r: 9, t: 8, tick: 0 }); return; }
     if (s.kind === 'bomblet') { this.blastAll(p, 7, 320, 15, 'bomb'); this.boom(p, 1.3); this.fires.push({ pos: p, r: 5, t: 5, tick: 0 }); }
   }
 
   // door guns: AI gunners (the upgrade, or GUNNER crew with rifles) or friends online, who aim themselves
   doorSeats() {
-    const g = this.S.gunners, gunners = count(this.save.crew, 'gunner');
+    const S = this.S, g = S.gunners, gunners = count(this.save.crew, 'gunner');
     return [0, 1].map((sd) => {
       const fr = this.coop && [...this.coop.friends.values()].find((f) => f.seat === sd);
-      if (fr) return { friend: fr, rate: 11, dmg: 26 };
-      if (sd < g) return { ai: true, rate: gunners ? 13 : 9, dmg: 24 };
+      if (fr) return { friend: fr, rate: S.doorMini ? 16 : 11, dmg: S.doorMini ? 22 : 26 };
+      if (sd < g) return { ai: true, rate: (S.doorMini ? 18 : 10) * (gunners ? 1.3 : 1), dmg: S.doorMini ? 20 : 24 };
       if (sd < g + gunners) return { ai: true, rate: 6, dmg: 15, rifle: true };
       return null;
     });
   }
+  // can a gun at `mp` see zombie z, and where would it aim (in the helicopter's frame)?
+  sight(mp, z, inv, range) {
+    const tp = [z.x, z.y + z.s * 1.1, z.z], v = [tp[0] - mp[0], tp[1] - mp[1], tp[2] - mp[2]], l = Math.hypot(v[0], v[1], v[2]);
+    if (l > range || l < 1) return null;
+    const d = v.map((c) => c / l);
+    const w = this.world.raycast(mp, d, l - 0.8);
+    if (w) return null;                                   // a wall's in the way
+    const lv = qrot(inv, v);
+    return { l, yaw: Math.atan2(-lv[0], -lv[2]), pitch: Math.asin(clamp(lv[1] / l, -1, 1)) };
+  }
+  // pick the most dangerous zombie this gun can actually see and reach
+  pickTarget(mp, inv, arc, range) {
+    const H = this.heli;
+    let best = null, bs = Infinity;
+    for (const z of this.horde.list) {
+      if (!z.alive || z.st === 'mag') continue;
+      if (Math.abs(z.x - mp[0]) > range || Math.abs(z.z - mp[2]) > range) continue;
+      const sg = this.sight(mp, z, inv, range);
+      if (!sg) continue;
+      const dy = Math.atan2(Math.sin(sg.yaw - arc.yaw), Math.cos(sg.yaw - arc.yaw));
+      if (Math.abs(dy) > arc.half || sg.pitch < -1.35 || sg.pitch > 0.45) continue;
+      // grabbers first, then climbers, spitters, things close to you, then whatever's nearest
+      let sc = sg.l;
+      if (z.st === 'grab') sc -= 1000;
+      else if (z.st === 'climb' || z.st === 'roof') sc -= 30;
+      if (z.type === 'spitter') sc -= 25;
+      if (z.type === 'brute') sc -= 10;
+      if (z.tgt && z.tgt.sticky) sc -= 15;
+      if (sc < bs) { bs = sc; best = z; }
+    }
+    void H;
+    return best;
+  }
+  // aim a gun at its target, and fire only when it's actually pointing at it, in short bursts
+  aiGun(g, mp, inv, arc, range, dt) {
+    g.retarget = (g.retarget ?? 0) - dt;
+    if (!g.tgt || !g.tgt.alive || g.retarget <= 0 || !this.sight(mp, g.tgt, inv, range + 6)) { g.tgt = this.pickTarget(mp, inv, arc, range); g.retarget = 0.5; }
+    const z = g.tgt, a = g.aim;
+    if (!z) { a[0] += Math.atan2(Math.sin(arc.yaw - a[0]), Math.cos(arc.yaw - a[0])) * Math.min(1, dt * 3); a[1] += (-0.3 - a[1]) * Math.min(1, dt * 3); return false; }
+    // lead a running zombie a little
+    const lead = Math.hypot(z.x - mp[0], z.z - mp[2]) / 300;
+    const tp = { x: z.x + (z.dx || 0) * z.spd * lead, y: z.y, z: z.z + (z.dz || 0) * z.spd * lead, s: z.s };
+    const sg = this.sight(mp, tp, inv, range + 6) || this.sight(mp, z, inv, range + 6);
+    if (!sg) return false;
+    const ey = Math.atan2(Math.sin(sg.yaw - a[0]), Math.cos(sg.yaw - a[0])), ep = sg.pitch - a[1];
+    const turn = Math.min(1, dt * 9);
+    a[0] += ey * turn; a[1] += ep * turn;
+    const onTarget = Math.abs(ey) < 0.06 && Math.abs(ep) < 0.06;
+    // bursts: fire for a moment, rest for a moment
+    g.burst = (g.burst ?? 0) - dt;
+    if (g.burst < -0.35) g.burst = 0.7 + Math.random() * 0.5;
+    return onTarget && g.burst > 0;
+  }
   doorGuns(dt) {
-    const H = this.heli, seats = this.doorSeats();
+    const H = this.heli, seats = this.doorSeats(), S = this.S;
     const inv = [-H.q[0], -H.q[1], -H.q[2], H.q[3]];
+    this.doorAI = this.doorAI || [{ aim: this.doorAim[0] }, { aim: this.doorAim[1] }];
     for (let sd = 0; sd < 2; sd++) {
       const seat = seats[sd];
       this.doorFlash[sd] = Math.max(0, this.doorFlash[sd] - dt);
       if (!seat || H.dead || this.mode === 'down') continue;
       const side = sd === 0 ? 1 : -1, a = this.doorAim[sd];
+      const mp = H.toWorld([side * 1.25, 0.1, 0.6]);
       this.doorT[sd] -= dt;
       let fire = false;
       if (seat.friend) {
@@ -737,41 +959,42 @@ export class HeliGame {
         a[0] += Math.atan2(Math.sin(f.aim[0] - a[0]), Math.cos(f.aim[0] - a[0])) * Math.min(1, dt * 20); a[1] += (f.aim[1] - a[1]) * Math.min(1, dt * 20);
         fire = f.fire;
       } else {
-        let tg = this.doorTgt[sd];
-        if (!tg || !tg.alive || this.doorT[sd] < -0.6) {
-          tg = null; let best = 75;
-          for (const z of this.horde.list) {
-            if (!z.alive) continue;
-            const v = [z.x - H.pos[0], z.y + z.s - H.pos[1], z.z - H.pos[2]], l = Math.hypot(v[0], v[1], v[2]);
-            const lx = qrot(inv, v)[0];
-            if (lx * side < 0.5 && z.st !== 'grab') continue;
-            const sc = z.st === 'grab' ? 0 : l - (z.st === 'climb' ? 25 : 0) - (z.type === 'spitter' ? 15 : 0);
-            if (sc < best) { best = sc; tg = z; }
-          }
-          this.doorTgt[sd] = tg; this.doorT[sd] = 0;
-        }
-        if (!tg) continue;
-        const mp = H.toWorld([side * 1.25, 0.1, 0.6]);
-        const lv = qrot(inv, [tg.x - mp[0], tg.y + tg.s * 1.1 - mp[1], tg.z - mp[2]]), ll = Math.hypot(...lv);
-        const yaw = Math.atan2(-lv[0], -lv[2]), pitch = Math.asin(clamp(lv[1] / ll, -1, 1));
-        a[0] += Math.atan2(Math.sin(yaw - a[0]), Math.cos(yaw - a[0])) * Math.min(1, dt * 8); a[1] += (clamp(pitch, -1.3, 0.5) - a[1]) * Math.min(1, dt * 8);
-        fire = true;
+        const g = this.doorAI[sd]; g.aim = a;
+        fire = this.aiGun(g, mp, inv, { yaw: side > 0 ? -Math.PI / 2 : Math.PI / 2, half: 1.35 }, seat.rifle ? 55 : 65, dt);
       }
       if (fire && this.doorT[sd] <= -1 / seat.rate) {
         this.doorT[sd] = 0;
-        const dl = qrot(H.q, [-Math.sin(a[0]) * Math.cos(a[1]), Math.sin(a[1]), -Math.cos(a[0]) * Math.cos(a[1])]);
-        const o = H.toWorld([side * 1.25, 0.1, 0.6]).map((c, i) => c + dl[i] * 1.5);
-        const spr = seat.friend ? 0.025 : 0.05;
-        const dir = norm([dl[0] + (Math.random() - 0.5) * spr, dl[1] + (Math.random() - 0.5) * spr, dl[2] + (Math.random() - 0.5) * spr]);
-        const h = this.rayHit(o, dir, 180);
-        this.tracer(o, dir, h.t, seat.friend ? sd : -1);
+        this.gunShot(mp, a, seat.friend ? 0.02 : 0.03, seat.dmg, seat.friend ? sd : -1, seat.friend ? `friend${sd}` : 'door', (k) => { if (k && seat.friend) seat.friend.kills++; });
         this.doorFlash[sd] = 0.05;
-        if (h.z) { const k = this.horde.damage(h.z, seat.dmg, [dir[0] * 5, 2, dir[2] * 5], seat.friend ? `friend${sd}` : 'door'); if (k && seat.friend) seat.friend.kills++; }
-        else if (h.sh) h.sh.hit(seat.dmg, this);
-        else if (h.w) this.fx.impact(h.p, h.w.normal, h.w.box.color);
         this.snd.burst?.(0.05, seat.rifle ? 2200 : 1200, 0.12);
       }
     }
+    // the tail gun covers your back
+    this.tailFlash = Math.max(0, (this.tailFlash || 0) - dt);
+    if (S.tail && !H.dead && this.mode !== 'down') {
+      this.tailAI = this.tailAI || { aim: [Math.PI, -0.3] };
+      const mp = H.toWorld([0, -0.4, 4.6]);
+      const fire = this.aiGun(this.tailAI, mp, inv, { yaw: Math.PI, half: 1.6 }, 60, dt);
+      this.tailT = (this.tailT || 0) - dt;
+      if (fire && this.tailT <= 0) {
+        this.tailT = 1 / (S.tail === 2 ? 16 : 8);
+        this.gunShot(mp, this.tailAI.aim, 0.025, 18, -1, 'tail');
+        this.tailFlash = 0.05;
+        this.snd.burst?.(0.04, 1400, 0.1);
+      }
+    }
+  }
+  // one bullet from a mounted gun aimed [yaw, pitch] in the helicopter's frame
+  gunShot(mp, a, spr, dmg, seat, cause, onKill) {
+    const H = this.heli;
+    const dl = qrot(H.q, [-Math.sin(a[0]) * Math.cos(a[1]), Math.sin(a[1]), -Math.cos(a[0]) * Math.cos(a[1])]);
+    const o = mp.map((c, i) => c + dl[i] * 1.5);
+    const dir = norm([dl[0] + (Math.random() - 0.5) * spr, dl[1] + (Math.random() - 0.5) * spr, dl[2] + (Math.random() - 0.5) * spr]);
+    const h = this.rayHit(o, dir, 120);
+    this.tracer(o, dir, h.t, seat);
+    if (h.z) { const k = this.horde.damage(h.z, dmg, [dir[0] * 5, 2, dir[2] * 5], cause); this.splat(h.p, k); onKill?.(k); }
+    else if (h.sh) h.sh.hit(dmg, this);
+    else if (h.w) this.fx.impact(h.p, h.w.normal, h.w.box.color);
   }
 
   turrets(dt) {
@@ -780,7 +1003,20 @@ export class HeliGame {
       tu.cd -= dt;
       if (f.wrecked || Math.abs(tu.pos[0] - this.heli.pos[0]) > 400 || Math.abs(tu.pos[2] - this.heli.pos[2]) > 400) continue;
       let tg = null, best = 75;
-      for (const z of this.horde.list) { if (!z.alive || z.st === 'grab') continue; const d = Math.hypot(z.x - tu.pos[0], z.z - tu.pos[2]); if (d < best) { best = d; tg = z; } }
+      tu.re = (tu.re || 0) - dt;
+      if (tu.tg && tu.tg.alive && tu.re > 0) { tg = tu.tg; best = Math.hypot(tg.x - tu.pos[0], tg.z - tu.pos[2]); }
+      else {
+        tu.re = 0.6;
+        for (const z of this.horde.list) {
+          if (!z.alive || z.st === 'grab' || z.st === 'mag') continue;
+          const d = Math.hypot(z.x - tu.pos[0], z.z - tu.pos[2]);
+          if (d >= best) continue;
+          const v = norm([z.x - tu.pos[0], z.y + z.s - tu.pos[1], z.z - tu.pos[2]]);
+          if (this.world.raycast(tu.pos, v, Math.hypot(d, z.y + z.s - tu.pos[1]) - 0.8)) continue;
+          best = d; tg = z;
+        }
+        tu.tg = tg;
+      }
       if (!tg) continue;
       const want = Math.atan2(-(tg.x - tu.pos[0]), -(tg.z - tu.pos[2]));
       tu.yaw += Math.atan2(Math.sin(want - tu.yaw), Math.cos(want - tu.yaw)) * Math.min(1, dt * 5);
@@ -826,11 +1062,11 @@ export class HeliGame {
     // forgiving: anywhere over (or just next to) the roof / pad, low and slow, counts. You don't even have to touch down.
     const near = (b, up) => {
       const h = H.pos[1] - 1.92 - b.max[1];
-      return ok && spd < 6 && H.pos[0] > b.min[0] - 4 && H.pos[0] < b.max[0] + 4 && H.pos[2] > b.min[2] - 4 && H.pos[2] < b.max[2] + 4 && h > -2 && h < up;
+      return ok && spd < (S.winch ? 8 : 6) && H.pos[0] > b.min[0] - 4 && H.pos[0] < b.max[0] + 4 && H.pos[2] > b.min[2] - 4 && H.pos[2] < b.max[2] + 4 && h > -2 && h < up;
     };
     this.atFob = this.fobs.find((f) => near(f.pad, 6)) || null;
-    this.atRoof = this.director.list.find((e) => e.kind === 'rescue' && e.roof.active && e.roof.count > 0 && near(e.roof.box, 12)) || null;
-    this.nearCrate = ok && spd < 6 ? this.director.list.find((e) => e.kind === 'crate' && e.landed && !e.carried && Math.hypot(e.x - H.pos[0], e.z - H.pos[2]) < 20 && H.pos[1] - e.y < 14) || null : null;
+    this.atRoof = this.director.list.find((e) => e.kind === 'rescue' && e.roof.active && e.roof.count > 0 && near(e.roof.box, S.winch ? 32 : 12)) || null;
+    this.nearCrate = ok && spd < 6 ? this.director.list.find((e) => e.kind === 'crate' && e.landed && !e.carried && Math.hypot(e.x - H.pos[0], e.z - H.pos[2]) < (S.winch ? 30 : 20) && H.pos[1] - e.y < (S.winch ? 40 : 14)) || null : null;
     this.settled = settled;
     const seatsFree = Math.max(2, S.seats - crew.length) - this.riders;
     const acts = [];
@@ -843,8 +1079,8 @@ export class HeliGame {
       acts.push(['Digit1', '1', this.fuel >= S.fuel - 0.5 ? 'FUEL FULL' : this.svc === 'fuel' ? `REFUELLING ${pct(this.fuel / S.fuel)}` : `REFUEL (${pct(this.fuel / S.fuel)})`, () => { this.svc = 'fuel'; this.snd.click?.(1800, 0.3); }, this.fuel >= S.fuel - 0.5]);
       if (!f.fuelOnly) {
         acts.push(['Digit2', '2', this.hp >= S.hp ? 'NO DAMAGE' : this.svc === 'fix' ? `REPAIRING ${pct(this.hp / S.hp)}` : `REPAIR (${pct(this.hp / S.hp)})`, () => { this.svc = 'fix'; this.snd.click?.(1800, 0.3); }, this.hp >= S.hp]);
-        const full = this.rockets >= S.rockets && this.bombs >= S.bombs && this.heat <= 0;
-        acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.rockets = S.rockets; this.bombs = S.bombs; this.heat = 0; this.overT = 0; this.snd.magIn?.(); setTimeout(() => this.snd.bolt?.(), 200); this.feed('REARMED', 'g'); }, full]);
+        const full = this.rockets >= S.rockets && this.bombs >= S.bombs && this.flaresLeft >= S.flares && this.heat <= 0;
+        acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.rockets = S.rockets; this.bombs = S.bombs; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); setTimeout(() => this.snd.bolt?.(), 200); this.feed('REARMED', 'g'); }, full]);
         acts.push(['KeyH', 'H', 'HANGAR', () => { this.session.fob = f; this.toHangar(); }, true]);
       }
     } else if (f && f.wrecked) this.svc = null;
@@ -995,6 +1231,7 @@ export class HeliGame {
     for (const ev of this.horde.events) {
       if (ev.type === 'kill') {
         run.kills++;
+        this.splat([ev.z.x, ev.z.y, ev.z.z], true);
         const T = TYPES[ev.z.type];
         this.addScrap(T.scrap);
         if (this.nfx) this.nfx.push(['k', q1(ev.z.x), q1(ev.z.y), q1(ev.z.z), ZT.indexOf(ev.z.type)]);
@@ -1438,6 +1675,10 @@ export class HeliGame {
       rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, spin: (this.spin = (this.spin || 0) + this.spinV * dt * 40), t: this.t, install: null, riders: this.riders,
       crew: s.crew.filter((c) => !(this.scav && this.scav.team.some((m) => m.crew === c))).map((c) => ({ col: ROLES[c.role].col })),
       rockets: this.rockets, rocketMax: S.rockets, bombs: this.bombs, bombMax: S.bombs, boost: H.boost, doorAim: this.doorAim, doorFlash: this.doorFlash, flash: this.flashT,
+      shieldK: S.shield ? this.shield / S.shield : 0, shieldHit: this.shieldHit, flares: S.flares ? this.flaresLeft / S.flares : 0,
+      tailAim: this.tailAI?.aim, tailFlash: this.tailFlash, magnetOn: this.mag.length > 0,
+      cable: this.boarding && this.atRoof && S.winch ? Math.max(0.8, H.pos[1] - 1 - this.atRoof.roof.top) : this.mag.length ? 4.6 : 0.8,
+      charge: S.gun.rail ? clamp(1 - this.gunT, 0, 1) : 1,
       doorFriend: [0, 1].map((sd) => { const f = fr.find((q) => q.seat === sd); return f ? { col: f.col } : count(s.crew, 'gunner') > sd - S.gunners && sd >= S.gunners ? { col: ROLES.gunner.col } : null; }),
     };
     const parts = this.mode === 'down' ? [] : chopperParts(s.eq, PAINT[s.paint], st, H.H);
@@ -1513,6 +1754,7 @@ export class HeliGame {
         if (s.kind === 'rocket') { P(s.pos, ang, [0.2, 0.2, 1.1], [0.85, 0.85, 0.8], { shape: 'cyl' }); P(s.pos.map((c, i) => c - v[i] * 0.7), [0, 0, 0], [0.5, 0.5, 0.5], [1, 0.75, 0.3], { em: 1, shape: 'sphere', alpha: 0.9 }); }
         else if (s.kind === 'bomb' || s.kind === 'bomblet') P(s.pos, ang, s.kind === 'bomb' ? [0.4, 0.4, 0.95] : [0.25, 0.25, 0.4], [0.3, 0.32, 0.25], { shape: 'sphere' });
         else if (s.kind === 'plasma') P(s.pos, ang, [0.35, 0.35, 1.6], [0.5, 0.95, 1], { em: 1, shape: 'sphere', alpha: 0.9 });
+      else if (s.kind === 'flare') { P(s.pos, [0, 0, 0], [0.35, 0.35, 0.35], [1, 0.95, 0.7], { em: 1, shape: 'sphere' }); P(s.pos, [0, 0, 0], [1.6, 1.6, 1.6], [1, 0.7, 0.3], { em: 1, shape: 'sphere', alpha: 0.25 }); }
       }
     }
     for (const b of this.blasts || []) {
@@ -1522,11 +1764,19 @@ export class HeliGame {
       P(b.pos, [0, 0, 0], [s, s, s], b.col || [1, 0.65, 0.25], { em: 1, shape: 'sphere', alpha: (1 - k) * 0.6 });
       if (!b.col) P(b.pos, [0, 0, 0], [s * 0.55, s * 0.55, s * 0.55], [1, 0.95, 0.7], { em: 1, shape: 'sphere', alpha: (1 - k) * 0.9 });
     }
+    for (const b of this.beams || []) {
+      const v = [b.to[0] - b.from[0], b.to[1] - b.from[1], b.to[2] - b.from[2]], l = Math.hypot(...v), d = v.map((c) => c / (l || 1));
+      const c = b.from.map((q, i) => q + v[i] / 2), ang = [Math.asin(clamp(d[1], -1, 1)), Math.atan2(-d[0], -d[2]), 0], k = b.t / b.life;
+      P(c, ang, [b.w * 2.6, b.w * 2.6, l], b.col, { em: 1, shape: 'cyl', alpha: 0.35 * k });
+      P(c, ang, [b.w, b.w, l], [1, 1, 1], { em: 1, shape: 'cyl', alpha: 0.9 * k });
+    }
     for (const t of this.tracers || []) {
-      const l = Math.min(14, t.len - t.d);
+      const l = Math.min(18, t.len - t.d);
       if (l <= 0) continue;
       const c = t.from.map((v, i) => v + t.dir[i] * (t.d + l / 2));
-      P(c, [Math.asin(clamp(t.dir[1], -1, 1)), Math.atan2(-t.dir[0], -t.dir[2]), 0], [0.09, 0.09, l], [1, 0.8, 0.45], { em: 1, alpha: 0.85 });
+      const ang = [Math.asin(clamp(t.dir[1], -1, 1)), Math.atan2(-t.dir[0], -t.dir[2]), 0];
+      P(c, ang, [0.11, 0.11, l], [1, 0.85, 0.5], { em: 1, alpha: 0.95, shape: 'cyl' });
+      P(c, ang, [0.32, 0.32, l * 0.8], [1, 0.6, 0.2], { em: 1, alpha: 0.25, shape: 'cyl' });
     }
     return out;
   }
@@ -1587,16 +1837,19 @@ export class HeliGame {
     const list = this.director.list.map((e) => e.marker(this));
     for (const f of this.fobs) list.push({ p: [f.padAt[0], f.padAt[1] + 6, f.padAt[2]], col: f.wrecked ? '#ff5a3a' : f.fuelOnly ? '#ff9f3a' : '#5ab4ff', icon: f.fuelOnly ? '⛽' : 'H', text: f.name, sub: f.wrecked ? `WRECKED · ${fmtT(f.wreckT)}` : this.riders && !f.fuelOnly ? `DROP OFF ${this.riders}` : '', fob: true });
     const extra = [];
-    if (has(this.save.crew, 'lookout')) {
-      for (const z of this.horde.list) {
-        if (!z.alive || (z.type !== 'spitter' && z.type !== 'brute') || Math.abs(z.x - H.pos[0]) > 160 || Math.abs(z.z - H.pos[2]) > 160) continue;
+    if (has(this.save.crew, 'lookout') || S.radar === 2) {
+      const R2 = S.radar === 2 ? 260 : 160;
+      const specials = this.horde.list.filter((z) => z.alive && (z.type === 'spitter' || z.type === 'brute' || z.type === 'titan') && Math.abs(z.x - H.pos[0]) < R2 && Math.abs(z.z - H.pos[2]) < R2)
+        .sort((a, b) => Math.hypot(a.x - H.pos[0], a.z - H.pos[2]) - Math.hypot(b.x - H.pos[0], b.z - H.pos[2])).slice(0, 6);
+      for (const z of specials) {
         const q = this.project([z.x, z.y + z.s * 2.2, z.z]);
-        if (!q.behind) extra.push(`<div class="da-spec" style="left:${q.x.toFixed(0)}px;top:${q.y.toFixed(0)}px">▼ ${z.type.toUpperCase()}</div>`);
+        if (!q.behind) extra.push(`<div class="da-spec" style="left:${q.x.toFixed(0)}px;top:${q.y.toFixed(0)}px">▼ ${z.type.toUpperCase()}${S.radar === 2 ? ` ${Math.ceil((z.hp / z.max) * 100)}%` : ''}</div>`);
       }
     }
     this.markers(list.filter((m) => !m.fob || Math.hypot(m.p[0] - H.pos[0], m.p[2] - H.pos[2]) < 700), H.pos, extra);
     this.eventsList(list.filter((m) => !m.fob), H.pos);
-    this.minimap(H.pos, H.heading, list.filter((m) => !m.fob), this.horde.list);
+    const zr = [140, 600, 600][S.radar || 0];
+    this.minimap(H.pos, H.heading, list.filter((m) => !m.fob), this.horde.list.filter((z) => Math.abs(z.x - H.pos[0]) < zr && Math.abs(z.z - H.pos[2]) < zr));
     const T = this.titanEv(), boss = this.$('boss');
     boss.classList.toggle('hidden', !T);
     if (T) boss.style.setProperty('--p', (T.z0.hp / T.z0.max).toFixed(3));
@@ -1604,6 +1857,9 @@ export class HeliGame {
     setM('fuelm', this.fuel / S.fuel, this.fuel / S.fuel < 0.2);
     this.$('fueltxt').textContent = this.fuel <= 0 ? 'EMPTY' : `${Math.round((this.fuel / S.fuel) * 100)}%`;
     setM('hpm', this.hp / S.hp, this.hp / S.hp < 0.3);
+    this.$('shm').classList.toggle('hidden', !S.shield);
+    if (S.shield) setM('shm', this.shield / S.shield, false);
+    this.$('white').style.opacity = (this.whiteT || 0).toFixed(3);
     setM('heatm', this.heat, this.overT > 0);
     this.$('heatm').classList.remove('hidden');
     this.$('boostm').classList.toggle('hidden', !S.boost);
@@ -1612,7 +1868,7 @@ export class HeliGame {
     this.$('spd').textContent = `${Math.round(Math.hypot(...H.vel) * 3.6)} KM/H`;
     const seats = Math.max(2, S.seats - this.save.crew.length);
     const fr = this.coop ? this.coop.friends.size : 0;
-    this.$('right').innerHTML = `${S.rockets ? `<div><small>ROCKETS</small>${this.rockets} / ${S.rockets}</div>` : ''}${S.bombs ? `<div><small>BOMBS</small>${this.bombs} / ${S.bombs}</div>` : ''}<div><small>ON BOARD</small>${this.riders} / ${seats}</div>${this.save.crew.length ? `<div><small>CREW</small>${this.save.crew.map((m) => `<span style="color:rgb(${ROLES[m.role].col.map((v) => Math.round(v * 255))})">●</span>`).join('')}</div>` : ''}${fr ? `<div><small>FRIENDS</small>${fr}</div>` : ''}<div><small>KILLS</small>${run.kills}</div><div><small>SCRAP</small>⚙ ${this.save.scrap.toLocaleString('en-GB')}</div>`;
+    this.$('right').innerHTML = `${S.rockets ? `<div><small>ROCKETS</small>${this.rockets} / ${S.rockets}</div>` : ''}${S.bombs ? `<div><small>BOMBS</small>${this.bombs} / ${S.bombs}</div>` : ''}${S.flares ? `<div><small>FLARES [X]</small>${this.flaresLeft} / ${S.flares}</div>` : ''}${S.magnet ? `<div><small>MAGNET [M]</small>${this.mag.length ? `${this.mag.length} HELD` : 'READY'}</div>` : ''}<div><small>ON BOARD</small>${this.riders} / ${seats}</div>${this.save.crew.length ? `<div><small>CREW</small>${this.save.crew.map((m) => `<span style="color:rgb(${ROLES[m.role].col.map((v) => Math.round(v * 255))})">●</span>`).join('')}</div>` : ''}${fr ? `<div><small>FRIENDS</small>${fr}</div>` : ''}<div><small>KILLS</small>${run.kills}</div><div><small>SCRAP</small>⚙ ${this.save.scrap.toLocaleString('en-GB')}</div>`;
     // actions you can take here (buttons you can click when the mouse is free)
     // rebuilt only when the set of buttons changes (so a click isn't lost); the labels update in place
     const acts = this.actions || [], sig = acts.map((a) => a[1]).join('|');
@@ -1703,6 +1959,13 @@ export class HeliGame {
   draw(eye, fwd, roll, heliParts, extra, focus, fog) {
     const r = this.r;
     this.perf();
+    // the hangar gets light from high up in front (through the open doors); outside, the low sunset sun
+    const want = this.mode === 'hangar' ? [0.2, 0.9, -0.45] : SUN;
+    if (this.sunNow !== want) {
+      this.sunNow = want;
+      const l = Math.hypot(...want); r.sunDir = want.map((v) => v / l);
+      r.gl.useProgram(r.prog); r.gl.uniform3fv(r.u.uSunDir, r.sunDir);
+    }
     if (this.save.gfx === 'low') fog = Math.max(fog, 0.0075);
     const aspect = r.resize();
     const vfov = (64 * Math.PI) / 180;
@@ -1784,8 +2047,26 @@ export class HeliGame {
       }
     }
     for (const sm of this.smokes) {
-      const k = sm.t / sm.life;
-      put(sm.pos[0] + sm.drift[0] * sm.t, sm.pos[1] + sm.t * 2.2, sm.pos[2] + sm.drift[1] * sm.t, sm.size * (1 + k * 2.2), [0.16, 0.15, 0.14], 0.45 * (1 - k) * Math.min(1, sm.t * 6));
+      const k = sm.t / sm.life, f = sm.fire || 0;
+      put(sm.pos[0] + sm.drift[0] * sm.t, sm.pos[1] + sm.t * 2.2, sm.pos[2] + sm.drift[1] * sm.t, sm.size * (1 + k * 2.2), f ? [0.16 + f * (1 - k), 0.12 + f * 0.4 * (1 - k), 0.1, f * (1 - k)] : [0.16, 0.15, 0.14], 0.45 * (1 - k) * Math.min(1, sm.t * 6));
+    }
+    // big soft clouds, lit pink and gold by the low sun
+    for (let i = 0; i < 34; i++) {
+      const cx = ((i * 271.3) % 1700) - 850 + t * 2.5, cz = ((i * 613.7) % 1700) - 850;
+      const x = ((cx + 850) % 1700 + 1700) % 1700 - 850;
+      for (let j = 0; j < 4; j++) put(x + (j - 1.5) * 34, 245 + (i % 5) * 9 + (j % 2) * 8, cz + ((j * 37) % 30) - 15, 55 + ((i + j) % 4) * 14, [0.95, 0.72, 0.62], 0.22);
+    }
+    // splats where zombies fell
+    for (const sp of this.splats || []) {
+      if (Math.abs(sp.x - eye[0]) > 200 || Math.abs(sp.z - eye[2]) > 200) continue;
+      if (n >= 1200) break;
+      compose(m, [sp.x, sp.y, sp.z], [0, sp.r * 7, 0], [sp.r * 2, 0.03, sp.r * 1.6]);
+      const o = n * 32;
+      for (let k = 0; k < 16; k++) D[o + k] = m[k];
+      D[o + 16] = sp.r * 2; D[o + 17] = 0.03; D[o + 18] = sp.r * 1.6; D[o + 19] = 0;
+      D[o + 20] = 0.22; D[o + 21] = 0.03; D[o + 22] = 0.03; D[o + 23] = 0.8 * Math.min(1, (30 - sp.t) / 5);
+      D[o + 24] = 0; D[o + 25] = 0; D[o + 26] = 0; D[o + 27] = 0; D[o + 28] = 0; D[o + 29] = 0.3; D[o + 30] = 0; D[o + 31] = 0;
+      n++;
     }
     // ash and embers drifting round you
     if (this.mode !== 'hangar') for (let i = 0; i < 70; i++) {

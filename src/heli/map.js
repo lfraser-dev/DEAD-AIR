@@ -20,6 +20,7 @@ const FACADES = [
 ];
 const HOUSES = [[0.85, 0.8, 0.7], [0.7, 0.75, 0.82], [0.88, 0.78, 0.6], [0.75, 0.82, 0.72], [0.9, 0.88, 0.85], [0.8, 0.62, 0.55]];
 const ROOFS = [[0.35, 0.18, 0.14], [0.22, 0.22, 0.25], [0.4, 0.3, 0.22]];
+const NEON = [[1, 0.2, 0.6], [0.2, 0.9, 1], [1, 0.85, 0.2], [0.4, 1, 0.4], [0.7, 0.35, 1], [1, 0.45, 0.15]];
 const CARS = [[0.6, 0.1, 0.08], [0.15, 0.25, 0.5], [0.75, 0.75, 0.72], [0.12, 0.12, 0.13], [0.5, 0.48, 0.3], [0.2, 0.4, 0.3], [0.85, 0.7, 0.15]];
 
 // the bases: where they are, which way their gate faces (towards the city), and the road out to the map edge
@@ -93,6 +94,21 @@ export function buildWorld() {
         const wx = bx + (sx / 2 - 3) * (R() < 0.5 ? -1 : 1), wz = bz + (sz / 2 - 3) * (R() < 0.5 ? -1 : 1);
         for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) at(wx + dx * 1.1, top, wz + dz * 1.1, 0.2, 2.6, 0.2, { color: [0.25, 0.2, 0.15] });
         at(wx, top + 2.6, wz, 3.2, 3, 3.2, { color: [0.42, 0.3, 0.2], shape: 'cylY', tex: 12 });
+      }
+      // neon signs down the sides of some buildings, and glowing billboards on some roofs
+      if (h > 14 && R() < 0.45) {
+        const nc = NEON[Math.floor(R() * NEON.length)], side = Math.floor(R() * 4), len = Math.min(h * 0.55, 18);
+        const px = side === 0 ? bx - sx / 2 - 0.25 : side === 1 ? bx + sx / 2 + 0.25 : bx + (R() - 0.5) * sx * 0.5;
+        const pz = side >= 2 ? (side === 2 ? bz - sz / 2 - 0.25 : bz + sz / 2 + 0.25) : bz + (R() - 0.5) * sz * 0.5;
+        const ax = side < 2;
+        at(px, top - len - 2, pz, ax ? 0.35 : 2.2, len, ax ? 2.2 : 0.35, { color: [0.08, 0.08, 0.1], noShadow: true, solid: false });
+        for (let k = 0; k < Math.floor(len / 2.2); k++) at(ax ? px + (side === 0 ? -0.2 : 0.2) : px, top - len - 1.4 + k * 2.2, ax ? pz : pz + (side === 2 ? -0.2 : 0.2), ax ? 0.08 : 1.5, 1.3, ax ? 1.5 : 0.08, { color: nc, emissive: 1, noShadow: true, solid: false });
+      }
+      if (h > 10 && R() < 0.18) {
+        const nc = NEON[Math.floor(R() * NEON.length)], along = R() < 0.5, w = Math.min(along ? sx : sz, 12) - 2;
+        for (const o of [-w / 2 + 0.6, w / 2 - 0.6]) at(bx + (along ? o : 0), top, bz + (along ? 0 : o), 0.25, 4, 0.25, { color: [0.2, 0.2, 0.22], mat: 'metal' });
+        at(bx, top + 4, bz, along ? w : 0.35, 3.6, along ? 0.35 : w, { color: [0.12, 0.12, 0.14], mat: 'metal' });
+        at(bx + (along ? 0 : 0.2), top + 4.2, bz + (along ? 0.2 : 0), along ? w - 0.6 : 0.06, 3.2, along ? 0.06 : w - 0.6, { color: nc.map((v) => v * 0.8 + 0.1), emissive: 0.75, noShadow: true, solid: false });
       }
       if (roofOk && h > 7 && h < 50 && sx >= 12 && sz >= 12) roofs.push({ box: b, top, x: bx, z: bz, sx, sz, h });
       return b;

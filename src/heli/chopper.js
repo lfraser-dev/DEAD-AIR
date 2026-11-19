@@ -40,7 +40,7 @@ const SHIRTS = [[0.7, 0.2, 0.2], [0.2, 0.4, 0.75], [0.85, 0.75, 0.3], [0.3, 0.6,
 const backOut = (t) => { t = clamp(t, 0, 1); const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
 
 // rotor sizes per rotor tier: [blades, radius, hub height]
-export const ROTOR = [[4, 6.4, 2.25], [5, 7.1, 2.25], [4, 6.2, 2.1]];
+export const ROTOR = [[4, 6.4, 2.25], [5, 7.1, 2.25], [4, 6.2, 2.1], [5, 7.3, 2.3]];
 
 // st: { rotorA, tailA, rpm, spin, t, install: {slot: 0..1}, riders, rockets (left), rocketMax, bombs, bombMax,
 //       boost (0..1), doorAim: [[yaw, pitch], [yaw, pitch]], flash }
@@ -114,13 +114,13 @@ export function chopperParts(eq, paint, st, H) {
 
   // ---- engine
   const en = eq.engine;
-  const exS = [0.38, 0.5, 0.5, 0.6][en], exL = [0.5, 0.8, 0.8, 1.0][en];
+  const exS = [0.38, 0.5, 0.5, 0.6, 0.6][en], exL = [0.5, 0.8, 0.8, 1.0, 1.0][en];
   const hot = en >= 1 ? 0.35 + (st.rpm || 0) * 0.3 : 0;
   for (const x of [-0.55, 0.55]) {
     add('engine', [x, 1.45, 2.1], [0, 0, 0], [exS, exS, exL], GUNM, { mat: 'metal', shape: 'cyl' });
     if (en >= 1) add('engine', [x, 1.45, 2.1 + exL / 2 + 0.01], [0, 0, 0], [exS * 0.7, exS * 0.7, 0.03], [1, 0.45, 0.12], { em: hot, shape: 'cyl' });
   }
-  if (en >= 2) for (const x of [-1.0, 1.0]) {
+  if (en >= 2 && en < 4) for (const x of [-1.0, 1.0]) {
     add('engine', [x, 1.32, 0.9], [0, 0, 0], [0.72, 0.72, 2.3], body, { mat: pm, shape: 'cyl' });
     add('engine', [x, 1.32, -0.28], [0, 0, 0], [0.6, 0.6, 0.06], DARK, { shape: 'cyl' });
     add('engine', [x, 1.32, 2.1], [0, 0, 0], [0.55, 0.55, 0.3], GUNM, { mat: 'metal', shape: 'cyl' });
@@ -132,18 +132,38 @@ export function chopperParts(eq, paint, st, H) {
     if (b > 0.05) add(null, [x, 1.32, 2.5 + b * 1.4], [0, 0, 0], [0.4, 0.4, b * 2.8], [0.5, 0.75, 1], { em: 1, shape: 'cyl', alpha: 0.5 });
   }
 
+  if (en === 4) for (const x of [-1.25, 1.25]) {
+    // JET TURBINES: two big jet pods with glowing intakes and nozzles
+    const b = st.boost || 0;
+    add('engine', [x, 1.25, 0.8], [0, 0, 0], [0.95, 0.95, 3.2], body, { mat: pm, shape: { cap: [0.47, 0.3] } });
+    add('engine', [x, 1.25, -0.75], [0, 0, 0], [0.8, 0.8, 0.08], [0.06, 0.06, 0.07], { shape: 'cyl' });
+    add('engine', [x, 1.25, -0.72], [0, 0, st.t * 30], [0.7, 0.08, 0.06], STEEL, { mat: 'steel' });
+    add('engine', [x, 1.25, -0.72], [0, 0, st.t * 30 + 1.57], [0.7, 0.08, 0.06], STEEL, { mat: 'steel' });
+    add('engine', [x, 1.25, 2.5], [0, 0, 0], [0.78, 0.78, 0.4], STEEL, { mat: 'steel', shape: 'cyl' });
+    add('engine', [x, 1.25, 2.72], [0, 0, 0], [0.56, 0.56, 0.04], b > 0.05 ? [0.6, 0.85, 1] : [1, 0.45, 0.12], { em: 0.6 + b * 0.4, shape: 'cyl' });
+    add('engine', [x, 1.25, 0.8], [0, 0, 0], [0.98, 0.98, 0.14], paint.stripe || [0.9, 0.8, 0.2], { shape: 'cyl', em: glow ? 0.8 : 0 });
+    add('engine', [x * 0.62, 1.3, 0.8], [0, 0, 0], [0.5, 0.18, 1.6], GUNM, { mat: 'metal', shape: 0.04 });
+    if (b > 0.05) for (const k of [1, 2]) add(null, [x, 1.25, 2.75 + b * 1.2 * k], [0, 0, 0], [0.55 / k, 0.55 / k, b * 2.4], k === 1 ? [0.6, 0.85, 1] : [1, 1, 1], { em: 1, shape: 'cyl', alpha: 0.5 });
+  }
+
   // ---- rotor
   const [nb, R, hy] = ROTOR[eq.rotor];
-  const coax = eq.rotor === 2;
+  const coax = eq.rotor === 2, shred = eq.rotor === 3;
   add('rotor', [0, 1.9, 0.3], [0, 0, 0], [0.3, coax ? 0.9 : 0.5, 0.3], STEEL, { mat: 'steel', shape: 'cylY' });
   const rotorAt = (y, a0, dir) => {
     add('rotor', [0, y, 0.3], [0, a0 * dir, 0], [0.75, 0.24, 0.75], GUNM, { mat: 'metal', shape: 'cylY' });
     for (let i = 0; i < nb; i++) {
       const a = a0 * dir + (i * Math.PI * 2) / nb;
       add('rotor', [-Math.sin(a) * R / 2, y + 0.04, 0.3 - Math.cos(a) * R / 2], [0.0, a, 0.05], [0.42, 0.07, R], DARK, { mat: 'metal', shape: 0.03 });
-      add('rotor', [-Math.sin(a) * (R - 0.2), y + 0.05, 0.3 - Math.cos(a) * (R - 0.2)], [0, a, 0], [0.43, 0.075, 0.4], paint.stripe || [0.9, 0.8, 0.2], { shape: undefined, em: glow ? 0.8 : 0 });
+      add('rotor', [-Math.sin(a) * (R - 0.2), y + 0.05, 0.3 - Math.cos(a) * (R - 0.2)], [0, a, 0], [0.43, 0.075, 0.4], shred ? [0.9, 0.1, 0.06] : paint.stripe || [0.9, 0.8, 0.2], { shape: undefined, em: glow || shred ? 0.6 : 0 });
+      if (shred) {
+        // armoured leading edge with saw teeth
+        add('rotor', [-Math.sin(a) * R / 2, y + 0.06, 0.3 - Math.cos(a) * R / 2], [0, a, 0], [0.5, 0.1, R * 0.92], STEEL, { mat: 'steel', shape: 0.02 });
+        for (let k = 1; k < 5; k++) { const rr = R * (0.35 + k * 0.14); add('rotor', [-Math.sin(a) * rr + Math.cos(a) * 0.3, y + 0.06, 0.3 - Math.cos(a) * rr - Math.sin(a) * 0.3], [0, a + 0.785, 0], [0.16, 0.08, 0.16], [0.85, 0.12, 0.08], { mat: 'steel' }); }
+      }
     }
-    if (st.rpm > 0.35) add(null, [0, y + 0.04, 0.3], [0, 0, 0], [R * 2, 0.03, R * 2], [0.15, 0.15, 0.15], { shape: 'cylY', alpha: 0.1 * st.rpm });
+    if (st.rpm > 0.35) add(null, [0, y + 0.04, 0.3], [0, 0, 0], [R * 2, 0.03, R * 2], shred ? [0.35, 0.08, 0.06] : [0.15, 0.15, 0.15], { shape: 'cylY', alpha: 0.1 * st.rpm });
+    if (shred && st.rpm > 0.35) add(null, [0, y + 0.05, 0.3], [0, 0, 0], [R * 2.02, 0.05, R * 2.02], [1, 0.25, 0.1], { shape: 'cylY', alpha: 0.08 * st.rpm, em: 1 });
   };
   rotorAt(hy, st.rotorA, 1);
   if (coax) rotorAt(hy + 0.6, st.rotorA, -1);
@@ -163,6 +183,19 @@ export function chopperParts(eq, paint, st, H) {
         add('gun', [x + Math.cos(a) * 0.1, -1.05 + Math.sin(a) * 0.1, -4.15], [0, 0, 0], [0.055, 0.055, 1.6], STEEL, { mat: 'steel', shape: 'cyl' });
       }
       for (const z of [-3.85, -4.85]) add('gun', [x, -1.05, z], [0, 0, spin], [0.32, 0.32, 0.07], GUNM, { mat: 'metal', shape: 'cyl' });
+    } else if (g === 4) {
+      // RAILGUN: two long rails with blue coils between them
+      add('gun', [x, -1.05, -3.4], [0, 0, 0], [0.5, 0.42, 0.9], GUNM, { mat: 'metal', shape: 0.06 });
+      for (const dx of [-0.13, 0.13]) add('gun', [x + dx, -1.05, -4.5], [0, 0, 0], [0.08, 0.26, 2.4], STEEL, { mat: 'steel', shape: 0.02 });
+      const ch = 0.4 + 0.6 * (st.charge ?? 1);
+      for (let k = 0; k < 5; k++) add('gun', [x, -1.05, -3.8 - k * 0.38], [0, 0, 0], [0.2, 0.06, 0.1], [0.3, 0.7, 1], { em: ch * (0.6 + 0.4 * Math.sin(st.t * 10 + k)) });
+      add('gun', [x, -1.05, -5.7], [0, 0, 0], [0.12, 0.12, 0.12], [0.6, 0.9, 1], { em: ch, shape: 'sphere' });
+    } else if (g === 5) {
+      // LASER: a fat lens housing with red glowing rings
+      add('gun', [x, -1.05, -3.45], [0, 0, 0], [0.62, 0.62, 1.0], [0.85, 0.85, 0.82], { mat: 'paint', shape: 'cyl' });
+      add('gun', [x, -1.05, -4.1], [0, 0, 0], [0.42, 0.42, 0.6], GUNM, { mat: 'metal', shape: 'cyl' });
+      for (const z of [-3.2, -3.7]) add('gun', [x, -1.05, z], [0, 0, 0], [0.66, 0.66, 0.06], [1, 0.15, 0.1], { em: 0.9, shape: 'cyl' });
+      add('gun', [x, -1.05, -4.42], [0, 0, 0], [0.32, 0.32, 0.05], [1, 0.2, 0.15], { em: 1, shape: 'cyl' });
     } else {
       const pulse = 0.55 + 0.45 * Math.sin(st.t * 6);
       add('gun', [x, -1.05, -3.4], [0, 0, 0], [0.46, 0.46, 0.8], GUNM, { mat: 'metal', shape: 0.08 });
@@ -172,7 +205,7 @@ export function chopperParts(eq, paint, st, H) {
     }
   };
   if (g === 2) { add('gun', [0, -1.0, -3.2], [0, 0, 0], [1.25, 0.28, 0.55], GUNM, { mat: 'metal', shape: 0.06 }); barrelsAt(-0.42); barrelsAt(0.42); } else barrelsAt(0);
-  if (st.flash > 0) for (const x of g === 2 ? [-0.42, 0.42] : [0]) add(null, [x, -1.05, -5.1], [0, 0, st.t * 40], [0.45, 0.45, 0.6], g === 3 ? [0.5, 0.95, 1] : [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
+  if (st.flash > 0) for (const x of g === 2 ? [-0.42, 0.42] : [0]) add(null, [x, -1.05, -5.1], [0, 0, st.t * 40], [0.45, 0.45, 0.6], g === 3 || g === 4 ? [0.5, 0.95, 1] : g === 5 ? [1, 0.25, 0.15] : [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
 
   // ---- rockets
   const rk = eq.rockets;
@@ -189,6 +222,19 @@ export function chopperParts(eq, paint, st, H) {
         add('rockets', [x + Math.cos(a) * 0.15, -0.66 + Math.sin(a) * 0.15, -0.44], [0, 0, 0], [0.1, 0.1, 0.1], [0.85, 0.15, 0.1], { shape: 'sphere' });
       }
     });
+  } else if (rk === 4) {
+    // SWARM PODS: honeycomb boxes full of little missiles
+    const show = st.rocketMax ? st.rockets / st.rocketMax : 1;
+    for (const x of [-1.75, 1.75]) {
+      add('rockets', [x, -0.7, 0.4], [0, 0, 0], [0.9, 0.75, 1.6], trim, { mat: 'metal', shape: 0.08 });
+      add('rockets', [x, -0.7, -0.41], [0, 0, 0], [0.82, 0.68, 0.03], DARK, {});
+      for (let i = 0; i < 9; i++) {
+        const cx = x - 0.27 + (i % 3) * 0.27, cy = -0.92 + Math.floor(i / 3) * 0.22;
+        if (show <= i / 9) continue;
+        add('rockets', [cx, cy, -0.44], [0, 0, 0], [0.11, 0.11, 0.08], [0.9, 0.9, 0.85], { shape: 'sphere' });
+        add('rockets', [cx, cy, -0.46], [0, 0, 0], [0.05, 0.05, 0.03], [1, 0.2, 0.1], { em: 0.6, shape: 'sphere' });
+      }
+    }
   } else if (rk === 3) {
     const show = st.rocketMax ? Math.ceil((st.rockets / st.rocketMax) * 4) : 4;
     [[-1.5, 0], [1.5, 1], [-2.15, 2], [2.15, 3]].forEach(([x, i]) => {
@@ -206,6 +252,22 @@ export function chopperParts(eq, paint, st, H) {
     add('bombs', [0, -1.38, 0.4], [0, 0, 0], [1.3, 0.1, 1.8], GUNM, { mat: 'metal', shape: 0.03 });
     [[-0.42, -0.1], [0.42, -0.1], [-0.42, 0.95], [0.42, 0.95]].forEach(([x, z], i) => {
       if (i >= show) return;
+      if (eq.bombs === 4) {
+        if (i >= 2) return;
+        // MINI NUKE: a fat yellow bomb with black stripes and fins
+        add('bombs', [x, -1.75, 0.4], [0, 0, 0], [0.62, 0.62, 1.7], [0.95, 0.78, 0.1], { mat: 'paint', shape: { cap: [0.31, 0.31] } });
+        for (const dz of [-0.3, 0.1]) add('bombs', [x, -1.75, 0.4 + dz], [0, 0, 0], [0.64, 0.64, 0.12], [0.06, 0.06, 0.06], { shape: 'cyl' });
+        add('bombs', [x, -1.75, -0.3], [0, 0, 0], [0.3, 0.3, 0.3], [0.9, 0.12, 0.08], { shape: 'sphere', em: 0.4 + 0.4 * Math.sin(st.t * 5) });
+        for (const r of [0.785, 2.356]) add('bombs', [x, -1.75, 1.2], [0, 0, r], [0.9, 0.05, 0.35], [0.06, 0.06, 0.06], {});
+        return;
+      }
+      if (eq.bombs === 3) {
+        // NAPALM: red barrels with hazard bands
+        add('bombs', [x, -1.66, z], [0, 0, 0], [0.48, 0.48, 0.9], [0.7, 0.12, 0.08], { mat: 'paint', shape: 'cyl' });
+        for (const dz of [-0.25, 0.25]) add('bombs', [x, -1.66, z + dz], [0, 0, 0], [0.5, 0.5, 0.06], [0.1, 0.1, 0.1], { shape: 'cyl' });
+        add('bombs', [x, -1.66, z], [0, 0, 0], [0.5, 0.5, 0.18], [1, 0.6, 0.1], { shape: 'cyl', em: 0.3 });
+        return;
+      }
       if (eq.bombs === 1) {
         add('bombs', [x, -1.62, z], [0, 0, 0], [0.4, 0.4, 0.95], [0.3, 0.32, 0.25], { mat: 'paint', shape: 'sphere' });
         add('bombs', [x, -1.62, z], [0, 0, 0], [0.42, 0.42, 0.1], [0.9, 0.3, 0.08], { shape: 'cyl' });
@@ -221,10 +283,17 @@ export function chopperParts(eq, paint, st, H) {
     add('fuel', [x * 1.3, -0.95, 0.4], [0, 0, 0], [0.55, 0.55, 2.6], trim, { mat: pm, shape: { cap: [0.27, 0.27] } });
     add('fuel', [x * 1.3, -0.95, 0.4], [0, 0, 0], [0.58, 0.58, 0.1], [0.85, 0.65, 0.1], { shape: 'cyl' });
   }
-  if (eq.fuel === 2) for (const x of [-1.9, 1.9]) {
+  if (eq.fuel >= 2) for (const x of [-1.9, 1.9]) {
     add('fuel', [x, -0.62, 0.5], [0, 0, 0], [0.12, 0.3, 0.5], GUNM, { mat: 'metal', shape: 0.02 });
     add('fuel', [x, -1.05, 0.4], [0, 0, 0], [0.75, 0.75, 3.4], body, { mat: pm, shape: { cap: [0.37, 0.2] } });
     for (const dz of [-0.6, 0.9]) add('fuel', [x, -1.05, 0.4 + dz], [0, 0, 0], [0.78, 0.78, 0.1], [0.85, 0.65, 0.1], { shape: 'cyl' });
+  }
+
+  if (eq.fuel === 3) {
+    // FUEL RECYCLER: a glowing green canister on the roof with pipes
+    add('fuel', [0, 1.95, 1.75], [0, 0, 0], [0.75, 0.75, 1.3], [0.2, 0.22, 0.2], { mat: 'metal', shape: 'cyl' });
+    add('fuel', [0, 1.95, 1.75], [0, 0, 0], [0.62, 0.62, 1.1], [0.3, 1, 0.35], { em: 0.6 + 0.3 * Math.sin(st.t * 3), shape: 'cyl', alpha: 0.85 });
+    for (const x of [-0.3, 0.3]) add('fuel', [x, 1.75, 2.45], [0.5, 0, 0], [0.08, 0.08, 0.6], STEEL, { mat: 'steel', shape: 'cyl' });
   }
 
   // ---- armour
@@ -251,10 +320,29 @@ export function chopperParts(eq, paint, st, H) {
     for (const x of [-1.25, 1.25]) add('armor', [x, -1.6, 0.25], [0, 0, 0], [0.08, 0.35, 3.4], PLATE, { mat: 'metal', shape: 0.02 });
   }
 
+  if (ar === 4) {
+    // TITANIUM: sleek black plates with gold edges over everything
+    const TI = [0.07, 0.07, 0.08], GOLD = [0.9, 0.7, 0.25];
+    for (const x of [-1, 1]) {
+      add('armor', [x * 1.24, -0.1, 0.2], [0, 0, x * 0.06], [0.1, 1.5, 3.6], TI, { mat: 'metal', shape: 0.04 });
+      add('armor', [x * 1.3, 0.62, 0.2], [0, 0, 0], [0.04, 0.06, 3.6], GOLD, { mat: 'brass', em: 0.15 });
+      add('armor', [x * 1.3, -0.85, 0.2], [0, 0, 0], [0.04, 0.06, 3.6], GOLD, { mat: 'brass', em: 0.15 });
+    }
+    add('armor', [0, -0.5, -3.55], [0.4, 0, 0], [1.45, 0.75, 0.1], TI, { mat: 'metal', shape: 0.04 });
+    add('armor', [0, -0.12, -3.65], [0.4, 0, 0], [1.2, 0.05, 0.12], GOLD, { mat: 'brass' });
+    add('armor', [0, 1.78, 0.6], [0, 0, 0], [1.65, 0.1, 2.9], TI, { mat: 'metal', shape: 0.03 });
+    for (const z of [3.2, 4.8, 6.3]) add('armor', [0, z < 4 ? 0.42 : 0.5, z], [0, 0, 0], [z < 4 ? 0.98 : 0.7, z < 4 ? 0.98 : 0.7, 0.16], GOLD, { mat: 'brass', shape: 0.1 });
+  }
+
   // ---- cabin: side pods for 12 seats, and the survivors you're carrying
-  if (eq.cabin === 2) for (const x of [-1, 1]) {
+  if (eq.cabin >= 2) for (const x of [-1, 1]) {
     add('cabin', [x * 1.55, -0.6, 0.9], [0, 0, 0], [0.75, 0.95, 2.4], body, { mat: pm, shape: 0.3 });
     add('cabin', [x * 1.93, -0.4, 0.9], [0, 0, 0], [0.04, 0.3, 1.6], GLASS, { mat: 'glass' });
+    if (eq.cabin === 3) {
+      add('cabin', [x * 1.62, -0.55, 2.6], [0, 0, 0], [0.9, 1.05, 1.6], body, { mat: pm, shape: 0.3 });
+      add('cabin', [x * 2.08, -0.35, 2.6], [0, 0, 0], [0.04, 0.3, 1.0], GLASS, { mat: 'glass' });
+      add('cabin', [x * 1.62, -0.05, 1.75], [0, 0, 0], [0.92, 0.08, 4.2], trim, { mat: pm, shape: 0.03 });
+    }
   }
   const seats = [[0.7, -0.4, 0.2], [-0.7, -0.4, 0.2], [0.7, -0.4, 1.2], [-0.7, -0.4, 1.2], [0.3, -0.4, 0.7], [-0.3, -0.4, 0.7], [0.7, -0.4, -0.5], [-0.7, -0.4, -0.5], [1.55, -0.5, 0.4], [-1.55, -0.5, 0.4], [1.55, -0.5, 1.4], [-1.55, -0.5, 1.4]];
   // crew sit up front, in helmets the colour of their job
@@ -284,8 +372,62 @@ export function chopperParts(eq, paint, st, H) {
     add('door', [x * 1.25, -0.3, 0.6], [0, 0, 0], [0.08, 0.7, 0.08], GUNM, { mat: 'metal', shape: 'cylY' });
     const [yw, pt] = aim, d = [-Math.sin(yw) * Math.cos(pt), Math.sin(pt), -Math.cos(yw) * Math.cos(pt)];
     add('door', [x * 1.25 + d[0] * 0.5, 0.1 + d[1] * 0.5, 0.6 + d[2] * 0.5], [pt, yw, 0], [0.14, 0.16, 1.1], GUNM, { mat: 'metal', shape: 0.03 });
-    add('door', [x * 1.25 + d[0] * 1.15, 0.1 + d[1] * 1.15, 0.6 + d[2] * 1.15], [pt, yw, 0], [0.06, 0.06, 0.5], STEEL, { mat: 'steel', shape: 'cyl' });
+    if (eq.door === 3) {
+      // door miniguns: six spinning barrels
+      const sp = st.t * 25 * (st.doorFlash && st.doorFlash[sd] > 0 ? 1 : 0.1);
+      const up = [Math.sin(yw) * Math.sin(pt) * -1, Math.cos(pt), Math.cos(yw) * Math.sin(pt) * -1], rt = [Math.cos(yw), 0, -Math.sin(yw)];
+      for (let k = 0; k < 6; k++) {
+        const a = sp + k * 1.047, ox = Math.cos(a) * 0.07, oy = Math.sin(a) * 0.07;
+        add('door', [x * 1.25 + d[0] * 1.2 + rt[0] * ox + up[0] * oy, 0.1 + d[1] * 1.2 + up[1] * oy, 0.6 + d[2] * 1.2 + rt[2] * ox + up[2] * oy], [pt, yw, 0], [0.035, 0.035, 0.75], STEEL, { mat: 'steel', shape: 'cyl' });
+      }
+    } else add('door', [x * 1.25 + d[0] * 1.15, 0.1 + d[1] * 1.15, 0.6 + d[2] * 1.15], [pt, yw, 0], [0.06, 0.06, 0.5], STEEL, { mat: 'steel', shape: 'cyl' });
     if (st.doorFlash && st.doorFlash[sd] > 0) add(null, [x * 1.25 + d[0] * 1.5, 0.1 + d[1] * 1.5, 0.6 + d[2] * 1.5], [0, 0, 0], [0.3, 0.3, 0.3], [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
+  }
+  // ---- shield: emitters on the sides, and the bubble when it's up (it flashes when hit)
+  const sh = eq.shield || 0;
+  if (sh) {
+    for (const [x, y, z] of [[1.18, 0.75, -1.4], [-1.18, 0.75, -1.4], [0, 1.85, -0.6], [0, 0.95, 5.0]]) {
+      add('shield', [x, y, z], [0, 0, 0], [0.26, 0.26, 0.26], GUNM, { mat: 'metal', shape: 'sphere' });
+      add('shield', [x, y + 0.08, z], [0, 0, 0], [0.16, 0.16, 0.16], [0.35, 0.85, 1], { em: 0.7 + 0.3 * Math.sin(st.t * 4 + x), shape: 'sphere' });
+    }
+    if (st.shieldK > 0 && !st.install) {
+      const a = 0.05 + (st.shieldHit || 0) * 0.35;
+      add(null, [0, 0.4, 1.2], [0, st.t * 0.3, 0], [8 + sh * 0.6, 6.2, 15 + sh * 0.8], [0.35, 0.8, 1], { em: 1, shape: 'sphere', alpha: a * st.shieldK });
+    }
+  }
+  // ---- flare dispensers on the tail
+  if (eq.flares) for (const x of [-1, 1]) {
+    add('flares', [x * 0.5, 0.15, 3.6], [0, 0, 0], [0.22, 0.45, 0.8], GUNM, { mat: 'metal', shape: 0.04 });
+    for (let k = 0; k < (eq.flares === 2 ? 4 : 2); k++) add('flares', [x * 0.62, 0.05 + (k % 2) * 0.2, 3.35 + Math.floor(k / 2) * 0.4], [0, 0, 0], [0.04, 0.12, 0.12], [1, 0.75, 0.2], { em: (st.flares ?? 1) > k / 4 ? 0.8 : 0.05, shape: 'cyl' });
+  }
+  // ---- tail gun: a turret under the tail boom
+  if (eq.tail) {
+    const [yw, pt] = st.tailAim || [Math.PI, -0.3], d = [-Math.sin(yw) * Math.cos(pt), Math.sin(pt), -Math.cos(yw) * Math.cos(pt)];
+    add('tail', [0, -0.1, 4.6], [0, 0, 0], [0.35, 0.5, 0.35], GUNM, { mat: 'metal', shape: 'cylY' });
+    add('tail', [0, -0.4, 4.6], [pt, yw, 0], [0.55, 0.4, 0.6], trim, { mat: 'metal', shape: 'sphere' });
+    for (const dx of eq.tail === 2 ? [-0.13, 0.13] : [0]) {
+      const rt = [Math.cos(yw), 0, -Math.sin(yw)];
+      add('tail', [rt[0] * dx + d[0] * 0.75, -0.4 + d[1] * 0.75, 4.6 + rt[2] * dx + d[2] * 0.75], [pt, yw, 0], [0.08, 0.08, 1.0], STEEL, { mat: 'steel', shape: 'cyl' });
+      if (st.tailFlash > 0) add(null, [rt[0] * dx + d[0] * 1.3, -0.4 + d[1] * 1.3, 4.6 + rt[2] * dx + d[2] * 1.3], [0, 0, 0], [0.28, 0.28, 0.28], [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
+    }
+  }
+  // ---- winch arm over the right door (a magnet on the end at tier 2)
+  if (eq.winch) {
+    add('winch', [1.35, 0.85, 0.0], [0, 0, 0], [0.18, 0.18, 0.5], GUNM, { mat: 'metal', shape: 0.03 });
+    add('winch', [1.75, 0.95, 0.0], [0, 0, -0.25], [0.9, 0.12, 0.12], [0.9, 0.7, 0.1], { mat: 'paint', shape: 0.02 });
+    add('winch', [2.15, 0.9, 0.0], [0, 0, 0], [0.14, 0.2, 0.14], STEEL, { mat: 'steel', shape: 'cylY' });
+    const L = st.cable || 0.8;
+    add('winch', [2.15, 0.85 - L / 2, 0.0], [0, 0, 0], [0.03, L, 0.03], [0.1, 0.1, 0.1], {});
+    if (eq.winch === 2) {
+      add('winch', [2.15, 0.85 - L - 0.12, 0.0], [0, 0, 0], [0.8, 0.22, 0.8], [0.6, 0.12, 0.1], { mat: 'paint', shape: 'cylY' });
+      add('winch', [2.15, 0.85 - L - 0.24, 0.0], [0, 0, 0], [0.7, 0.04, 0.7], [0.3, 0.6, 1], { em: st.magnetOn ? 1 : 0.2, shape: 'cylY' });
+    } else add('winch', [2.15, 0.85 - L - 0.12, 0.0], [0.6, 0, 0], [0.08, 0.25, 0.2], STEEL, { mat: 'steel' });
+  }
+  // ---- radar: a spinning dish on a mast
+  if (eq.radar) {
+    add('radar', [0, 1.95, 2.0], [0, 0, 0], [0.12, 0.6, 0.12], GUNM, { mat: 'metal', shape: 'cylY' });
+    add('radar', [0, 2.3, 2.0], [0.3, st.t * 2.5, 0], [1.0, 0.45, 0.12], [0.85, 0.86, 0.84], { mat: 'paint', shape: 0.08 });
+    if (eq.radar === 2) add('radar', [0, 2.62, 2.0], [0, 0, 0], [0.16, 0.16, 0.16], [1, 0.25, 0.15], { em: (st.t * 1.5) % 1 < 0.3 ? 1 : 0.2, shape: 'sphere' });
   }
   return out;
 }
@@ -420,7 +562,7 @@ export class Chopper {
     this.boost += ((ctl.boost && S.boost && this.boostT > 0 && !this.dead ? 1 : 0) - this.boost) * damp(6, dt);
     if (this.boost > 0.05) {
       const f = this.fwd, fl = Math.hypot(f[0], f[2]) || 1;
-      a[0] += (f[0] / fl) * 22 * this.boost; a[2] += (f[2] / fl) * 22 * this.boost;
+      a[0] += (f[0] / fl) * 22 * this.boost * (S.boostMul || 1); a[2] += (f[2] / fl) * 22 * this.boost * (S.boostMul || 1);
       this.boostT = Math.max(0, this.boostT - dt * 0.28 * this.boost);
     } else this.boostT = Math.min(1, this.boostT + dt * 0.12);
     // drag: a little linear, mostly quadratic (sets the top speed), and the rotor damps going up and down

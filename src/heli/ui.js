@@ -75,7 +75,7 @@ export const CSS = `
 .da-warn { position: absolute; top: 60%; left: 0; right: 0; text-align: center; font: 900 20px var(--font); letter-spacing: .16em; color: #ff5a3a; text-shadow: 0 2px 0 #000; animation: dablink .5s steps(2) infinite; }
 .da-feed { position: absolute; right: 26px; top: 130px; text-align: right; font: 900 14px/1.5 var(--font); letter-spacing: .08em; text-shadow: 0 2px 0 #000; }
 .da-feed div { animation: dafade 2.4s forwards; } .da-feed .g { color: #7dff9a; } .da-feed .y { color: #ffcf3a; } .da-feed .r { color: #ff5a3a; }
-.da-help { position: absolute; left: 50%; transform: translateX(-50%); top: 18px; max-width: min(440px, 46vw); font-size: 12px !important; text-align: center; border-radius: 10px; backdrop-filter: blur(6px); background: rgba(0,0,0,.5); padding: 10px 12px; font: 700 13px/1.6 var(--font); letter-spacing: .05em; transition: opacity 1s; }
+.da-help { position: absolute; left: 50%; transform: translateX(-50%); top: 18px; max-width: min(400px, 40vw); font-size: 11px !important; text-align: center; border-radius: 10px; backdrop-filter: blur(6px); background: rgba(0,0,0,.5); padding: 10px 12px; font: 700 13px/1.6 var(--font); letter-spacing: .05em; transition: opacity 1s; }
 .da-help kbd { display: inline-block; min-width: 18px; text-align: center; background: #fff; color: #111; font: 900 11px var(--font); padding: 0 4px; margin-right: 4px; }
 .da-dmg { position: absolute; inset: 0; box-shadow: inset 0 0 160px rgba(255,30,10,.9); opacity: 0; }
 .da-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(10,12,14,.9); padding: 26px 34px; min-width: 380px; text-align: center; pointer-events: auto; border-top: 5px solid #ffcf3a; }
@@ -152,4 +152,8 @@ export const CSS = `
 .da-deploy, .da-teambtn, .da-back { border-radius: 10px; }
 .da-dmg { box-shadow: inset 0 0 200px rgba(255,30,10,.95); }
 .da-hud::after { content: ''; position: absolute; inset: 0; pointer-events: none;  z-index: -1; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.35)); }
+.da-white { position: absolute; inset: 0; background: #fff8e8; opacity: 0; pointer-events: none; }
+.da-slots { max-height: calc(100vh - 190px); overflow-y: auto; scrollbar-width: thin; padding-right: 4px; }
+.da-tier { width: 172px; }
+.da-tiers { max-height: 46vh; overflow-y: auto; }
 `;

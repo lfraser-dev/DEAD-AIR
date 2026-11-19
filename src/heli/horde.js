@@ -111,6 +111,8 @@ export class Horde {
       z.hitT = Math.max(0, z.hitT - dt);
       z.cd -= dt;
       const T = TYPES[z.type];
+      if (z.st === 'mag') continue;                       // hanging off the magnet: the game moves it
+      if (z.stun > 0 && (z.st === 'walk' || z.st === 'roof')) { z.stun -= dt; z.ph += dt * 3; continue; }
       if (z.st === 'walk') this.walk(z, i, dt, g, T);
       else if (z.st === 'climb') {
         z.y += T.climb * dt * (0.8 + 0.4 * Math.sin(z.ph));
@@ -391,7 +393,7 @@ export class Horde {
     let lean = run ? -0.45 : big ? -0.3 : -0.18, armA = -0.1 + Math.sin(ph * 0.5) * 0.12, legA = Math.sin(ph) * (run ? 0.9 : 0.55);
     if (st === 'climb') { lean = 0.05; armA = 1.35 + Math.sin(ph) * 0.3; legA = Math.sin(ph) * 0.4; }
     else if (st === 'grab') { lean = 0; armA = 1.5; legA = Math.sin(ph) * 0.5; }
-    else if (st === 'fall') { lean = Math.sin(ph) * 0.4; armA = 1 + Math.sin(ph * 1.3) * 1.2; legA = Math.sin(ph) * 1; }
+    else if (st === 'fall' || st === 'mag') { lean = Math.sin(ph) * 0.4; armA = 1 + Math.sin(ph * 1.3) * 1.2; legA = Math.sin(ph) * 1; }
     else if (z.type === 'spitter' && z.cd > 2.6) { lean = 0.35; armA = -0.6; }
     else if ((z.type === 'brute' || z.type === 'titan') && z.cd > (z.type === 'titan' ? 3.6 : 3.2)) { armA = 2.4; lean = 0.2; }
     for (const sd of [-1, 1]) {
