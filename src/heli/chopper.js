@@ -197,15 +197,16 @@ export function chopperParts(eq, paint, st, H) {
       for (const z of [-3.2, -3.7]) add('gun', [x, -1.05, z], [0, 0, 0], [0.66, 0.66, 0.06], [1, 0.15, 0.1], { em: 0.9, shape: 'cyl' });
       add('gun', [x, -1.05, -4.42], [0, 0, 0], [0.32, 0.32, 0.05], [1, 0.2, 0.15], { em: 1, shape: 'cyl' });
     } else {
-      const pulse = 0.55 + 0.45 * Math.sin(st.t * 6);
-      add('gun', [x, -1.05, -3.4], [0, 0, 0], [0.46, 0.46, 0.8], GUNM, { mat: 'metal', shape: 0.08 });
-      add('gun', [x, -1.05, -4.15], [0, 0, 0], [0.26, 0.26, 1.5], [0.08, 0.09, 0.1], { mat: 'metal', shape: 'cyl' });
-      for (const z of [-3.75, -4.15, -4.55]) add('gun', [x, -1.05, z], [0, 0, 0], [0.4, 0.4, 0.08], [0.3, 0.9, 1], { em: pulse, shape: 'cyl' });
-      add('gun', [x, -1.05, -4.95], [0, 0, 0], [0.3, 0.3, 0.3], [0.5, 0.95, 1], { em: 1, shape: 'sphere', alpha: 0.8 });
+      // AUTOCANNON: a fat single barrel with a muzzle brake and an ammo drum
+      add('gun', [x, -1.05, -3.35], [0, 0, 0], [0.5, 0.5, 0.9], GUNM, { mat: 'metal', shape: 0.08 });
+      add('gun', [x + 0.45, -1.0, -3.2], [0, 0, 0], [0.42, 0.55, 0.55], trim, { mat: 'metal', shape: 'cyl' });
+      add('gun', [x, -1.05, -4.3], [0, 0, 0], [0.2, 0.2, 1.8], [0.1, 0.1, 0.11], { mat: 'metal', shape: 'cyl' });
+      add('gun', [x, -1.05, -5.2], [0, 0, 0], [0.32, 0.32, 0.35], GUNM, { mat: 'metal', shape: 0.04 });
+      for (const sd of [-1, 1]) add('gun', [x + sd * 0.17, -1.05, -5.2], [0, 0, 0], [0.04, 0.2, 0.22], [0.05, 0.05, 0.05], {});
     }
   };
   if (g === 2) { add('gun', [0, -1.0, -3.2], [0, 0, 0], [1.25, 0.28, 0.55], GUNM, { mat: 'metal', shape: 0.06 }); barrelsAt(-0.42); barrelsAt(0.42); } else barrelsAt(0);
-  if (st.flash > 0) for (const x of g === 2 ? [-0.42, 0.42] : [0]) add(null, [x, -1.05, -5.1], [0, 0, st.t * 40], [0.45, 0.45, 0.6], g === 3 || g === 4 ? [0.5, 0.95, 1] : g === 5 ? [1, 0.25, 0.15] : [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
+  if (st.flash > 0) for (const x of g === 2 ? [-0.42, 0.42] : [0]) add(null, [x, -1.05, -5.1], [0, 0, st.t * 40], [0.45, 0.45, 0.6], g === 3 ? [1, 0.7, 0.3] : [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
 
   // ---- rockets
   const rk = eq.rockets;
@@ -419,9 +420,29 @@ export function chopperParts(eq, paint, st, H) {
     const L = st.cable || 0.8;
     add('winch', [2.15, 0.85 - L / 2, 0.0], [0, 0, 0], [0.03, L, 0.03], [0.1, 0.1, 0.1], {});
     if (eq.winch === 2) {
-      add('winch', [2.15, 0.85 - L - 0.12, 0.0], [0, 0, 0], [0.8, 0.22, 0.8], [0.6, 0.12, 0.1], { mat: 'paint', shape: 'cylY' });
-      add('winch', [2.15, 0.85 - L - 0.24, 0.0], [0, 0, 0], [0.7, 0.04, 0.7], [0.3, 0.6, 1], { em: st.magnetOn ? 1 : 0.2, shape: 'cylY' });
+      // cargo hook: a heavy yellow block and hook
+      add('winch', [2.15, 0.85 - L - 0.2, 0.0], [0, 0, 0], [0.4, 0.4, 0.3], [0.95, 0.75, 0.1], { mat: 'paint', shape: 0.05 });
+      add('winch', [2.15, 0.85 - L - 0.55, 0.0], [0, 0, 0.6], [0.08, 0.4, 0.08], STEEL, { mat: 'steel' });
+      add('winch', [2.22, 0.85 - L - 0.72, 0.0], [0, 0, 0], [0.22, 0.08, 0.08], STEEL, { mat: 'steel' });
     } else add('winch', [2.15, 0.85 - L - 0.12, 0.0], [0.6, 0, 0], [0.08, 0.25, 0.2], STEEL, { mat: 'steel' });
+  }
+  // ---- thermal camera: a turret ball under the nose that looks where you look
+  if (eq.flir) {
+    add('flir', [0, -1.2, -2.3], [0, 0, 0], [0.12, 0.3, 0.12], GUNM, { mat: 'metal', shape: 'cylY' });
+    add('flir', [0, -1.45, -2.3], [0, st.t * 0.6, 0], [0.55, 0.55, 0.55], [0.85, 0.85, 0.82], { mat: 'paint', shape: 'sphere' });
+    add('flir', [0, -1.45, -2.57], [0, 0, 0], [0.24, 0.24, 0.04], [0.06, 0.06, 0.1], { mat: 'glass', shape: 'cyl' });
+    if (eq.flir === 2) add('flir', [0.16, -1.36, -2.56], [0, 0, 0], [0.08, 0.08, 0.03], [1, 0.25, 0.1], { em: 0.8, shape: 'cyl' });
+  }
+  // ---- loudspeakers on the stub wing roots
+  if (eq.speaker) for (const x of [-1.3, 1.3]) {
+    add('speaker', [x, 0.9, -0.6], [0, 0, 0], [0.5, 0.4, 0.3], GUNM, { mat: 'metal', shape: 0.04 });
+    add('speaker', [x, 0.9, -0.95], [0, 0, 0], [0.62, 0.52, 0.5], [0.85, 0.85, 0.82], { mat: 'paint', shape: { taper: [0.55, 0.55], r: 0.03 } });
+    if (st.siren) add(null, [x, 0.9, -1.3], [0, 0, 0], [0.5, 0.4, 0.1], [1, 0.2, 0.15], { em: (st.t * 4) % 1 < 0.5 ? 1 : 0.2 });
+  }
+  // ---- anti-climb skids: spikes along the skids
+  if (eq.skids) for (const x of [-1.25, 1.25]) for (let k = 0; k < 7; k++) {
+    add('skids', [x, -1.98, -1.6 + k * 0.65], [0, 0, 0], [0.06, 0.32, 0.06], STEEL, { mat: 'steel', shape: { taper: [0.1, 0.1], r: 0.01 } });
+    add('skids', [x + (x > 0 ? 0.12 : -0.12), -1.85, -1.6 + k * 0.65], [0, 0, x > 0 ? -1.4 : 1.4], [0.06, 0.3, 0.06], STEEL, { mat: 'steel' });
   }
   // ---- radar: a spinning dish on a mast
   if (eq.radar) {

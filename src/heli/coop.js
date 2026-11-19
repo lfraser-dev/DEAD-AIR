@@ -187,7 +187,7 @@ class LocalTransport {
 export const makeTransport = () => (new URLSearchParams(location.search).get('net') === 'local' ? new LocalTransport() : new RelayTransport());
 
 // zombie types and states as small numbers for the wire
-export const ZT = ['walker', 'runner', 'spitter', 'brute', 'titan'];
-export const ZS = ['walk', 'climb', 'roof', 'grab', 'fall'];
+export const ZT = ['walker', 'runner', 'crawler', 'screamer'];
+export const ZS = ['walk', 'pile', 'roof', 'grab', 'fall'];
 export const q1 = (v) => Math.round(v * 10) / 10;
 export const q2 = (v) => Math.round(v * 100) / 100;

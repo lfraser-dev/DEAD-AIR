@@ -1,54 +1,54 @@
-// DEAD AIR: the zombies. Hundreds at a time, so they're simple: each is a few boxes drawn in one instanced batch.
-//
-// They find their way through the streets with flow fields (a map of "how far to the goal" for every 3 m square),
-// one per goal: each rooftop with survivors on it, and the outpost. At a survivor building they climb the walls
-// in a pile, and on the roof they go for the survivors. If you fly low they jump up and hang off the skids (shake
-// them off by rolling and turning hard).
-//   WALKER   slow, the bulk of the horde
-//   RUNNER   fast, comes in rushes
-//   SPITTER  bloated and glowing: spits acid at you from the ground
-//   BRUTE    huge, throws lumps of concrete when you fly low
-//   TITAN    the boss: as tall as a building, throws cars and heads for the outpost
+// DEAD AIR: the infected. Like DayZ / World War Z: no powers, just lots of them.
+//   WALKER    the bulk: slow, shambling, never stops
+//   RUNNER    sprints straight at you
+//   CRAWLER   legs gone, drags itself along (hard to see in the long grass)
+//   SCREAMER  shrieks when it spots you: everything nearby comes running
+// They PILE UP. To get at people on a roof (or you, if you hover low) they climb over each other: a ramp of bodies up the
+// wall, or a heap under the helicopter. Shoot the pile and it collapses. Hundreds of them, each a few shapes drawn in a
+// handful of instanced batches. They find their way with flow fields (a "how far to the goal" map per target) over the
+// ground, round buildings, water and cliffs.
 import { compose, mat4, clamp } from '../math.js';
 import { INST_FLOATS } from '../renderer.js';
 import { WORLD } from './map.js';
+import { WATER } from './terrain.js';
 
 export const TYPES = {
-  walker: { hp: 45, spd: [2.0, 3.0], s: 1, climb: 1.3, scrap: 2 },
-  runner: { hp: 32, spd: [6.2, 7.4], s: 0.95, climb: 2.6, scrap: 3 },
-  spitter: { hp: 80, spd: [1.7, 2.2], s: 1.15, climb: 0, scrap: 6 },
-  brute: { hp: 480, spd: [2.4, 2.8], s: 2.3, climb: 0, scrap: 15 },
-  titan: { hp: 12000, spd: [4.6, 4.6], s: 14, climb: 0, scrap: 600 },
+  walker: { hp: 45, spd: [1.5, 2.5], s: 1, scrap: 2 },
+  runner: { hp: 35, spd: [6.0, 7.4], s: 0.97, scrap: 3 },
+  crawler: { hp: 30, spd: [0.8, 1.1], s: 1, scrap: 2 },
+  screamer: { hp: 60, spd: [2.4, 2.9], s: 1.02, scrap: 8 },
 };
-const SKINS = [[0.42, 0.5, 0.36], [0.5, 0.52, 0.4], [0.36, 0.42, 0.33], [0.55, 0.5, 0.42]];
-const SHIRT = [[0.3, 0.12, 0.1], [0.15, 0.2, 0.32], [0.38, 0.36, 0.3], [0.2, 0.25, 0.18], [0.45, 0.42, 0.38], [0.12, 0.12, 0.13], [0.42, 0.28, 0.12]];
-const PANTS = [[0.15, 0.17, 0.24], [0.22, 0.2, 0.16], [0.12, 0.12, 0.12], [0.3, 0.28, 0.22]];
+const SKINS = [[0.48, 0.5, 0.42], [0.55, 0.52, 0.45], [0.42, 0.44, 0.38], [0.6, 0.55, 0.48], [0.38, 0.33, 0.28]];
+const SHIRT = [[0.3, 0.12, 0.1], [0.15, 0.2, 0.32], [0.38, 0.36, 0.3], [0.2, 0.25, 0.18], [0.45, 0.42, 0.38], [0.12, 0.12, 0.13], [0.42, 0.28, 0.12], [0.55, 0.55, 0.6], [0.6, 0.25, 0.35]];
+const PANTS = [[0.15, 0.17, 0.24], [0.22, 0.2, 0.16], [0.12, 0.12, 0.12], [0.3, 0.28, 0.22], [0.35, 0.33, 0.3]];
 
-// the flow-field grid
 const CELL = 4, GX0 = -WORLD, GZ0 = -WORLD, NX = Math.ceil((2 * WORLD) / CELL), NZ = NX;
 const cellOf = (x, z) => { const i = Math.floor((x - GX0) / CELL), k = Math.floor((z - GZ0) / CELL); return i < 0 || k < 0 || i >= NX || k >= NZ ? -1 : k * NX + i; };
 const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const hash = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
 export class Horde {
   constructor(world, effects) {
-    this.world = world; this.fx = effects;
+    this.world = world; this.T = world.terrain; this.fx = effects;
     this.list = []; this.shots = []; this.events = [];
-    this.data = new Float32Array(INST_FLOATS * 6000);
     this.m = mat4();
     this.fields = new Map();
+    this.piles = new Map();
     this.head = new Int32Array(NX * NZ); this.next = new Int32Array(4000);
-    this.blockedAt = (x, z) => { const c = cellOf(x, z); return c < 0 || !!this.block[c]; };
-    // which squares are blocked at waist height (buildings, walls)
+    // squares zombies can't stand in: buildings, water, cliffs
     this.block = new Uint8Array(NX * NZ);
+    const T = this.T;
     for (let k = 0; k < NZ; k++) for (let i = 0; i < NX; i++) {
-      const x = GX0 + (i + 0.5) * CELL, z = GZ0 + (k + 0.5) * CELL;
-      if (world.pointInside([x, 2, z]) || world.pointInside([x + 1.4, 2, z + 1.4]) || world.pointInside([x - 1.4, 2, z - 1.4])) this.block[k * NX + i] = 1;
+      const x = GX0 + (i + 0.5) * CELL, z = GZ0 + (k + 0.5) * CELL, gy = T.heightAt(x, z);
+      if (gy < WATER + 0.4 || T.slopeAt(x, z) > 0.55 || World_pointInside(world, [x, gy + 2, z]) || World_pointInside(world, [x + 1.4, gy + 2, z + 1.4]) || World_pointInside(world, [x - 1.4, gy + 2, z - 1.4])) this.block[k * NX + i] = 1;
     }
+    this.blockedAt = (x, z) => { const c = cellOf(x, z); return c < 0 || !!this.block[c]; };
   }
 
-  clear() { this.list.length = 0; this.shots.length = 0; this.events.length = 0; }
+  clear() { this.list.length = 0; this.events.length = 0; this.piles.clear(); }
+  groundAt(x, z) { return this.T.heightAt(x, z); }
 
-  // distance-to-goal for every square, from the squares that count as "there"
+  // distance-to-goal for every square
   field(key, isGoal) {
     let f = this.fields.get(key);
     if (f) return f;
@@ -57,6 +57,7 @@ export class Horde {
     for (let c = 0; c < NX * NZ; c++) if (!this.block[c] && isGoal(GX0 + ((c % NX) + 0.5) * CELL, GZ0 + (Math.floor(c / NX) + 0.5) * CELL)) { f[c] = 0; q[t++] = c; }
     while (h < t) {
       const c = q[h++], i = c % NX, k = (c - i) / NX, d = f[c] + 1;
+      if (d > 400) continue;                         // far enough: beyond this they just head straight for it
       for (let n = 0; n < 4; n++) {
         const ii = i + N8[n][0], kk = k + N8[n][1];
         if (ii < 0 || kk < 0 || ii >= NX || kk >= NZ) continue;
@@ -68,34 +69,62 @@ export class Horde {
     this.fields.set(key, f);
     return f;
   }
-  roofField(r) {
-    const b = r.box;
-    return this.field(`roof${b.id}`, (x, z) => x > b.min[0] - 5 && x < b.max[0] + 5 && z > b.min[2] - 5 && z < b.max[2] + 5);
-  }
-  fobField(f) { return this.field(`fob${f.id}`, (x, z) => Math.abs(x - f.padAt[0]) < 14 && Math.abs(z - f.padAt[2]) < 14); }
+  roofField(r) { const b = r.box; return this.field(`roof${b.id}`, (x, z) => x > b.min[0] - 5 && x < b.max[0] + 5 && z > b.min[2] - 5 && z < b.max[2] + 5); }
+  pointField(key, px, pz, r = 6) { return this.field(key, (x, z) => Math.hypot(x - px, z - pz) < r); }
   dropField(key) { this.fields.delete(key); }
 
   spawn(type, x, z, o = {}) {
-    const T = TYPES[type], r = Math.random;
+    const T = TYPES[type] || TYPES.walker, r = Math.random;
     const zb = {
-      type, x, y: 0, z, yaw: r() * 6.28, hp: T.hp * (o.hpMul || 1), max: T.hp * (o.hpMul || 1), s: T.s * (type === 'walker' ? 0.9 + r() * 0.2 : 1),
+      type, x, y: this.groundAt(x, z), z, yaw: r() * 6.28, hp: T.hp, max: T.hp, s: T.s * (0.92 + r() * 0.16),
       spd: T.spd[0] + r() * (T.spd[1] - T.spd[0]), ph: r() * 6.28, st: 'walk', tgt: o.tgt || null, cd: 1 + r() * 3,
       skin: SKINS[Math.floor(r() * SKINS.length)], shirt: SHIRT[Math.floor(r() * SHIRT.length)], pants: PANTS[Math.floor(r() * PANTS.length)],
-      vel: [0, 0, 0], hitT: 0, grip: 0, slot: -1, think: r(), dx: 0, dz: 0, side: (r() - 0.5) * 2, alive: true,
+      vel: [0, 0, 0], hitT: 0, grip: 0, slot: -1, think: r(), dx: 0, dz: 0, side: (r() - 0.5) * 2, alive: true, seen: 0, id: Math.floor(r() * 1e9),
+      torn: r() < 0.5, hunch: r() * 0.25,
     };
-    if (type === 'titan') { zb.skin = [0.3, 0.33, 0.28]; zb.shirt = [0.2, 0.15, 0.12]; zb.pants = [0.1, 0.1, 0.1]; zb.tgt = 'base'; }
-    if (type === 'brute') { zb.skin = [0.33, 0.38, 0.3]; zb.shirt = [0.18, 0.14, 0.12]; }
-    if (type === 'spitter') zb.skin = [0.45, 0.6, 0.25];
+    if (type === 'screamer') { zb.skin = [0.62, 0.58, 0.55]; zb.shirt = [0.75, 0.73, 0.7]; }
     this.list.push(zb);
     return zb;
   }
-
   count(type) { let n = 0; for (const z of this.list) if (z.alive && (!type || z.type === type)) n++; return n; }
 
-  // g: { heli (Chopper), heliAlt, roofs (active, with .count), phase2, time, grabbers, onBase(x,z) }
+  // ---- piles: a ramp of bodies against a wall, or a heap under the helicopter
+  // key -> { x, y, z (base), nx, nz (which way the ramp leans out; 0,0 = a heap), reach (how high it has to get), members, h }
+  pile(key, x, y, z, nx, nz, reach) {
+    let p = this.piles.get(key);
+    if (!p) { p = { key, x, y, z, nx, nz, reach, members: [], h: 0, t: 0 }; this.piles.set(key, p); }
+    p.reach = reach;
+    return p;
+  }
+  joinPile(z, p) { if (z.pile === p) return; z.st = 'pile'; z.pile = p; z.pileT = p.t++; p.members.push(z); }
+  leavePile(z) { const p = z.pile; if (!p) return; p.members = p.members.filter((m) => m !== z); z.pile = null; }
+  // where a member stands: later arrivals climb higher; each body adds ~0.38 m
+  pileTick(dt, H) {
+    for (const [key, p] of this.piles) {
+      p.members = p.members.filter((m) => m.alive && m.pile === p);
+      if (!p.members.length && key === 'heli') { p.h = 0; p.top = p.y; continue; }
+      if (!p.members.length) { this.piles.delete(key); if (p.roof) this.dropField(`foot${p.roof.box.id}`); continue; }
+      p.members.sort((a, b) => a.pileT - b.pileT);
+      const n = p.members.length, want = Math.min(p.reach + 0.6, 0.52 * n * (p.nx || p.nz ? 1 : 0.75));
+      p.h += (want - p.h) * Math.min(1, dt * 1.5);
+      p.members.forEach((m, i) => {
+        const y = p.h * (i + 1) / n, down = p.h - y;
+        const lat = (hash(m.id) - 0.5) * Math.min(4, 1 + down * 0.5);
+        let x, zz;
+        if (p.nx || p.nz) { x = p.x + p.nx * (down * 0.9 + 0.4) - p.nz * lat; zz = p.z + p.nz * (down * 0.9 + 0.4) + p.nx * lat; m.yaw = Math.atan2(p.nx, p.nz); }
+        else { const a = hash(m.id + 7) * 6.28, r = down * 0.75 + 0.3; x = p.x + Math.cos(a) * r; zz = p.z + Math.sin(a) * r; m.yaw = Math.atan2(Math.cos(a), Math.sin(a)); }
+        m.x += (x - m.x) * Math.min(1, dt * 4); m.z += (zz - m.z) * Math.min(1, dt * 4);
+        m.y += (p.y + y - m.y * 1) * Math.min(1, dt * 3);
+        m.ph += dt * 6;
+      });
+      p.top = p.y + p.h;
+    }
+    void H;
+  }
+
+  // g: { heli, heliAlt, roofs (rescue / team roofs), lure: [x, z] or null }
   update(dt, g) {
     const H = g.heli, hp = H.pos;
-    // spatial hash for keeping them apart
     this.head.fill(-1);
     const L = this.list;
     for (let i = 0; i < L.length && i < 4000; i++) {
@@ -105,44 +134,54 @@ export class Horde {
     }
     let grabbers = 0;
     for (const z of L) if (z.alive && z.st === 'grab') grabbers++;
+    // the heap under the helicopter, if it's hovering low and slow over open ground
+    const gH = this.groundAt(hp[0], hp[2]);
+    const lowSlow = !H.dead && g.heliAlt > 1.5 && g.heliAlt < 14 && Math.hypot(H.vel[0], H.vel[2]) < 6;
+    const hk = 'heli';
+    if (lowSlow) { const p = this.pile(hk, hp[0], gH, hp[2], 0, 0, hp[1] - 2 - gH - 1.6); p.x += (hp[0] - p.x) * Math.min(1, dt * 0.6); p.z += (hp[2] - p.z) * Math.min(1, dt * 0.6); }
+    else if (this.piles.has(hk)) { for (const m of this.piles.get(hk).members) { m.st = 'fall'; m.pile = null; m.vel = [(Math.random() - 0.5) * 3, 1, (Math.random() - 0.5) * 3]; } this.piles.delete(hk); }
+    this.pileTick(dt, H);
     for (let i = 0; i < L.length; i++) {
       const z = L[i];
       if (!z.alive) continue;
       z.hitT = Math.max(0, z.hitT - dt);
       z.cd -= dt;
-      const T = TYPES[z.type];
-      if (z.st === 'mag') continue;                       // hanging off the magnet: the game moves it
-      if (z.stun > 0 && (z.st === 'walk' || z.st === 'roof')) { z.stun -= dt; z.ph += dt * 3; continue; }
-      if (z.st === 'walk') this.walk(z, i, dt, g, T);
-      else if (z.st === 'climb') {
-        z.y += T.climb * dt * (0.8 + 0.4 * Math.sin(z.ph));
-        z.ph += dt * 9;
-        const r = z.roof;
-        if (!r || !r.active) { z.st = 'fall'; z.vel = [z.nx * 2, 0, z.nz * 2]; continue; }
-        if (z.y >= r.top + 0.7) {
-          z.st = 'roof'; z.y = r.top;
-          z.x = clamp(z.x, r.box.min[0] + 1.2, r.box.max[0] - 1.2); z.z = clamp(z.z, r.box.min[2] + 1.2, r.box.max[2] - 1.2);
+      if (z.st === 'mag') continue;
+      if (z.stun > 0 && z.st === 'walk') { z.stun -= dt; z.ph += dt * 3; continue; }
+      if (z.st === 'walk') this.walk(z, i, dt, g);
+      else if (z.st === 'pile') {
+        const p = z.pile;
+        if (!p || !this.piles.has(p.key)) { z.st = 'fall'; z.pile = null; z.vel = [0, 0, 0]; continue; }
+        // the top of the pile gets over
+        if (p.members[p.members.length - 1] === z && p.h >= p.reach - 0.3) {
+          if (p.roof && p.roof.active) {
+            this.leavePile(z); z.st = 'roof'; z.roof = p.roof; z.y = p.roof.top;
+            z.x = clamp(z.x - p.nx * 2, p.roof.box.min[0] + 1, p.roof.box.max[0] - 1); z.z = clamp(z.z - p.nz * 2, p.roof.box.min[2] + 1, p.roof.box.max[2] - 1);
+          } else if (p.key === hk && this.tryGrab(z, H, grabbers, true)) { grabbers++; }
         }
       } else if (z.st === 'roof') {
         const r = z.roof;
         let gx = r ? r.x : z.x, gz = r ? r.z : z.z;
         const heliHere = H.landed && r && H.landed === r.box;
-        if (heliHere || !r || !r.active || r.count <= 0) { gx = hp[0]; gz = hp[2]; }
+        if (heliHere || !r || !r.active || (r.count <= 0 && !r.team)) { gx = hp[0]; gz = hp[2]; }
         const dx = gx - z.x, dz = gz - z.z, d = Math.hypot(dx, dz);
         if (d > 1.2) {
           z.x += (dx / d) * z.spd * 0.8 * dt; z.z += (dz / d) * z.spd * 0.8 * dt; z.yaw = Math.atan2(-dx, -dz); z.ph += dt * z.spd * 2.4;
           if (r) { z.x = clamp(z.x, r.box.min[0] + 0.8, r.box.max[0] - 0.8); z.z = clamp(z.z, r.box.min[2] + 0.8, r.box.max[2] - 0.8); }
-        } else if (r && r.active && r.count > 0 && !heliHere && z.cd <= 0) {
-          z.cd = 3; r.count--; this.events.push({ type: 'eaten', roof: r });
+        } else if (r && r.active && z.cd <= 0) {
+          z.cd = 2.5;
+          if (r.team) this.events.push({ type: 'hitTeam', roof: r, z });
+          else if (r.count > 0) { r.count--; this.events.push({ type: 'eaten', roof: r }); }
         }
-        this.tryGrab(z, H, grabbers, g) && grabbers++;
+        if (this.tryGrab(z, H, grabbers, false)) grabbers++;
       } else if (z.st === 'grab') {
         const sk = [[-1.25, -1.95, -1.2], [1.25, -1.95, -1.2], [-1.25, -1.95, 1.6], [1.25, -1.95, 1.6], [-1.25, -1.95, 0.2], [1.25, -1.95, 0.2]][z.slot % 6];
         const p = H.toWorld(sk);
         z.x = p[0]; z.y = p[1] - 1.75 * z.s; z.z = p[2]; z.yaw = H.heading + (z.slot % 2 ? -1.57 : 1.57);
         z.ph += dt * 7;
         const shake = Math.hypot(H.w[0], H.w[1], H.w[2]) + Math.max(0, H.vel[1] - 6) * 0.15;
-        if (shake > 1.0) z.grip -= dt * (shake - 0.7) * 1.4;
+        if (shake > 1.0) z.grip -= dt * (shake - 0.7) * 1.4 * (g.skidGuard ? 2 : 1);
+        if (g.skidGuard) z.grip -= dt * 0.25;
         if (z.cd <= 0) { z.cd = 0.5; this.events.push({ type: 'claw', z, dmg: 2.5 }); }
         if (z.grip <= 0 || H.dead) { z.st = 'fall'; z.vel = [H.vel[0] + (Math.random() - 0.5) * 6, H.vel[1] + 2, H.vel[2] + (Math.random() - 0.5) * 6]; z.slot = -1; this.events.push({ type: 'shook' }); }
       } else if (z.st === 'fall') {
@@ -155,180 +194,149 @@ export class Horde {
             z.y = hit.point[1];
             if (z.vel[1] < -15) { this.kill(z, [z.vel[0] * 0.3, 4, z.vel[2] * 0.3], 'fall'); continue; }
             const r = g.roofs.find((rr) => rr.box === hit.box);
-            z.st = r ? 'roof' : hit.point[1] > 3 ? 'roof' : 'walk'; z.roof = r || null;
-            if (z.st === 'walk') z.y = 0;
+            z.st = r ? 'roof' : hit.point[1] > this.groundAt(z.x, z.z) + 2 ? 'roof' : 'walk'; z.roof = r || null;
           }
         }
-        if (z.y < -5) z.alive = false;
-      }
-      // special attacks
-      if (z.st === 'walk' || z.st === 'roof') this.attack(z, dt, H, g);
-    }
-    // zombie projectiles
-    for (let i = this.shots.length - 1; i >= 0; i--) {
-      const s = this.shots[i];
-      s.life -= dt;
-      s.vel[1] -= s.g * dt;
-      for (let k = 0; k < 3; k++) s.pos[k] += s.vel[k] * dt;
-      s.rot += dt * 6;
-      if (s.kind === 'glob' && Math.random() < 0.6) this.fx.spawnPiece(s.pos, [0.18, 0.18, 0.18], [0, 0, 0], [0.4, 1, 0.2], 0.35, 1), (this.fx.debris[this.fx.debris.length - 1].noGravity = true);
-      const dx = s.pos[0] - hp[0], dy = s.pos[1] - hp[1], dz = s.pos[2] - hp[2];
-      if (!H.dead && dx * dx + dy * dy + dz * dz < (s.r + 2.4) * (s.r + 2.4)) { this.events.push({ type: 'hitHeli', shot: s }); this.shots.splice(i, 1); continue; }
-      if (s.life <= 0 || s.pos[1] < 0 || this.world.pointInside(s.pos)) {
-        if (s.kind === 'glob') this.fx.sparks(s.pos, 8, [0.4, 1, 0.2], 4, 0.5, 0.08, 1);
-        else this.fx.sparks(s.pos, 6, [0.5, 0.48, 0.44], 5, 0.8, 0.2, 2);
-        this.shots.splice(i, 1);
+        if (z.y < WATER - 30) z.alive = false;
       }
     }
-    // forget the ones far from the action (events keep theirs)
-    for (const z of L) if (z.alive && !z.keep && z.st !== 'grab' && Math.abs(z.x - hp[0]) + Math.abs(z.z - hp[2]) > 620) z.alive = false;
-    // drop the dead
+    for (const z of L) if (z.alive && !z.keep && z.st !== 'grab' && Math.abs(z.x - hp[0]) + Math.abs(z.z - hp[2]) > 640) z.alive = false;
     let w = 0;
-    for (let i = 0; i < L.length; i++) if (L[i].alive) L[w++] = L[i];
+    for (let i = 0; i < L.length; i++) if (L[i].alive) L[w++] = L[i]; else if (L[i].pile) this.leavePile(L[i]);
     L.length = w;
   }
 
-  walk(z, idx, dt, g, T) {
+  walk(z, idx, dt, g) {
     const H = g.heli, hp = H.pos;
     z.think -= dt;
     const dxh = hp[0] - z.x, dzh = hp[2] - z.z, dh = Math.hypot(dxh, dzh);
-    // fly low near them and they come for you
-    const chase = !H.dead && g.heliAlt < 22 && dh < 60 && z.type !== 'titan' && !(z.tgt && z.tgt.kind === 'chase' && z.tgt.sticky);
-    let dirx = 0, dirz = 0, reached = false;
-    const tg = z.tgt;
-    if (z.type === 'titan' && tg && tg.kind === 'fob') {
-      // straight at the base, smashing through anything in the way
-      const gx = tg.padAt[0] - z.x, gz = tg.padAt[2] - z.z, gd = Math.hypot(gx, gz);
-      if (gd < 30) reached = true; else { dirx = gx / gd; dirz = gz / gd; }
-    } else if (chase) { dirx = dxh / (dh || 1); dirz = dzh / (dh || 1); }
-    else if (tg && tg.kind === 'chase') {
-      // something that moves: a convoy truck, a dropped crate
-      if (!tg.alive) z.tgt = null;
-      const gx = tg.x - z.x, gz = tg.z - z.z, gd = Math.hypot(gx, gz) || 1;
-      if (gd < 2.6 + (tg.r || 0)) { reached = true; if (z.cd <= 0) { z.cd = 1; this.events.push({ type: 'hitTarget', tgt: tg, z, dmg: z.type === 'brute' ? 30 : z.type === 'titan' ? 200 : 6 }); } }
-      else { dirx = gx / gd; dirz = gz / gd; }
-    } else if (tg && (tg.kind === 'roof' || tg.kind === 'fob')) {
-      if (tg.kind === 'roof' && (!tg.active || tg.count <= 0)) z.tgt = null;
-      const f = tg.kind === 'roof' ? this.roofField(tg) : this.fobField(tg);
-      const c = cellOf(z.x, z.z);
-      if (c >= 0 && f[c] === 0) reached = true;
-      else if (c >= 0 && f[c] < 65535) {
-        const i = c % NX, k = (c - i) / NX;
-        let best = f[c], bi = -1;
-        for (let n = 0; n < 8; n++) {
-          const ii = i + N8[n][0], kk = k + N8[n][1];
-          if (ii < 0 || kk < 0 || ii >= NX || kk >= NZ) continue;
-          const cc = kk * NX + ii, v = f[cc] + (n >= 4 ? 0.4 : 0);
-          if (n >= 4 && (this.block[k * NX + ii] || this.block[kk * NX + i])) continue;     // don't cut corners
-          if (v < best) { best = v; bi = cc; }
-        }
-        if (bi >= 0) {
-          const tx = GX0 + ((bi % NX) + 0.5) * CELL + z.side * 1.1, tz = GZ0 + (Math.floor(bi / NX) + 0.5) * CELL + z.side * 1.1;
-          const ddx = tx - z.x, ddz = tz - z.z, dd = Math.hypot(ddx, ddz) || 1;
-          dirx = ddx / dd; dirz = ddz / dd;
-        }
-      } else { const gx = tg.x ?? tg.padAt[0], gz = tg.z ?? tg.padAt[2]; const dx = gx - z.x, dz = gz - z.z, d = Math.hypot(dx, dz) || 1; dirx = dx / d; dirz = dz / d; }
-    } else if (dh > 8) {
-      // nothing to do: shamble towards the noise (you)
-      dirx = dxh / dh * 0.6; dirz = dzh / dh * 0.6;
+    // screamers spot you and shriek
+    if (z.type === 'screamer' && !z.screamed && !H.dead && dh < 75 && hp[1] - z.y < 60) {
+      z.screamed = true; z.cd = 2;
+      this.events.push({ type: 'scream', z });
+      for (const o of this.list) if (o.alive && o.st === 'walk' && Math.hypot(o.x - z.x, o.z - z.z) < 180) { o.tgt = null; o.angry = 12; }
     }
-    if (reached) {
-      if (tg && tg.kind === 'roof' && T.climb > 0 && tg.active) {
+    if (z.angry > 0) z.angry -= dt;
+    const low = !H.dead && g.heliAlt < 22 && dh < 70;
+    let dirx = 0, dirz = 0;
+    const tg = z.tgt;
+    if (g.lure && !tg) {
+      const dx = g.lure[0] - z.x, dz = g.lure[1] - z.z, d = Math.hypot(dx, dz) || 1;
+      if (d > 4) { dirx = dx / d; dirz = dz / d; }
+    } else if ((low || z.angry > 0) && !(tg && tg.sticky)) {
+      // go for the helicopter: get under it and start a heap
+      if (dh > 2.5) { dirx = dxh / dh; dirz = dzh / dh; }
+      const p = this.piles.get('heli');
+      if (p && dh < 4.5) { this.joinPile(z, p); return; }
+    } else if (tg && tg.kind === 'chase') {
+      if (!tg.alive) { z.tgt = null; return; }
+      const gx = tg.x - z.x, gz = tg.z - z.z, gd = Math.hypot(gx, gz) || 1;
+      // a target up on a roof: pile up the wall under it
+      if (tg.roof) { z.tgt = tg.roof; return; }
+      if (gd < 1.6 + (tg.r || 0)) { if (z.cd <= 0) { z.cd = 1.2; this.events.push({ type: 'hitTarget', tgt: tg, z, dmg: 6 }); } }
+      else if (gd > 30 && tg.field) this.followField(z, this.pointField(tg.field, tg.x, tg.z), (x, y) => { dirx = x; dirz = y; });
+      else { dirx = gx / gd; dirz = gz / gd; }
+    } else if (tg && tg.kind === 'roof') {
+      if (!tg.active || (tg.count <= 0 && !tg.team)) { z.tgt = null; return; }
+      const pk = `roof${tg.box.id}`, pl = this.piles.get(pk);
+      if (pl) {
+        // there's already a pile: everyone heads for the bottom of it and climbs on
+        const fx = pl.x + pl.nx * (pl.h * 0.9 + 0.8), fz = pl.z + pl.nz * (pl.h * 0.9 + 0.8), fd = Math.hypot(fx - z.x, fz - z.z);
+        if (fd < 2.6 + pl.h * 0.25) { this.joinPile(z, pl); return; }
+        if (fd < 14) { dirx = (fx - z.x) / fd; dirz = (fz - z.z) / fd; }
+        else this.followField(z, this.pointField(`foot${tg.box.id}`, pl.x + pl.nx * 3, pl.z + pl.nz * 3, 5), (x, y) => { dirx = x; dirz = y; }, fx, fz);
+      }
+      const f = pl ? null : this.roofField(tg), c = cellOf(z.x, z.z);
+      if (pl) { /* steering set above */ } else if (c >= 0 && f[c] === 0) {
+        // at the wall: join (or start) the pile against it
         const b = tg.box, cx = clamp(z.x, b.min[0], b.max[0]), cz = clamp(z.z, b.min[2], b.max[2]);
-        const nx = z.x - cx, nz = z.z - cz, nd = Math.hypot(nx, nz);
-        if (nd < 1.6) {
-          z.st = 'climb'; z.roof = tg;
-          z.nx = nd > 1e-3 ? nx / nd : 0; z.nz = nd > 1e-3 ? nz / nd : 1;
-          z.x = cx + z.nx * 0.35 + (-z.nz) * z.side * 0.6; z.z = cz + z.nz * 0.35 + z.nx * z.side * 0.6;
-          z.yaw = Math.atan2(z.nx, z.nz);
-          z.y = (b.min[1] || 0) + Math.random() * 0.6;
+        let nx = z.x - cx, nz = z.z - cz; const nd = Math.hypot(nx, nz);
+        if (nd < 3) {
+          nx = nd > 1e-3 ? nx / nd : 0; nz = nd > 1e-3 ? nz / nd : 1;
+          const key = `roof${b.id}`;
+          let p = this.piles.get(key);
+          if (!p) { p = this.pile(key, cx + nx * 0.4, this.groundAt(cx + nx, cz + nz), cz + nz * 0.4, nx, nz, tg.top - this.groundAt(cx + nx, cz + nz)); p.roof = tg; }
+          this.joinPile(z, p);
           return;
         }
         const d = Math.hypot(cx - z.x, cz - z.z) || 1; dirx = (cx - z.x) / d; dirz = (cz - z.z) / d;
-      } else if (tg && tg.kind === 'fob') {
-        if (z.cd <= 0) { z.cd = 1; this.events.push({ type: 'baseHit', fob: tg, dmg: z.type === 'titan' ? 90 : z.type === 'brute' ? 14 : 3 }); }
-        const gx = tg.padAt[0] - z.x, gz = tg.padAt[2] - z.z, gd = Math.hypot(gx, gz) || 1;
-        if (gd > 6 && z.type !== 'titan') { dirx = gx / gd; dirz = gz / gd; }
-      }
-    }
+      } else this.followField(z, f, (x, y) => { dirx = x; dirz = y; }, tg.x, tg.z);
+    } else if (dh < 160) { dirx = dxh / dh * 0.5; dirz = dzh / dh * 0.5; }      // drift towards the noise
+    else if (z.think <= 0) { z.think = 3 + Math.random() * 4; z.wx = (Math.random() - 0.5) * 2; z.wz = (Math.random() - 0.5) * 2; }
+    else { dirx = (z.wx || 0) * 0.3; dirz = (z.wz || 0) * 0.3; }
     // keep apart
     let px = 0, pz = 0;
-    if (z.type !== 'titan') {
-      const c = cellOf(z.x, z.z);
-      if (c >= 0) {
-        const i = c % NX, k = (c - i) / NX;
-        for (let kk = k - 1; kk <= k + 1; kk++) for (let ii = i - 1; ii <= i + 1; ii++) {
-          if (ii < 0 || kk < 0 || ii >= NX || kk >= NZ) continue;
-          for (let j = this.head[kk * NX + ii]; j >= 0; j = this.next[j]) {
-            if (j === idx) continue;
-            const o = this.list[j], ox = z.x - o.x, oz = z.z - o.z, d2 = ox * ox + oz * oz, rr = 0.42 * (z.s + o.s);
-            if (d2 < rr * rr && d2 > 1e-6) { const d = Math.sqrt(d2), k2 = (rr - d) / d; px += ox * k2; pz += oz * k2; }
-          }
+    const c = cellOf(z.x, z.z);
+    if (c >= 0) {
+      const i = c % NX, k = (c - i) / NX;
+      for (let kk = k - 1; kk <= k + 1; kk++) for (let ii = i - 1; ii <= i + 1; ii++) {
+        if (ii < 0 || kk < 0 || ii >= NX || kk >= NZ) continue;
+        for (let j = this.head[kk * NX + ii]; j >= 0; j = this.next[j]) {
+          if (j === idx) continue;
+          const o = this.list[j], ox = z.x - o.x, oz = z.z - o.z, d2 = ox * ox + oz * oz, rr = 0.42 * (z.s + o.s);
+          if (d2 < rr * rr && d2 > 1e-6) { const d = Math.sqrt(d2), k2 = (rr - d) / d; px += ox * k2; pz += oz * k2; }
         }
       }
     }
-    const sp = z.spd * (chase ? 1.15 : 1);
+    const sp = z.spd * (z.angry > 0 && z.type !== 'crawler' ? 1.6 : 1) * (low ? 1.15 : 1);
     z.dx += (dirx - z.dx) * Math.min(1, dt * 5); z.dz += (dirz - z.dz) * Math.min(1, dt * 5);
     const mx = z.dx * sp * dt + px * Math.min(1, dt * 8), mz = z.dz * sp * dt + pz * Math.min(1, dt * 8);
-    const hy = z.type === 'titan' ? 6 : 2;
-    if (z.type === 'titan' || !this.world.pointInside([z.x + mx * 3, hy, z.z])) z.x += mx;
-    if (z.type === 'titan' || !this.world.pointInside([z.x, hy, z.z + mz * 3])) z.z += mz;
+    if (!this.stuck(z.x + mx * 3, z.z)) z.x += mx;
+    if (!this.stuck(z.x, z.z + mz * 3)) z.z += mz;
     if (Math.abs(mx) + Math.abs(mz) > 1e-4) z.yaw = Math.atan2(-z.dx, -z.dz);
-    z.ph += dt * sp * (z.type === 'titan' ? 0.5 : 2.4) / z.s;
-    z.y = 0;
-    if (z.type === 'titan' && Math.sin(z.ph) * Math.sin(z.ph - dt * sp * 0.5 / z.s) < 0) this.events.push({ type: 'stomp', z });
-    this.tryGrab(z, H, -1, g);
+    z.ph += dt * sp * 2.4 / z.s;
+    z.y = this.groundAt(z.x, z.z);
+    this.tryGrab(z, H, -1, false);
+  }
+  stuck(x, z) { const gy = this.T.heightAt(x, z); return gy < WATER + 0.3 || World_pointInside(this.world, [x, gy + 2, z]); }
+  followField(z, f, set, fx, fz) {
+    const c = cellOf(z.x, z.z);
+    if (c < 0 || f[c] >= 65535) { if (fx != null) { const dx = fx - z.x, dz = fz - z.z, d = Math.hypot(dx, dz) || 1; set(dx / d, dz / d); } return; }
+    const i = c % NX, k = (c - i) / NX;
+    let best = f[c], bi = -1;
+    for (let n = 0; n < 8; n++) {
+      const ii = i + N8[n][0], kk = k + N8[n][1];
+      if (ii < 0 || kk < 0 || ii >= NX || kk >= NZ) continue;
+      const cc = kk * NX + ii, v = f[cc] + (n >= 4 ? 0.4 : 0);
+      if (n >= 4 && (this.block[k * NX + ii] || this.block[kk * NX + i])) continue;
+      if (v < best) { best = v; bi = cc; }
+    }
+    if (bi >= 0) {
+      const tx = GX0 + ((bi % NX) + 0.5) * CELL + z.side * 1.1, tz = GZ0 + (Math.floor(bi / NX) + 0.5) * CELL + z.side * 1.1;
+      const ddx = tx - z.x, ddz = tz - z.z, dd = Math.hypot(ddx, ddz) || 1;
+      set(ddx / dd, ddz / dd);
+    }
   }
 
-  tryGrab(z, H, n, g) {
-    if (z.type === 'titan' || z.type === 'brute' || H.dead) return false;
+  // jump for the skids (or reach them from the top of the heap)
+  tryGrab(z, H, n, fromPile) {
+    if (H.dead || z.type === 'crawler') return false;
     const skidY = H.pos[1] - 1.9, dx = H.pos[0] - z.x, dz = H.pos[2] - z.z;
-    if (dx * dx + dz * dz > 14 || skidY - z.y > 2.4 || skidY - z.y < -0.5) return false;
+    const reach = fromPile ? 3.2 : 2.4;
+    if (dx * dx + dz * dz > (fromPile ? 30 : 14) || skidY - (z.y + 1.7 * z.s) > reach || skidY - z.y < -0.5) return false;
     if (n < 0) { n = 0; for (const o of this.list) if (o.alive && o.st === 'grab') n++; }
-    if (n >= 6 || Math.random() > 0.08) return false;
+    if (n >= 6 || (!fromPile && Math.random() > 0.08)) return false;
     const used = new Set(this.list.filter((o) => o.alive && o.st === 'grab').map((o) => o.slot));
     let s = 0; while (used.has(s)) s++;
+    this.leavePile(z);
     z.st = 'grab'; z.slot = s; z.grip = 0.6 + Math.random() * 0.6; z.cd = 0.5;
     this.events.push({ type: 'grab', z });
     return true;
   }
 
-  attack(z, dt, H, g) {
-    if (H.dead || z.cd > 0) return;
-    const hp = H.pos, dx = hp[0] - z.x, dy = hp[1] - (z.y + 1.6 * z.s), dz = hp[2] - z.z, d = Math.hypot(dx, dy, dz);
-    const throwAt = (kind, speed, from, dmg, r, grav) => {
-      const t = d / speed, aim = [hp[0] + H.vel[0] * t * 0.8, hp[1] + H.vel[1] * t * 0.5, hp[2] + H.vel[2] * t * 0.8];
-      const v = [(aim[0] - from[0]) / t, (aim[1] - from[1]) / t + 0.5 * grav * t, (aim[2] - from[2]) / t];
-      this.shots.push({ kind, pos: [...from], vel: v, life: t + 1.5, dmg, r, g: grav, rot: 0 });
-    };
-    if (z.type === 'spitter' && d < 85 && dy > 2) {
-      z.cd = 3.2 + Math.random() * 1.5;
-      throwAt('glob', 42, [z.x, z.y + 1.7 * z.s, z.z], 20, 0.5, 9.8);
-      this.events.push({ type: 'spit', z });
-    } else if (z.type === 'brute' && d < 60 && dy < 40) {
-      z.cd = 4 + Math.random() * 2;
-      throwAt('rock', 34, [z.x, z.y + 2.4 * z.s, z.z], 55, 0.9, 12);
-      this.events.push({ type: 'throw', z });
-    } else if (z.type === 'titan' && d < 140) {
-      z.cd = 4.5;
-      throwAt('car', 40, [z.x, z.y + 2.2 * z.s, z.z], 95, 2.2, 12);
-      this.events.push({ type: 'throw', z, big: true });
-    }
-  }
-
-  // nearest zombie a ray hits: { z, t } (or null)
   hitRay(o, d, maxT) {
     let best = null, bt = maxT;
     for (const z of this.list) {
       if (!z.alive) continue;
-      const r = 0.55 * z.s, cy = z.y + 1.0 * z.s;
+      const crawl = z.type === 'crawler' && z.st === 'walk';
+      const r = 0.55 * z.s, cy = z.y + (crawl ? 0.35 : 1.0) * z.s;
       const ox = z.x - o[0], oy = cy - o[1], oz = z.z - o[2];
       const tc = ox * d[0] + oy * d[1] + oz * d[2];
       if (tc < 0 || tc - r > bt) continue;
-      const px = ox - d[0] * tc, py = (oy - d[1] * tc) / (z.type === 'titan' || z.type === 'brute' ? 1.6 : 1.8), pz = oz - d[2] * tc;
+      const px = ox - d[0] * tc, py = (oy - d[1] * tc) / (crawl ? 0.8 : 1.8), pz = oz - d[2] * tc;
       const dd = px * px + py * py + pz * pz;
-      if (dd > r * r) continue;
-      const t = tc - Math.sqrt(r * r - dd);
+      if (dd > r * r * (crawl ? 2.2 : 1)) continue;
+      const t = tc - Math.sqrt(Math.max(0, r * r - dd));
       if (t < bt) { bt = t; best = { z, t }; }
     }
     return best;
@@ -345,22 +353,19 @@ export class Horde {
     if (!z.alive) return;
     z.alive = false;
     if (z.st === 'grab') this.events.push({ type: 'shook' });
-    // fall apart into the boxes it's made of
+    this.leavePile(z);
     const parts = this.parts(z, [], 1);
-    const big = z.type === 'titan' ? 4 : 1;
     for (const p of parts) {
-      const v = [push[0] + (Math.random() - 0.5) * 5 * big, push[1] + Math.random() * 4 * big, push[2] + (Math.random() - 0.5) * 5 * big];
-      this.fx.spawnPiece(p.pos, p.size, v, p.col, z.type === 'titan' ? 6 : 2 + Math.random() * 1.2);
+      const v = [push[0] + (Math.random() - 0.5) * 5, push[1] + Math.random() * 4, push[2] + (Math.random() - 0.5) * 5];
+      this.fx.spawnPiece(p.pos, p.size, v, p.col, 2 + Math.random() * 1.2);
     }
-    const gc = [0.32, 0.06, 0.05];
-    for (let i = 0; i < (z.type === 'titan' ? 40 : 5); i++) {
+    for (let i = 0; i < 5; i++) {
       const s = 0.12 * z.s * (0.5 + Math.random());
-      this.fx.spawnPiece([z.x, z.y + z.s, z.z], [s, s, s], [push[0] * 0.5 + (Math.random() - 0.5) * 6, 2 + Math.random() * 4, push[2] * 0.5 + (Math.random() - 0.5) * 6], gc, 1.2);
+      this.fx.spawnPiece([z.x, z.y + z.s, z.z], [s, s, s], [push[0] * 0.5 + (Math.random() - 0.5) * 6, 2 + Math.random() * 4, push[2] * 0.5 + (Math.random() - 0.5) * 6], [0.32, 0.06, 0.05], 1.2);
     }
     this.events.push({ type: 'kill', z, cause });
   }
 
-  // splash damage: everything inside r, less further out, thrown away from the middle
   blast(pos, r, dmg, force, cause = 'blast') {
     let n = 0;
     for (const z of this.list) {
@@ -370,63 +375,64 @@ export class Horde {
       const k = 1 - clamp(d / (r + 0.01), 0, 0.85), dl = d || 1;
       const push = [(dx / dl) * force * k, force * 0.7 * k + 3, (dz / dl) * force * k];
       if (this.damage(z, dmg * k, push, cause)) n++;
-      else if (z.type !== 'titan' && z.type !== 'brute' && z.st !== 'climb') { z.st = 'fall'; z.vel = push; }
-      else if (z.st === 'climb') { z.st = 'fall'; z.vel = [push[0] * 0.5, 2, push[2] * 0.5]; }
+      else if (z.st !== 'grab') { this.leavePile(z); z.st = 'fall'; z.vel = push; }
     }
     return n;
   }
 
-  // the boxes a zombie is made of, in the world: [{ pos, rot, size, col, em }]
+  // the shapes a zombie is made of: [{ pos, rot, size, col, em, mesh }]
   parts(z, out, lod = 1) {
     const s = z.s, c = Math.cos(z.yaw), sn = Math.sin(z.yaw);
     const flash = z.hitT > 0;
     const tint = (col) => flash ? [Math.min(1, col[0] + 0.5), Math.min(1, col[1] + 0.4), Math.min(1, col[2] + 0.4)] : col;
+    const crawl = z.type === 'crawler' && (z.st === 'walk' || z.st === 'roof');
     const P = (lx, ly, lz, rx, sx, sy, sz, col, em = 0, mesh = 'box') => {
       out.push({ pos: [z.x + (lx * c + lz * sn) * s, z.y + ly * s, z.z + (-lx * sn + lz * c) * s], rot: [rx, z.yaw, 0], size: [sx * s, sy * s, sz * s], col: tint(col), em, mesh });
     };
-    const st = z.st, ph = z.ph, run = z.type === 'runner', big = z.type === 'brute' || z.type === 'titan';
+    const st = z.st, ph = z.ph, run = z.type === 'runner' || z.angry > 0;
     if (lod === 0) {
+      if (crawl) { P(0, 0.25, 0, -1.4, 0.5, 1.1, 0.3, z.shirt); return out; }
       P(0, 0.42, 0, 0, 0.42, 0.84, 0.24, z.pants);
       P(0, 1.3, 0, 0, 0.5, 0.95, 0.3, z.shirt);
       return out;
     }
-    let lean = run ? -0.45 : big ? -0.3 : -0.18, armA = -0.1 + Math.sin(ph * 0.5) * 0.12, legA = Math.sin(ph) * (run ? 0.9 : 0.55);
-    if (st === 'climb') { lean = 0.05; armA = 1.35 + Math.sin(ph) * 0.3; legA = Math.sin(ph) * 0.4; }
+    if (crawl) {
+      // dragging itself along on its arms
+      const sw = Math.sin(ph * 1.2);
+      P(0, 0.28, 0.25, -1.45, 0.48, 0.7, 0.28, z.shirt);
+      P(0, 0.3, -0.25, -1.3, 0.3, 0.33, 0.3, z.skin, 0, 'sphere');
+      for (const sd of [-1, 1]) P(sd * 0.28, 0.18, -0.45 - sd * sw * 0.25, -0.2, 0.14, 0.14, 0.62, z.skin, 0, 'cyl');
+      P(0, 0.15, 0.85, -1.5, 0.4, 0.5, 0.22, z.pants);
+      return out;
+    }
+    let lean = (run ? -0.45 : -0.18) - z.hunch, armA = -0.1 + Math.sin(ph * 0.5) * 0.12, legA = Math.sin(ph) * (run ? 0.9 : 0.55);
+    if (st === 'pile') { lean = 0.15 + Math.sin(ph) * 0.15; armA = 1.3 + Math.sin(ph * 1.3) * 0.5; legA = Math.sin(ph) * 0.6; }
     else if (st === 'grab') { lean = 0; armA = 1.5; legA = Math.sin(ph) * 0.5; }
     else if (st === 'fall' || st === 'mag') { lean = Math.sin(ph) * 0.4; armA = 1 + Math.sin(ph * 1.3) * 1.2; legA = Math.sin(ph) * 1; }
-    else if (z.type === 'spitter' && z.cd > 2.6) { lean = 0.35; armA = -0.6; }
-    else if ((z.type === 'brute' || z.type === 'titan') && z.cd > (z.type === 'titan' ? 3.6 : 3.2)) { armA = 2.4; lean = 0.2; }
+    else if (z.type === 'screamer' && z.screamed && z.cd > 0.5) { lean = 0.4; armA = 0.8; }
     for (const sd of [-1, 1]) {
       const a = legA * sd;
-      P(sd * 0.13, 0.85 - 0.425 * Math.cos(a), -0.425 * Math.sin(a), a, big ? 0.3 : 0.22, 0.88, big ? 0.3 : 0.22, z.pants, 0, 'cylY');
-      P(sd * 0.13, 0.85 - 0.85 * Math.cos(a) + 0.05, -0.85 * Math.sin(a) - 0.06, 0, big ? 0.3 : 0.22, 0.1, 0.34, [0.12, 0.1, 0.09]);
+      P(sd * 0.13, 0.85 - 0.425 * Math.cos(a), -0.425 * Math.sin(a), a, 0.22, 0.88, 0.22, z.pants, 0, 'cylY');
+      P(sd * 0.13, 0.85 - 0.85 * Math.cos(a) + 0.05, -0.85 * Math.sin(a) - 0.06, 0, 0.22, 0.1, 0.34, [0.12, 0.1, 0.09]);
     }
-    const tw = big ? 0.75 : z.type === 'spitter' ? 0.66 : run ? 0.42 : 0.48, td = z.type === 'spitter' ? 0.5 : big ? 0.42 : 0.28;
-    const tl = Math.sin(lean);
+    const tw = run ? 0.44 : 0.48, td = 0.28, tl = Math.sin(lean);
     P(0, 1.18, -0.33 * tl, lean, tw, 0.66, td, z.shirt);
-    P(0, 1.18 + 0.3, -0.5 * tl, lean, tw * 1.05, 0.16, td * 1.1, z.shirt.map((v) => v * 0.8));
+    P(0, 1.48, -0.5 * tl, lean, tw * 1.05, 0.16, td * 1.1, z.shirt.map((v) => v * 0.8));
     P(0, 0.88, -0.2 * tl, lean, tw * 0.92, 0.12, td * 0.95, z.pants.map((v) => v * 0.8));
+    if (z.torn) P(0.08, 1.12, -0.33 * tl - 0.15, lean, 0.2, 0.25, 0.02, [0.35, 0.08, 0.06]);
     P(0, 1.67, -0.62 * tl - 0.05, lean * 0.6 + 0.2, 0.3, 0.34, 0.3, z.skin, 0, 'sphere');
-    P(0, 1.6, -0.62 * tl - 0.2, lean * 0.6 + 0.2, 0.16, 0.06, 0.06, [0.2, 0.05, 0.04]);
-    for (const dx of [-0.065, 0.065]) P(dx, 1.7, -0.62 * tl - 0.19, lean * 0.6, 0.06, 0.05, 0.04, z.type === 'runner' ? [1, 0.2, 0.1] : [0.85, 0.85, 0.6], z.type === 'runner' ? 1 : 0.4);
-    if (z.type === 'spitter') {
-      P(0, 1.25, 0.25 - 0.33 * tl, lean, 0.48, 0.48, 0.34, [0.45, 1, 0.2], 0.85, 'sphere');
-      P(0.22, 1.0, -0.22 - 0.3 * tl, lean, 0.2, 0.2, 0.16, [0.45, 1, 0.2], 0.85, 'sphere');
-      P(-0.2, 1.4, -0.2 - 0.3 * tl, lean, 0.16, 0.16, 0.12, [0.45, 1, 0.2], 0.85, 'sphere');
-    }
-    if (z.type === 'titan' || z.type === 'brute') for (const dx of [-0.07, 0.07]) P(dx, 1.7 - 0.62 * tl, -0.62 * tl - 0.2, lean * 0.6 + 0.2, 0.06, 0.04, 0.02, [1, 0.15, 0.05], 1);
-    if (z.type === 'titan') for (const dx of [-0.25, 0, 0.25]) P(dx, 1.45, 0.25 - 0.4 * tl, lean - 0.5, 0.08, 0.3, 0.08, [0.85, 0.82, 0.7]);
+    P(0, 1.6, -0.62 * tl - 0.2, lean * 0.6 + 0.2, z.type === 'screamer' && z.screamed ? 0.2 : 0.16, z.type === 'screamer' && z.screamed ? 0.14 : 0.06, 0.06, [0.2, 0.05, 0.04]);
+    for (const dx of [-0.065, 0.065]) P(dx, 1.7, -0.62 * tl - 0.19, lean * 0.6, 0.06, 0.05, 0.04, [0.85, 0.82, 0.55], 0.25);
     for (const sd of [-1, 1]) {
       const a = armA + (st === 'walk' ? Math.sin(ph + sd) * 0.15 : Math.sin(ph * 2 + sd) * 0.2) * sd;
       const sx = sd * (tw / 2 + 0.07), sy = 1.42 - 0.1 * (1 - Math.cos(lean)), sz = -0.45 * tl;
-      P(sx, sy + Math.sin(a) * 0.31, sz - Math.cos(a) * 0.31, a, big ? 0.22 : 0.15, big ? 0.22 : 0.15, 0.66, z.skin, 0, 'cyl');
-      P(sx, sy + Math.sin(a) * 0.66, sz - Math.cos(a) * 0.66, a, big ? 0.24 : 0.16, big ? 0.24 : 0.16, big ? 0.24 : 0.16, z.skin.map((v) => v * 0.85), 0, 'sphere');
+      P(sx, sy + Math.sin(a) * 0.31, sz - Math.cos(a) * 0.31, a, 0.15, 0.15, 0.66, z.skin, 0, 'cyl');
+      P(sx, sy + Math.sin(a) * 0.66, sz - Math.cos(a) * 0.66, a, 0.16, 0.16, 0.16, z.skin.map((v) => v * 0.85), 0, 'sphere');
       P(sx, sy + Math.sin(a) * 0.12, sz - Math.cos(a) * 0.12, a, tw * 0.36, 0.2, 0.22, z.shirt);
     }
     return out;
   }
 
-  // fill the instanced batches (one per mesh: box, sphere, cylinder along z, cylinder along y); returns how many parts
   fill(r, batches, cam, fwd, kf) {
     if (!this.datas) this.datas = { box: new Float32Array(INST_FLOATS * 9000), sphere: new Float32Array(INST_FLOATS * 4000), cyl: new Float32Array(INST_FLOATS * 4000), cylY: new Float32Array(INST_FLOATS * 4000) };
     const m = this.m, tmp = [], N = { box: 0, sphere: 0, cyl: 0, cylY: 0 }, MAX = { box: 9000, sphere: 4000, cyl: 4000, cylY: 4000 };
@@ -437,7 +443,7 @@ export class Horde {
       const o = n * INST_FLOATS;
       for (let k = 0; k < 16; k++) D[o + k] = m[k];
       D[o + 16] = p.size[0]; D[o + 17] = p.size[1]; D[o + 18] = p.size[2]; D[o + 19] = mesh === 'box' ? 1 : 0;
-      D[o + 20] = p.col[0]; D[o + 21] = p.col[1]; D[o + 22] = p.col[2]; D[o + 23] = p.alpha ?? 1;
+      D[o + 20] = p.col[0]; D[o + 21] = p.col[1]; D[o + 22] = p.col[2]; D[o + 23] = 1;
       D[o + 24] = 0; D[o + 25] = 0; D[o + 26] = p.em || 0; D[o + 27] = 0;
       D[o + 28] = 0; D[o + 29] = 0.8; D[o + 30] = 0; D[o + 31] = 0;
       N[mesh] = n + 1;
@@ -450,16 +456,13 @@ export class Horde {
       if (Math.sqrt(Math.max(0, d2 - al * al)) > al * kf + rr) continue;
       if (d2 > 520 * 520) continue;
       tmp.length = 0;
-      this.parts(z, tmp, d2 > 150 * 150 && z.type !== 'titan' ? 0 : 1);
+      this.parts(z, tmp, d2 > 150 * 150 ? 0 : 1);
       for (const p of tmp) put(p);
-    }
-    for (const s of this.shots) {
-      if (s.kind === 'glob') put({ pos: s.pos, rot: [s.rot, s.rot, 0], size: [0.7, 0.7, 0.7], col: [0.4, 1, 0.2], em: 1, mesh: 'sphere' });
-      else if (s.kind === 'rock') put({ pos: s.pos, rot: [s.rot, s.rot * 0.7, 0], size: [1.3, 1.0, 1.1], col: [0.5, 0.48, 0.44], em: 0 });
-      else put({ pos: s.pos, rot: [s.rot, s.rot * 0.5, 0], size: [1.9, 1.3, 4.3], col: [0.55, 0.15, 0.1], em: 0 });
     }
     let total = 0;
     for (const k of Object.keys(N)) { r.fillBatch(batches[k], this.datas[k], N[k], N[k]); total += N[k]; }
     return total;
   }
 }
+// the boxes only (not the ground) — "is there a building here?"
+function World_pointInside(world, p) { return Object.getPrototypeOf(Object.getPrototypeOf(world)).pointInside.call(world, p); }

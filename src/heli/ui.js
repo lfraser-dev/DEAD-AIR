@@ -156,4 +156,19 @@ export const CSS = `
 .da-slots { max-height: calc(100vh - 190px); overflow-y: auto; scrollbar-width: thin; padding-right: 4px; }
 .da-tier { width: 172px; }
 .da-tiers { max-height: 46vh; overflow-y: auto; }
+.da-hpb { height: 6px; background: rgba(255,255,255,.12); border-radius: 3px; margin: 5px 0 3px; overflow: hidden; } .da-hpb i { display: block; height: 100%; background: #7dff9a; }
+.da-btns { display: flex; flex-wrap: wrap; gap: 4px; } .da-btns button { padding: 4px 7px !important; font-size: 11px !important; }
+.da-cm { width: 210px; }
+.da-recruit { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .da-recruit input { font: 900 18px var(--font); width: 150px; padding: 6px 8px; border: 0; border-radius: 6px; text-transform: uppercase; }
+.da-roles { font-size: 12px !important; line-height: 1.5 !important; }
+.da-shop { display: flex; flex-wrap: wrap; gap: 6px; } .da-shop button { width: 150px; text-align: left; } .da-shop b { display: block; font-size: 14px; } .da-shop small { display: block; font: 600 11px var(--font); opacity: .75; min-height: 26px; } .da-shop span { color: #ffcf3a; }
+.da-raid { position: absolute; right: 22px; top: 262px; width: 250px; background: rgba(8,10,12,.62); backdrop-filter: blur(6px); border-radius: 10px; padding: 10px 12px; font: 800 12px/1.35 var(--font); letter-spacing: .05em; pointer-events: auto; border-left: 4px solid #ffcf3a; }
+.da-raid h5 { margin: 0 0 6px; font: 900 14px var(--font); letter-spacing: .1em; color: #ffcf3a; }
+.da-floors { display: flex; flex-direction: column-reverse; gap: 2px; margin-bottom: 6px; max-height: 150px; overflow: hidden; }
+.da-floors div { height: 6px; border-radius: 2px; background: rgba(255,255,255,.14); position: relative; }
+.da-floors div.done { background: rgba(125,255,154,.35); } .da-floors div.here { background: #ffcf3a; box-shadow: 0 0 8px #ffcf3a; }
+.da-floors div.hot::after { content: ''; position: absolute; right: 2px; top: 1px; width: 4px; height: 4px; border-radius: 50%; background: #ff5a3a; }
+.da-mem { display: grid; grid-template-columns: 70px 1fr; gap: 6px; align-items: center; margin: 2px 0; } .da-mem i { height: 5px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; } .da-mem i b { display: block; height: 100%; background: #7dff9a; }
+.da-raid .log { margin-top: 6px; font: 700 11px/1.35 var(--font); opacity: .85; }
+.da-raid .row2 { display: flex; gap: 5px; margin-top: 7px; } .da-raid button { flex: 1; background: rgba(255,255,255,.12); color: #fff; border: 0; border-radius: 6px; padding: 5px 4px; font: 900 11px var(--font); letter-spacing: .05em; } .da-raid button.on { background: #ffcf3a; color: #111; }
 `;

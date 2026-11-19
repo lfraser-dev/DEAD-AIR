@@ -59,9 +59,9 @@ function frame(now) {
     else {
       game.load();
       game.setSky(true);
-      const a = t * 0.05, eye = [Math.sin(a) * 260, 95, Math.cos(a) * 260];
-      const l = Math.hypot(eye[0], 70, eye[2]), fwd = [-eye[0] / l, -70 / l, -eye[2] / l];
-      game.draw(eye, fwd, 0, [], [], [0, 0, 0], 0.0045);
+      const C = game.map.city, a = t * 0.05, eye = [C.x + Math.sin(a) * 330, C.y + 140, C.z + Math.cos(a) * 330];
+      const v = [C.x - eye[0], C.y + 40 - eye[1], C.z - eye[2]], l = Math.hypot(...v), fwd = v.map((c) => c / l);
+      game.draw(eye, fwd, 0, [], [], [C.x, 0, C.z], 0.0032);
     }
   } catch (e) { console.error(e); }
   requestAnimationFrame(frame);

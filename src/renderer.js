@@ -54,6 +54,8 @@ uniform float uFogDensity, uShadowOn, uSky, uViewUnder, uTime;
 uniform vec4 uRoom;     // a roofed room above ground (x0, z0, x1, z1), lit by its own lamps: the test-range armoury
 uniform float uRoomTop;
 uniform vec3 uRim;
+uniform vec4 uRoads[24];   // DEAD AIR terrain: road segments (x0, z0, x1, z1)
+uniform float uRoadN, uWater;
 // per-draw values arrive from the vertex shader (uniforms for single draws, instance data for batches)
 flat in vec3 fColor, fScale, fMat;   // fMat: x = metalness, y = roughness (< 0: automatic from colour), z = AO
 flat in vec4 fP;                     // grid / material, edges, emissive, alpha
@@ -387,6 +389,34 @@ void main() {
       base = base * (0.8 + 0.3 * h);
       base = mix(base, vec3(0.8, 0.88, 0.9), smoothstep(0.82, 1.05, h) * 0.35);       // whitecaps
       tRough = 0.08; tMetal = 0.6;
+    } else if (k == 60) {
+      // DEAD AIR terrain: grass and dry grass on the flats, rock on the slopes, sand by the water, mud in the hollows, and roads
+      vec3 q = vWorld;
+      float slope = 1.0 - n.y;
+      float nz = noise(q * 0.045) * 0.55 + noise(q * 0.35) * 0.3 + noise(q * 2.1) * 0.15;
+      vec3 grass = mix(vec3(0.17, 0.27, 0.1), vec3(0.3, 0.36, 0.14), nz);
+      vec3 dry = mix(vec3(0.42, 0.37, 0.2), vec3(0.5, 0.44, 0.26), noise(q * 0.5));
+      vec3 rock = mix(vec3(0.33, 0.31, 0.29), vec3(0.52, 0.5, 0.47), noise(q * vec3(0.3, 1.2, 0.3)));
+      vec3 sand = mix(vec3(0.55, 0.5, 0.36), vec3(0.66, 0.6, 0.44), noise(q * 0.8));
+      base = mix(grass, dry, smoothstep(0.5, 0.8, noise(q * 0.009 + 3.0)));
+      base = mix(base, rock, smoothstep(0.22, 0.42, slope + (nz - 0.5) * 0.15));
+      base = mix(base, rock * 1.25 + vec3(0.12), smoothstep(uWater + 55.0, uWater + 75.0, q.y + nz * 8.0) * (1.0 - smoothstep(0.4, 0.6, slope)));
+      base = mix(base, sand, 1.0 - smoothstep(uWater + 0.4, uWater + 2.4, q.y + nz * 0.8));
+      // roads: tarmac with a worn yellow line, gravel shoulders
+      float rd = 1e9, along = 0.0;
+      for (int i = 0; i < 24; i++) {
+        if (float(i) >= uRoadN) break;
+        vec4 r = uRoads[i];
+        vec2 a = r.xy, b = r.zw, pa = q.xz - a, ba = b - a;
+        float hh = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+        float d = length(pa - ba * hh);
+        if (d < rd) { rd = d; along = hh * length(ba); }
+      }
+      float tarmac = 1.0 - smoothstep(4.2, 4.9, rd), shoulder = (1.0 - smoothstep(5.0, 6.5, rd)) * (1.0 - tarmac);
+      base = mix(base, vec3(0.42, 0.39, 0.33) * (0.85 + 0.3 * nz), shoulder);
+      base = mix(base, vec3(0.13, 0.13, 0.14) * (0.85 + 0.3 * noise(q * 3.0)), tarmac);
+      base = mix(base, vec3(0.7, 0.6, 0.2), (1.0 - smoothstep(0.1, 0.22, rd)) * step(0.5, fract(along / 6.0)) * 0.8);
+      tRough = 0.95; tMetal = 0.0;
     } else if (k == 9) {
       // LED screen: tiny pixels, gently scrolling bands
       vec2 c = p / 0.12;
@@ -942,7 +972,7 @@ export class Renderer {
     this.shadowProg = compile(gl, SHADOW_VERT, SHADOW_FRAG);
     this.u = {};
     for (const name of ['uProj', 'uView', 'uModel', 'uScale', 'uColor', 'uFogColor', 'uSunDir', 'uCamPos',
-      'uSkyTop', 'uGrid', 'uEdges', 'uEmissive', 'uAlpha', 'uFogDensity', 'uShadowOn', 'uSky', 'uLightVP', 'uShadowMap', 'uViewUnder', 'uRoom', 'uRoomTop', 'uAO', 'uRim', 'uMat', 'uStudio', 'uStudioFwd', 'uStudioKey', 'uTime', 'uInst']) {
+      'uSkyTop', 'uGrid', 'uEdges', 'uEmissive', 'uAlpha', 'uFogDensity', 'uShadowOn', 'uSky', 'uLightVP', 'uShadowMap', 'uViewUnder', 'uRoom', 'uRoomTop', 'uAO', 'uRim', 'uMat', 'uStudio', 'uStudioFwd', 'uStudioKey', 'uTime', 'uInst', 'uRoads', 'uRoadN', 'uWater']) {
       this.u[name] = gl.getUniformLocation(this.prog, name);
     }
     this.su = {
@@ -1166,6 +1196,32 @@ export class Renderer {
     gl.useProgram(this.shadowProg);
     gl.uniformMatrix4fv(this.su.uLightVP, false, this.lightVP);
     gl.disable(gl.CULL_FACE); // thin boxes cast cleaner shadows double-sided
+  }
+
+  // DEAD AIR terrain: a mesh in world coordinates (no AO, no edges), and its road list
+  setRoads(list, water) {
+    const gl = this.gl, a = new Float32Array(96);
+    list.slice(0, 24).forEach((r, i) => a.set(r, i * 4));
+    gl.useProgram(this.prog);
+    gl.uniform4fv(this.u.uRoads, a); gl.uniform1f(this.u.uRoadN, Math.min(24, list.length)); gl.uniform1f(this.u.uWater, water);
+  }
+  drawMesh(m, model, color, grid = 0, mat) {
+    const gl = this.gl, u = this.u;
+    const mt = mat ? (MATS[mat] || mat) : MATS.auto;
+    if (mt !== this.lastMat) { gl.uniform2fv(u.uMat, mt); this.lastMat = mt; }
+    this.bindMesh(m);
+    gl.uniform1f(u.uAO, 0);
+    gl.uniformMatrix4fv(u.uModel, false, model);
+    gl.uniform3fv(u.uScale, [1, 1, 1]);
+    gl.uniform3fv(u.uColor, color);
+    gl.uniform1f(u.uGrid, grid); gl.uniform1f(u.uEdges, 0); gl.uniform1f(u.uEmissive, 0); gl.uniform1f(u.uAlpha, 1);
+    gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_SHORT, 0);
+    this.drawCalls++;
+  }
+  shadowMesh(m, model) {
+    this.bindMesh(m);
+    this.gl.uniformMatrix4fv(this.su.uModel, false, model);
+    this.gl.drawElements(this.gl.TRIANGLES, m.count, this.gl.UNSIGNED_SHORT, 0);
   }
 
   shadowDraw(model, shape, scl) {
