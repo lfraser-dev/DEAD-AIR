@@ -106,6 +106,8 @@ export class HeliGame {
       if (this.mode === 'hangar' && e.code === 'Escape') { if (this.panel) this.closePanel(); else this.close(); }
       if (this.mode === 'hangar' && e.code === 'Enter' && !this.panel) this.deploy();
       if (flying() && e.code === 'Escape') { if (this.panel) this.closePanel(); else this.pause(true); }
+      if (this.mode === 'fly' && e.code === 'KeyT') { if (this.panel) this.closePanel(); else this.openTeam(); }
+      if (this.mode === 'hangar' && e.code === 'KeyT') { if (this.panel) this.closePanel(); else this.openTeam(); }
       // taking off again grabs the mouse back
       if (this.mode === 'fly' && !this.locked && !this.panel && ['KeyW', 'KeyS', 'KeyA', 'KeyD', 'Space'].includes(e.code)) this.lock();
     }, true);
@@ -158,6 +160,7 @@ export class HeliGame {
         <div class="da-opts" data-da="opts"></div>
         <div class="da-msg" data-da="msg"></div>
         <button class="da-back" data-da="back" type="button">◀ TITLE</button>
+        <button class="da-teambtn" data-da="teambtn" type="button">👥 TEAM</button>
         <button class="da-deploy" data-da="deploy" type="button">TAKE OFF ▶</button>
       </div>
       <div class="da-hud hidden" data-da="hud">
@@ -182,6 +185,7 @@ export class HeliGame {
         <div class="da-flight"><span data-da="alt"></span><span data-da="spd"></span></div>
         <div class="da-right" data-da="right"></div>
         <div class="da-click hidden" data-da="click">CLICK TO FLY</div>
+        <button class="da-tbtn" data-da="tbtn" type="button"><kbd>T</kbd> TEAM</button>
       </div>
       <div class="da-panel hidden" data-da="panel"></div>
       <div class="da-card hidden" data-da="pause"></div>
@@ -191,6 +195,8 @@ export class HeliGame {
     this.root = root;
     this.$('back').onclick = () => { this.snd.button?.(); this.close(); };
     this.$('deploy').onclick = () => this.deploy();
+    this.$('teambtn').onclick = () => this.openTeam();
+    this.$('tbtn').onclick = () => this.openTeam();
   }
   flash(t) { const m = this.$('msg'); m.textContent = t; m.style.opacity = 1; clearTimeout(this.msgT); this.msgT = setTimeout(() => { m.style.opacity = 0; }, 1800); }
 
@@ -811,7 +817,7 @@ export class HeliGame {
       if (this.atFob && !this.atFob.wrecked) {
         if (this.riders > 0 && !this.atFob.fuelOnly) acts.push(['KeyE', 'E', this.unloading ? 'DROPPING OFF…' : `DROP OFF ${this.riders}`, () => { this.unloading = true; }]);
         if (this.crate && this.crate.carried && !this.atFob.fuelOnly) acts.push(['KeyE', 'E', 'DROP THE CRATE', () => this.deliverCrate()]);
-        if (!this.atFob.fuelOnly) { acts.push(['KeyH', 'H', 'HANGAR', () => { this.session.fob = this.atFob; this.toHangar(); }, true]); acts.push(['KeyT', 'T', 'TEAM', () => this.openTeam(), true]); }
+        if (!this.atFob.fuelOnly) { acts.push(['KeyH', 'H', 'HANGAR', () => { this.session.fob = this.atFob; this.toHangar(); }, true]); }
       }
       if (this.nearCrate && !this.crate) acts.push(['KeyE', 'E', 'HOOK ON THE CRATE', () => { this.crate = this.nearCrate; this.crate.carried = true; this.feed('CRATE HOOKED ON · TAKE IT TO A BASE', 'y'); this.snd.grab?.(); }]);
       if (!this.atFob && !this.scav && (this.riders > 0 || has(crew, 'scavenger'))) acts.push(['KeyQ', 'Q', 'SEND FOR FUEL', () => this.sendForFuel(), true]);
@@ -1055,13 +1061,14 @@ export class HeliGame {
     this.panel = 'team';
     if (this.locked) this.unlockSoft();
     const s = this.save, max = statsFor(s.eq).crewMax;
+    const atBase = this.mode === 'hangar' || (this.atFob && !this.atFob.fuelOnly);
     const card = (m, btn) => `<div class="da-cm" style="--c:rgb(${ROLES[m.role].col.map((v) => Math.round(v * 255))})"><small>${ROLES[m.role].n}</small><b>${m.name}</b><p>${ROLES[m.role].d}</p>${btn}</div>`;
     const friends = this.coop ? [...this.coop.friends.values()] : [];
     panel.innerHTML = `<button class="alt close" data-x="close" type="button">CLOSE ✕</button><h2>YOUR TEAM</h2>
       <h3>CREW · ${s.crew.length} / ${max}</h3><p>Crew ride up front and take a seat each. Get more crew seats with a bigger CABIN.</p>
       <div class="da-crew">${s.crew.map((m, i) => card(m, `<button class="alt" data-dismiss="${i}" type="button">DISMISS</button>`)).join('') || '<p>Nobody yet. Survivors you drop off at a base sometimes offer to join.</p>'}</div>
-      <h3>VOLUNTEERS AT THE BASES</h3>
-      <div class="da-crew">${s.pool.map((m, i) => card(m, `<button data-recruit="${i}" type="button" ${s.crew.length >= max ? 'disabled' : ''}>RECRUIT</button>`)).join('') || '<p>No volunteers right now. Rescue more people!</p>'}</div>
+      <h3>VOLUNTEERS AT THE BASES</h3>${atBase ? '' : '<p style="color:#ffcf3a">LAND AT A BASE (OR GO TO THE HANGAR) TO RECRUIT THEM.</p>'}
+      <div class="da-crew">${s.pool.map((m, i) => card(m, `<button data-recruit="${i}" type="button" ${s.crew.length >= max || !atBase ? 'disabled' : ''}>RECRUIT</button>`)).join('') || '<p>No volunteers right now. Rescue more people!</p>'}</div>
       <h3>FRIENDS ONLINE</h3>
       ${this.coop ? `<p>Your friends type this code on the DEAD AIR title screen (JOIN A FRIEND):</p><div class="da-code">${this.coop.code}</div>
         <p>${friends.length ? friends.map((f) => `${f.name || 'FRIEND'} · ${f.seat === 0 ? 'RIGHT' : 'LEFT'} DOOR · ${f.kills} KILLS`).join('<br>') : 'Waiting for friends… (up to 2, they ride in the doors as gunners)'}</p>
@@ -1070,7 +1077,7 @@ export class HeliGame {
       <p data-x="netmsg"></p>`;
     panel.classList.remove('hidden');
     panel.querySelector('[data-x=close]').onclick = () => this.closePanel();
-    panel.querySelectorAll('[data-dismiss]').forEach((b) => { b.onclick = () => { const m = s.crew.splice(+b.dataset.dismiss, 1)[0]; if (s.pool.length < 6) s.pool.push(m); saveSave(s); this.openTeam(); }; });
+    panel.querySelectorAll('[data-dismiss]').forEach((b) => { if (!atBase) b.disabled = true; b.onclick = () => { const m = s.crew.splice(+b.dataset.dismiss, 1)[0]; if (s.pool.length < 6) s.pool.push(m); saveSave(s); this.openTeam(); }; });
     panel.querySelectorAll('[data-recruit]').forEach((b) => { b.onclick = () => { if (s.crew.length >= max) return; s.crew.push(s.pool.splice(+b.dataset.recruit, 1)[0]); saveSave(s); this.snd.checkpoint?.(); this.openTeam(); if (this.mode === 'hangar') this.renderHangar(); }; });
     panel.querySelector('[data-x=host]')?.addEventListener('click', () => this.startHosting().then(() => this.openTeam(), (e) => { const m = panel.querySelector('[data-x=netmsg]'); if (m) m.textContent = e.message; }));
     panel.querySelector('[data-x=stophost]')?.addEventListener('click', () => { this.stopCoop(); this.openTeam(); });

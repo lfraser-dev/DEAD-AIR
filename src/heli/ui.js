@@ -124,4 +124,9 @@ export const CSS = `
 .da-join input { font: 900 40px var(--font); letter-spacing: .3em; width: 260px; text-align: center; text-transform: uppercase; padding: 6px; border: 0; margin: 10px 0; }
 .da-spec { position: absolute; transform: translate(-50%, -100%); font: 900 11px var(--font); color: #ff5a3a; text-shadow: 0 1px 0 #000; letter-spacing: .1em; white-space: nowrap; }
 .da-gunner .da-cross { left: 50% !important; top: 50% !important; }
+.da-teambtn { position: absolute; right: 300px; bottom: 30px; background: rgba(10,12,14,.85); color: #fff; border: 2px solid #ffcf3a; padding: 12px 22px; font: 900 22px var(--font) !important; letter-spacing: .06em; }
+.da-teambtn:hover { background: #ffcf3a; color: #111; }
+.da-tbtn { position: absolute; right: 22px; top: 216px; background: rgba(10,12,14,.8); color: #fff; border: 2px solid rgba(255,255,255,.25); padding: 6px 12px; font: 900 14px var(--font) !important; letter-spacing: .1em; pointer-events: auto; }
+.da-tbtn kbd { background: #ffcf3a; color: #111; padding: 0 5px; margin-right: 5px; font: 900 12px var(--font); }
+.da-gunner .da-tbtn { display: none; }
 `;
