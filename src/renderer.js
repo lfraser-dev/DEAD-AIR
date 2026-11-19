@@ -56,6 +56,9 @@ uniform float uRoomTop;
 uniform vec3 uRim;
 uniform vec4 uRoads[24];   // DEAD AIR terrain: road segments (x0, z0, x1, z1)
 uniform float uRoadN, uWater;
+uniform sampler2D uGround;  // DEAD AIR ground map: r = road distance, g = town, b = forest, a = water depth
+uniform vec4 uGroundBox;    // x0, z0, span (0 = none)
+uniform vec4 uHaze;         // density, height falloff, clouds on, far distance (0 = old fog)
 // per-draw values arrive from the vertex shader (uniforms for single draws, instance data for batches)
 flat in vec3 fColor, fScale, fMat;   // fMat: x = metalness, y = roughness (< 0: automatic from colour), z = AO
 flat in vec4 fP;                     // grid / material, edges, emissive, alpha
@@ -148,6 +151,16 @@ vec3 skyColor(vec3 d) {
   vec3 c = mix(horizon, zenith, pow(t, 0.55));
   float sd = max(dot(d, uSunDir), 0.0);
   c += vec3(1.0, 0.93, 0.8) * (pow(sd, 6.0) * 0.12 + pow(sd, 64.0) * 0.35);   // glow
+  if (uHaze.z > 0.5 && d.y > 0.0) {
+    // clouds: a layer overhead, drifting, lit warm on the sun side and grey underneath
+    vec2 uv = d.xz / (d.y + 0.06) * 1.3 + vec2(uTime * 0.006, uTime * 0.003);
+    float cl = noise(vec3(uv * 1.1, 1.0)) * 0.5 + noise(vec3(uv * 2.6, 2.0)) * 0.3 + noise(vec3(uv * 6.3, 3.0)) * 0.2;
+    float cov = smoothstep(0.48, 0.74, cl) * smoothstep(0.0, 0.22, d.y);
+    float lit = clamp(0.5 + 0.6 * dot(normalize(vec3(d.x, 0.25, d.z)), uSunDir), 0.0, 1.0);
+    vec3 cc = mix(vec3(0.5, 0.5, 0.55), vec3(1.0, 0.9, 0.78), lit);
+    cc = mix(cc * 0.72, cc * 1.05, smoothstep(0.5, 0.85, cl));
+    c = mix(c, cc, cov * 0.9);
+  }
   c = mix(c, vec3(1.0, 0.98, 0.94), smoothstep(0.9993, 0.9997, sd));          // sun disc
   c = mix(c, horizon * 0.96, smoothstep(0.0, -0.08, d.y));                     // below horizon
   return c;
@@ -389,34 +402,79 @@ void main() {
       base = base * (0.8 + 0.3 * h);
       base = mix(base, vec3(0.8, 0.88, 0.9), smoothstep(0.82, 1.05, h) * 0.35);       // whitecaps
       tRough = 0.08; tMetal = 0.6;
-    } else if (k == 60) {
-      // DEAD AIR terrain: grass and dry grass on the flats, rock on the slopes, sand by the water, mud in the hollows, and roads
-      vec3 q = vWorld;
-      float slope = 1.0 - n.y;
-      float nz = noise(q * 0.045) * 0.55 + noise(q * 0.35) * 0.3 + noise(q * 2.1) * 0.15;
-      vec3 grass = mix(vec3(0.17, 0.27, 0.1), vec3(0.3, 0.36, 0.14), nz);
-      vec3 dry = mix(vec3(0.42, 0.37, 0.2), vec3(0.5, 0.44, 0.26), noise(q * 0.5));
-      vec3 rock = mix(vec3(0.33, 0.31, 0.29), vec3(0.52, 0.5, 0.47), noise(q * vec3(0.3, 1.2, 0.3)));
-      vec3 sand = mix(vec3(0.55, 0.5, 0.36), vec3(0.66, 0.6, 0.44), noise(q * 0.8));
-      base = mix(grass, dry, smoothstep(0.5, 0.8, noise(q * 0.009 + 3.0)));
-      base = mix(base, rock, smoothstep(0.22, 0.42, slope + (nz - 0.5) * 0.15));
-      base = mix(base, rock * 1.25 + vec3(0.12), smoothstep(uWater + 55.0, uWater + 75.0, q.y + nz * 8.0) * (1.0 - smoothstep(0.4, 0.6, slope)));
-      base = mix(base, sand, 1.0 - smoothstep(uWater + 0.4, uWater + 2.4, q.y + nz * 0.8));
-      // roads: tarmac with a worn yellow line, gravel shoulders
-      float rd = 1e9, along = 0.0;
-      for (int i = 0; i < 24; i++) {
-        if (float(i) >= uRoadN) break;
-        vec4 r = uRoads[i];
-        vec2 a = r.xy, b = r.zw, pa = q.xz - a, ba = b - a;
-        float hh = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-        float d = length(pa - ba * hh);
-        if (d < rd) { rd = d; along = hh * length(ba); }
+      if (uGroundBox.z > 0.0) {
+        // lakes and rivers: calm, dark and clear, small ripples close up (smoothed out far away so it doesn't sparkle),
+        // the bottom showing through in the shallows, a lapping line of foam at the shore
+        float far = smoothstep(120.0, 700.0, vViewZ);
+        float r1 = noise(vec3(q * 0.35, t * 0.4)), r2 = noise(vec3(q * 1.3 + 9.0, t * 0.7));
+        n = normalize(mix(vec3((r1 - 0.5) * 0.12 + (r2 - 0.5) * 0.06, 1.0, (noise(vec3(q * 0.35 + 4.0, t * 0.4)) - 0.5) * 0.12 + (r2 - 0.5) * 0.05), vec3(0.0, 1.0, 0.0), far));
+        float dep = texture(uGround, (q - uGroundBox.xy) / uGroundBox.z).a * 32.0;
+        base = mix(vec3(0.05, 0.12, 0.14), vec3(0.03, 0.08, 0.1), smoothstep(2.0, 14.0, dep));
+        base = mix(vec3(0.26, 0.3, 0.2), base, smoothstep(0.2, 3.5, dep));
+        float foam = (1.0 - smoothstep(0.0, 0.9, dep)) * (0.5 + 0.5 * sin(dep * 10.0 - t * 2.0 + r1 * 5.0)) * (1.0 - far);
+        base = mix(base, vec3(0.8, 0.83, 0.8), foam * 0.55);
+        tRough = mix(0.06, 0.18, far); tMetal = mix(0.15, 0.85, smoothstep(0.2, 2.5, dep));
       }
-      float tarmac = 1.0 - smoothstep(4.2, 4.9, rd), shoulder = (1.0 - smoothstep(5.0, 6.5, rd)) * (1.0 - tarmac);
-      base = mix(base, vec3(0.42, 0.39, 0.33) * (0.85 + 0.3 * nz), shoulder);
-      base = mix(base, vec3(0.13, 0.13, 0.14) * (0.85 + 0.3 * noise(q * 3.0)), tarmac);
-      base = mix(base, vec3(0.7, 0.6, 0.2), (1.0 - smoothstep(0.1, 0.22, rd)) * step(0.5, fract(along / 6.0)) * 0.8);
-      tRough = 0.95; tMetal = 0.0;
+    } else if (k == 60) {
+      // DEAD AIR terrain: meadows, farm fields, forest floor, rock with strata on the slopes, snow up high, sand and mud at
+      // the water, packed dirt in the towns, tarmac roads. The ground map says where the roads, towns, woods and water are.
+      vec3 q = vWorld;
+      vec4 G = uGroundBox.z > 0.0 ? texture(uGround, (q.xz - uGroundBox.xy) / uGroundBox.z) : vec4(1.0, 0.0, 0.0, 0.0);
+      float road = G.r * 16.0, urban = G.g, forest = G.b;
+      float slope = 1.0 - n.y, dist = vViewZ;
+      float n1 = noise(q * 0.018), n2 = noise(q * 0.09), n3 = noise(q * 0.55), n4 = noise(q * 2.9);
+      float nz = n1 * 0.45 + n2 * 0.3 + n3 * 0.17 + n4 * 0.08;
+      float near = 1.0 - smoothstep(60.0, 320.0, dist);
+      vec3 grass = mix(vec3(0.19, 0.29, 0.09), vec3(0.32, 0.37, 0.14), smoothstep(0.3, 0.7, n2));
+      grass = mix(grass, vec3(0.46, 0.42, 0.22), smoothstep(0.55, 0.85, n1) * 0.75);
+      grass *= 0.86 + 0.3 * n4 * near;
+      // a patchwork of fields away from the woods and the hills
+      vec2 fq = q.xz + vec2(n1 - 0.5, n2 - 0.5) * 40.0;
+      vec2 fc = floor(fq / vec2(96.0, 74.0));
+      float fh = hash(vec3(fc, 4.0));
+      float fieldMask = (1.0 - smoothstep(0.1, 0.3, forest)) * (1.0 - smoothstep(0.06, 0.14, slope)) * step(0.3, fh) * (1.0 - urban) * smoothstep(uWater + 2.0, uWater + 5.0, q.y);
+      vec2 fe = abs(fract(fq / vec2(96.0, 74.0)) - 0.5);
+      fieldMask *= 1.0 - smoothstep(0.44, 0.49, max(fe.x, fe.y));          // hedges between them
+      float rows = 0.5 + 0.5 * sin((fh > 0.65 ? fq.x : fq.y) * 2.4);
+      vec3 crop = fh > 0.82 ? vec3(0.62, 0.52, 0.24) : fh > 0.64 ? vec3(0.36, 0.27, 0.16) : fh > 0.47 ? vec3(0.44, 0.47, 0.17) : vec3(0.25, 0.35, 0.11);
+      crop *= 0.84 + 0.24 * rows * near;
+      base = mix(grass, crop, fieldMask);
+      // forest floor
+      base = mix(base, mix(vec3(0.11, 0.14, 0.07), vec3(0.2, 0.16, 0.09), n3), smoothstep(0.15, 0.55, forest));
+      // rock on the slopes, in layers
+      float strata = noise(vec3(q.x * 0.04, q.y * 0.8, q.z * 0.04));
+      vec3 rock = mix(vec3(0.29, 0.28, 0.26), vec3(0.52, 0.49, 0.45), strata * 0.65 + n3 * 0.35);
+      float rockAmt = smoothstep(0.17, 0.33, slope + (nz - 0.5) * 0.2);
+      base = mix(base, rock, rockAmt);
+      float snow = smoothstep(205.0, 245.0, q.y + nz * 30.0) * (1.0 - smoothstep(0.4, 0.65, slope));
+      base = mix(base, vec3(0.88, 0.9, 0.94), snow);
+      // towns: packed dirt and worn grass
+      base = mix(base, mix(vec3(0.34, 0.31, 0.25), vec3(0.46, 0.44, 0.39), n3), urban * 0.8);
+      // the shore: sand, then dark wet mud at the waterline
+      float shore = 1.0 - smoothstep(uWater + 0.6, uWater + 3.2, q.y + nz * 1.4);
+      base = mix(base, mix(vec3(0.56, 0.5, 0.36), vec3(0.67, 0.61, 0.46), n4), shore);
+      base = mix(base, vec3(0.2, 0.18, 0.13), 1.0 - smoothstep(uWater - 0.3, uWater + 0.8, q.y));
+      // roads: tarmac, patched, with gravel shoulders and a faded edge line
+      float tarmac = 1.0 - smoothstep(4.3, 5.0, road), shoulder = (1.0 - smoothstep(5.2, 7.2, road)) * (1.0 - tarmac);
+      base = mix(base, vec3(0.41, 0.38, 0.32) * (0.85 + 0.3 * nz), shoulder);
+      vec3 tar = vec3(0.13, 0.13, 0.14) * (0.78 + 0.32 * n3 + 0.2 * n4 * near);
+      tar = mix(tar, vec3(0.075), smoothstep(0.62, 0.8, noise(q * 0.3)) * 0.7);
+      base = mix(base, tar, tarmac);
+      base = mix(base, vec3(0.72, 0.7, 0.62), (smoothstep(3.6, 3.75, road) - smoothstep(3.85, 4.0, road)) * 0.55 * near);
+      // small bumps for the light to catch, close up
+      vec3 bump = vec3(noise(q * 0.7) - 0.5, 0.0, noise(q * 0.7 + 7.3) - 0.5) * (0.5 * rockAmt + 0.16) * (1.0 - tarmac) * near;
+      n = normalize(n + bump);
+      tRough = mix(0.96, 0.78, tarmac); tMetal = 0.0;
+      if (snow > 0.5) tRough = 0.55;
+    } else if (k == 61) {
+      // leaves / needles: clumpy light and dark, darker inside the crown and underneath
+      float lf = noise(vWorld * 1.6) * 0.55 + noise(vWorld * 4.7) * 0.45;
+      base *= (0.6 + 0.65 * lf) * mix(0.5, 1.08, smoothstep(-0.5, 0.45, vLocal.y));
+      tRough = 0.93; tMetal = 0.0;
+    } else if (k == 62) {
+      // bark
+      float br = noise(vec3(vWorld.x * 7.0, vWorld.y * 0.9, vWorld.z * 7.0));
+      base *= 0.65 + 0.55 * br; tRough = 0.97; tMetal = 0.0;
     } else if (k == 9) {
       // LED screen: tiny pixels, gently scrolling bands
       vec2 c = p / 0.12;
@@ -790,6 +848,14 @@ void main() {
     fogCol = vec3(0.045, 0.05, 0.065);
     f = 1.0 - exp(-pow(uFogDensity * 1.7 * vViewZ, 2.0));
   }
+  if (uHaze.x > 0.0 && !studio && !(indoor && !inRoom)) {
+    // aerial haze: thicker low down, thinner up high; light from the sun scattered into it; a fade at the far edge
+    float dist = length(vWorld - uCamPos), dy = vWorld.y - uCamPos.y, k = uHaze.y;
+    float hf = exp(-k * max(uCamPos.y, 0.0)) * (abs(k * dy) > 0.01 ? (1.0 - exp(-k * dy)) / (k * dy) : 1.0);
+    f = 1.0 - exp(-uHaze.x * dist * hf);
+    f = max(f, smoothstep(uHaze.w * 0.72, uHaze.w, dist));
+    fogCol = uFogColor + vec3(0.32, 0.2, 0.06) * pow(max(dot(vd, L), 0.0), 6.0);
+  }
   display = mix(display, fogCol, f);
   outColor = vec4(display, uAlpha);
 }`;
@@ -864,6 +930,42 @@ function cylinderYGeometry(seg = 28) {
   const g = cylinderGeometry(seg), v = g.verts;
   for (let i = 0; i < v.length; i += 3) { const y = v[i + 1]; v[i + 1] = v[i + 2]; v[i + 2] = -y; }
   return g;
+}
+
+// trees: a pine is a stack of drooping cones (layers = 1 gives a single cone), in a unit box (base at y = -0.5)
+function pineGeometry(layers = 4, seg = 9) {
+  const v = [], idx = [];
+  for (let L = 0; L < layers; L++) {
+    const f = layers === 1 ? 0 : L / layers;
+    const y0 = -0.5 + f * 0.78, y1 = layers === 1 ? 0.5 : y0 + 0.42, r = layers === 1 ? 0.5 : 0.5 * (1 - f * 0.78);
+    const c = v.length / 6, ny = r / (y1 - y0 + 1e-6);
+    v.push(0, y1, 0, 0, 1, 0);
+    for (let j = 0; j <= seg; j++) {
+      const a = (j / seg) * Math.PI * 2 + L * 0.7, x = Math.cos(a), z = Math.sin(a), rr = r * (0.9 + 0.2 * ((j * 7 + L * 3) % 5) / 5);
+      const l = Math.hypot(1, ny);
+      v.push(x * rr, y0 - 0.04, z * rr, x / l, ny / l, z / l);
+    }
+    for (let j = 0; j < seg; j++) idx.push(c, c + 2 + j, c + 1 + j);
+    const b = v.length / 6;                               // underside
+    v.push(0, y0 + 0.06, 0, 0, -1, 0);
+    for (let j = 0; j <= seg; j++) { const a = (j / seg) * Math.PI * 2 + L * 0.7; v.push(Math.cos(a) * r * 0.95, y0 - 0.03, Math.sin(a) * r * 0.95, 0, -1, 0); }
+    for (let j = 0; j < seg; j++) idx.push(b, b + 1 + j, b + 2 + j);
+  }
+  return { verts: new Float32Array(v), indices: new Uint16Array(idx) };
+}
+// a lumpy round crown for broadleaf trees
+function blobGeometry(seg = 11, rings = 7) {
+  const v = [], idx = [];
+  const bump = (x, y, z) => 1 + 0.16 * Math.sin(x * 5.1 + y * 2.3) * Math.sin(z * 4.7 - y * 3.1) + 0.08 * Math.sin(x * 11 + z * 9);
+  for (let i = 0; i <= rings; i++) {
+    const th = (i / rings) * Math.PI, sy = Math.cos(th), sr = Math.sin(th);
+    for (let j = 0; j <= seg; j++) {
+      const ph = (j / seg) * Math.PI * 2, x = Math.cos(ph) * sr, z = Math.sin(ph) * sr, k = bump(x, sy, z) * (sy < -0.3 ? 0.85 : 1);
+      v.push(x * 0.5 * k, sy * 0.5 * k, z * 0.5 * k, x, sy, z);
+    }
+  }
+  for (let i = 0; i < rings; i++) for (let j = 0; j < seg; j++) { const a = i * (seg + 1) + j, b = a + seg + 1; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+  return { verts: new Float32Array(v), indices: new Uint16Array(idx) };
 }
 
 // box with real (physical) rounded edges of radius r, for a box of size D; returned in unit space
@@ -972,7 +1074,7 @@ export class Renderer {
     this.shadowProg = compile(gl, SHADOW_VERT, SHADOW_FRAG);
     this.u = {};
     for (const name of ['uProj', 'uView', 'uModel', 'uScale', 'uColor', 'uFogColor', 'uSunDir', 'uCamPos',
-      'uSkyTop', 'uGrid', 'uEdges', 'uEmissive', 'uAlpha', 'uFogDensity', 'uShadowOn', 'uSky', 'uLightVP', 'uShadowMap', 'uViewUnder', 'uRoom', 'uRoomTop', 'uAO', 'uRim', 'uMat', 'uStudio', 'uStudioFwd', 'uStudioKey', 'uTime', 'uInst', 'uRoads', 'uRoadN', 'uWater']) {
+      'uSkyTop', 'uGrid', 'uEdges', 'uEmissive', 'uAlpha', 'uFogDensity', 'uShadowOn', 'uSky', 'uLightVP', 'uShadowMap', 'uViewUnder', 'uRoom', 'uRoomTop', 'uAO', 'uRim', 'uMat', 'uStudio', 'uStudioFwd', 'uStudioKey', 'uTime', 'uInst', 'uRoads', 'uRoadN', 'uWater', 'uGround', 'uGroundBox', 'uHaze']) {
       this.u[name] = gl.getUniformLocation(this.prog, name);
     }
     this.su = {
@@ -986,8 +1088,8 @@ export class Renderer {
     this.vao = cube.vao;
     this.indexCount = cube.count;
     this.cube = cube;
-    this.meshes = { sphere: this.makeMesh(sphereGeometry()), cyl: this.makeMesh(cylinderGeometry()), cylY: this.makeMesh(cylinderYGeometry()) };
-    this.meshesLo = { sphere: this.makeMesh(sphereGeometry(20, 13)), cyl: this.makeMesh(cylinderGeometry(18)), cylY: this.makeMesh(cylinderYGeometry(18)) };
+    this.meshes = { sphere: this.makeMesh(sphereGeometry()), cyl: this.makeMesh(cylinderGeometry()), cylY: this.makeMesh(cylinderYGeometry()), pine: this.makeMesh(pineGeometry()), blob: this.makeMesh(blobGeometry()), cone: this.makeMesh(pineGeometry(1)) };
+    this.meshesLo = { sphere: this.makeMesh(sphereGeometry(20, 13)), cyl: this.makeMesh(cylinderGeometry(18)), cylY: this.makeMesh(cylinderYGeometry(18)), pine: this.meshes.pine, blob: this.meshes.blob, cone: this.meshes.cone };
     this.camPos = [0, 0, 0];
     this.lodDist = 16;      // past this, curved parts use the lighter meshes (still smooth)
     this.rounded = new Map();
@@ -1024,6 +1126,7 @@ export class Renderer {
     gl.uniform3fv(this.u.uFogColor, this.fogColor);
     gl.uniform3fv(this.u.uSkyTop, [0.48, 0.64, 0.86]);
     gl.uniform1i(this.u.uShadowMap, 1);
+    gl.uniform1i(this.u.uGround, 2);
     gl.uniformMatrix4fv(this.u.uLightVP, false, this.lightVP);
     this.drawCalls = 0;
   }
@@ -1205,6 +1308,25 @@ export class Renderer {
     gl.useProgram(this.prog);
     gl.uniform4fv(this.u.uRoads, a); gl.uniform1f(this.u.uRoadN, Math.min(24, list.length)); gl.uniform1f(this.u.uWater, water);
   }
+  // the ground map texture (Uint8 RGBA, size x size) covering a square of the world
+  setGround(data, size, x0, z0, span) {
+    const gl = this.gl;
+    if (!this.groundTex) this.groundTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.groundTex);
+    if (data) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    gl.activeTexture(gl.TEXTURE0);
+    gl.useProgram(this.prog);
+    gl.uniform1i(this.u.uGround, 2);
+    gl.uniform4f(this.u.uGroundBox, x0, z0, data ? span : 0, 0);
+  }
+  setHaze(density, falloff, clouds, far) { const gl = this.gl; gl.useProgram(this.prog); gl.uniform4f(this.u.uHaze, density, falloff, clouds ? 1 : 0, far); }
   drawMesh(m, model, color, grid = 0, mat) {
     const gl = this.gl, u = this.u;
     const mt = mat ? (MATS[mat] || mat) : MATS.auto;

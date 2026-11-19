@@ -135,6 +135,7 @@ export const CSS = `
 .da-meter i { border-radius: 5px; overflow: hidden; } .da-meter i::after { border-radius: 5px; box-shadow: 0 0 12px var(--c, #7dff9a); }
 .da-right { background: linear-gradient(180deg, rgba(10,12,16,.55), rgba(10,12,16,.35)); padding: 10px 14px; border-radius: 10px; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.08); }
 .da-evs div { border-radius: 0 8px 8px 0; backdrop-filter: blur(6px); background: rgba(8,10,12,.5); }
+.da-bigmap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(78vh, 620px); height: min(78vh, 620px); border-radius: 14px; border: 2px solid rgba(255,255,255,.25); box-shadow: 0 10px 40px rgba(0,0,0,.6); z-index: 5; }
 .da-map { border-radius: 12px; backdrop-filter: blur(6px); box-shadow: 0 6px 24px rgba(0,0,0,.4); }
 .da-act { border-radius: 8px; font-size: 15px !important; padding: 9px 12px; white-space: nowrap; box-shadow: 0 4px 0 #8a6a10, 0 0 24px rgba(255,207,58,.45); animation: dapulse 1.4s ease-in-out infinite; }
 .da-act.alt { animation: none; box-shadow: 0 4px 0 #000; backdrop-filter: blur(6px); }

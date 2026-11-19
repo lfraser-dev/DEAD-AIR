@@ -14,6 +14,7 @@ import { StaticBatches } from '../batch.js';
 import { Effects } from '../effects.js';
 import { buildWorld, HANGAR, WORLD, LOOT_TYPES } from './map.js';
 import { WATER } from './terrain.js';
+import { Forest } from './trees.js';
 import { Horde, TYPES } from './horde.js';
 import { Chopper, chopperParts, qrot, qmat } from './chopper.js';
 import { SLOTS, SLOT, PAINTS, PAINT, loadSave, saveSave, statsFor, bars } from './data.js';
@@ -22,7 +23,7 @@ import { ROLES, ROLE_IDS, WEAPONS, ARMORS, ITEMS, newMember, recruitCost, Raid, 
 import { makeTransport, code5, ZT, ZS, q1, q2 } from './coop.js';
 import { CSS } from './ui.js';
 
-const FOG = [0.76, 0.56, 0.42], SKY = [0.2, 0.25, 0.46], SUN = [0.62, 0.42, 0.34];
+const FOG = [0.8, 0.74, 0.66], SKY = [0.26, 0.42, 0.68], SUN = [0.6, 0.48, 0.36];
 const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const CAMS = {
   all: [0.75, 0.22, 21, [0, 0.4, 1.5]], gun: [0.55, 0.02, 8.5, [0, -0.9, -3.6]], rockets: [1.15, 0.15, 10, [1.6, -0.5, 0.4]],
@@ -54,10 +55,16 @@ export class HeliGame {
     if (seed == null) { this.save = this.save || loadSave(); if (!this.save.seed) { this.save.seed = 1 + Math.floor(Math.random() * 99999); saveSave(this.save); } seed = this.save.seed; }
     if (this.map && this.map.seed === seed) return;
     const t0 = performance.now();
+    if (this.terrain) { this.terrain.dispose(this.r); this.forest.dispose(this.r); this.batches.clear(); }
     this.map = buildWorld(seed); this.map.seed = seed;
     this.terrain = this.map.terrain;
-    this.terrain.buildMeshes(this.r);
-    this.r.setRoads(this.map.roads, WATER);
+    const G = this.map.ground;
+    this.r.setGround(G.data, G.size, G.x0, G.z0, G.span);
+    this.r.setRoads([], WATER);
+    this.forest = new Forest(this.map);
+    this.map.world.trees = this.forest;
+    this.mapImg = null;
+    { const C = this.map.city, e = [C.x, C.y + 150, C.z]; this.terrain.stream(this.r, e, 2900, 99999); this.forest.stream(this.r, e, 99999); }
     this.raid = null;
     this.world = this.map.world;
     this.fobs = this.map.fobs;
@@ -193,6 +200,7 @@ export class HeliGame {
         <div class="da-evs" data-da="evs"></div>
         <div class="da-raid hidden" data-da="raid"></div>
         <canvas class="da-map" data-da="map" width="190" height="190"></canvas>
+        <canvas class="da-bigmap hidden" data-da="bigmap" width="620" height="620"></canvas>
         <div class="da-boss hidden" data-da="boss">TITAN<i></i></div>
         <div class="da-banner" data-da="banner"><b></b><span></span></div>
         <div class="da-warn hidden" data-da="warn"></div>
@@ -375,8 +383,8 @@ export class HeliGame {
     const h = this.$('help');
     const mode = this.save.flight;
     h.innerHTML = mode === 'easy'
-      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>C</kbd> CAMERA<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
-      : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>C</kbd> CAMERA<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
+      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
+      : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
     this.helpT = on ? 22 : 0;
   }
 
@@ -675,6 +683,7 @@ export class HeliGame {
       } else if (this.bombs <= 0) this.feed('OUT OF BOMBS · LAND AT A BASE', 'y');
     }
     if (this.hit('KeyC')) this.camMode = (this.camMode + 1) % 3;
+    if (this.hit('KeyM')) { this.bigMap = !this.bigMap; this.$('bigmap').classList.toggle('hidden', !this.bigMap); }
     if (this.hit('KeyV')) this.sirenOn();
   }
 
@@ -2035,15 +2044,19 @@ export class HeliGame {
   }
 
   markers(list, from, extra = []) {
-    const out = [];
-    for (const mk of list) {
-      if (!mk) continue;
+    const out = [], placed = [];
+    // nearest first; a loot sign that would sit on top of another marker is left out, and far ones are just an icon
+    const sorted = list.filter(Boolean).map((mk) => [mk, Math.hypot(mk.p[0] - from[0], mk.p[2] - from[2]) + (mk.loot ? 2000 : 0)]).sort((a, b) => a[1] - b[1]).map((e) => e[0]);
+    for (const mk of sorted) {
       const q = this.project(mk.p), W = innerWidth, Hh = innerHeight;
       let x = q.x, y = q.y, off = false;
       if (q.behind) { x = W - x; y = Hh - 40; off = true; }
       if (x < 40 || x > W - 40 || y < 70 || y > Hh - 40) off = true;
       if (off) continue;          // off screen: the list and the map show where it is
       const d = Math.round(Math.hypot(mk.p[0] - from[0], mk.p[2] - from[2]));
+      if (mk.loot && placed.some(([px, py]) => Math.abs(px - x) < 120 && Math.abs(py - y) < 34)) continue;
+      placed.push([x, y]);
+      if (mk.loot && d > 260) { out.push(`<div class="da-mark" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px;--c:${mk.col}"><b>${mk.icon}</b></div>`); continue; }
       out.push(`<div class="da-mark${off ? ' off' : ''}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px;--c:${mk.col}"><b>${mk.icon}</b>${mk.text} · ${d}M${mk.sub ? `<small>${mk.sub}</small>` : ''}</div>`);
     }
     this.$('marks').innerHTML = out.join('') + extra.join('');
@@ -2055,39 +2068,64 @@ export class HeliGame {
   // the map picture: the land coloured by height, water, roads, the city and the towns. Made once per world.
   mapImage() {
     if (this.mapImg && this.mapImg.seed === this.map.seed) return this.mapImg;
-    const W = 190, cv = document.createElement('canvas'); cv.width = W; cv.height = W;
-    const c = cv.getContext('2d'), img = c.createImageData(W, W), T = this.terrain, sc = (2 * WORLD) / W;
+    const G = this.map.ground, C = G.hC, W = 512, cv = document.createElement('canvas'); cv.width = W; cv.height = W;
+    const c = cv.getContext('2d'), img = c.createImageData(W, W), Hs = G.heights, sc = G.span / W;
+    const hAt = (i, j) => Hs[Math.min(C, Math.max(0, j)) * (C + 1) + Math.min(C, Math.max(0, i))];
     for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) {
-      const x = -WORLD + (i + 0.5) * sc, z = -WORLD + (j + 0.5) * sc, h = T.heightAt(x, z), sl = T.slopeAt(x, z);
+      const h = hAt(i, j), sh = clamp((hAt(i - 1, j - 1) - hAt(i + 1, j + 1)) * 0.05, -0.35, 0.35);
+      const gd = G.data[((Math.floor(j / W * G.size)) * G.size + Math.floor(i / W * G.size)) * 4 + 2] / 255;
       let col;
-      if (h < WATER + 0.3) col = [38, 66, 92];
-      else { const k = clamp((h - WATER) / 160, 0, 1); col = [62 + k * 70 + sl * 90, 74 + k * 52 + sl * 60, 46 + k * 60 + sl * 60]; }
-      const o = (j * W + i) * 4; img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 235;
+      if (h < WATER + 0.2) { const d = clamp(-h / 12, 0, 1); col = [70 - d * 30, 110 - d * 40, 130 - d * 30]; }
+      else {
+        const k = clamp((h - WATER) / 200, 0, 1);
+        col = [96 + k * 80, 116 + k * 50, 66 + k * 70];
+        col = col.map((v, n) => v * (1 - gd * 0.45) + [40, 70, 36][n] * gd * 0.45);
+        if (h > 215) col = col.map((v) => v + (230 - v) * clamp((h - 215) / 30, 0, 1));
+        col = col.map((v) => v * (1 + sh));
+      }
+      const o = (j * W + i) * 4; img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
     }
     c.putImageData(img, 0, 0);
-    const X = (v) => (v + WORLD) / sc;
-    c.strokeStyle = 'rgba(30,30,32,.8)'; c.lineWidth = 1.4;
+    const X = (v) => (v + G.span / 2) / sc;
+    c.strokeStyle = 'rgba(232,214,170,.85)'; c.lineWidth = 1.6; c.lineCap = 'round';
     for (const r of this.map.roads) { c.beginPath(); c.moveTo(X(r[0]), X(r[1])); c.lineTo(X(r[2]), X(r[3])); c.stroke(); }
-    const C = this.map.city;
-    c.fillStyle = 'rgba(70,70,76,.85)'; c.fillRect(X(C.x - C.r), X(C.z - C.r), (2 * C.r) / sc, (2 * C.r) / sc);
-    c.fillStyle = 'rgba(80,78,74,.85)';
-    for (const t of this.map.towns) c.fillRect(X(t.x) - 4, X(t.z) - 4, 8, 8);
+    c.fillStyle = 'rgba(60,60,66,.9)';
+    for (const s of this.map.cities) { const r = s.kind === 'city' ? this.map.city.r : 150; c.fillRect(X(s.x - r), X(s.z - r), (2 * r) / sc, (2 * r) / sc); }
+    for (const t of this.map.towns) { c.fillStyle = 'rgba(70,64,58,.9)'; const r = t.kind === 'town' ? 6 : 4; c.fillRect(X(t.x) - r, X(t.z) - r, r * 2, r * 2); }
     this.mapImg = cv; cv.seed = this.map.seed;
     return cv;
   }
+  // the minimap: centred on you, north up, about 2.4 km across. M opens the whole map.
   minimap(pos, heading, list, zombies) {
-    const cv = this.$('map'), c = cv.getContext('2d'), W = cv.width, sc = W / (2 * WORLD);
-    const X = (x) => (x + WORLD) * sc, Z = (z) => (z + WORLD) * sc;
-    c.clearRect(0, 0, W, W);
-    c.drawImage(this.mapImage(), 0, 0, W, W);
-    c.fillStyle = 'rgba(255,90,58,.85)';
-    for (const z of zombies) if (z.alive) c.fillRect(X(z.x) - 0.6, Z(z.z) - 0.6, 1.4, 1.4);
+    const big = this.bigMap, cv = this.$(big ? 'bigmap' : 'map'), c = cv.getContext('2d'), W = cv.width;
+    const G = this.map.ground, span = big ? G.span : 2400, sc = W / span;
+    const ox = big ? -G.span / 2 : pos[0] - span / 2, oz = big ? -G.span / 2 : pos[2] - span / 2;
+    const X = (x) => (x - ox) * sc, Z = (z) => (z - oz) * sc;
+    const img = this.mapImage(), isc = img.width / G.span;
+    c.fillStyle = '#1b2228'; c.fillRect(0, 0, W, W);
+    c.drawImage(img, (ox + G.span / 2) * isc, (oz + G.span / 2) * isc, span * isc, span * isc, 0, 0, W, W);
+    if (!big) { c.fillStyle = 'rgba(255,90,58,.85)'; for (const z of zombies) if (z.alive) c.fillRect(X(z.x) - 0.8, Z(z.z) - 0.8, 1.6, 1.6); }
+    if (big) {
+      c.font = 'bold 11px sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(255,255,255,.85)';
+      for (const s of this.map.cities) c.fillText(s.kind === 'city' ? 'THE CITY' : 'SMALL CITY', X(s.x), Z(s.z) - (s.kind === 'city' ? 46 : 26));
+    }
     for (const mk of list) {
       if (!mk) continue;
+      const x = X(mk.p[0]), y = Z(mk.p[2]);
+      if (x < -6 || y < -6 || x > W + 6 || y > W + 6) continue;
       c.fillStyle = mk.col;
-      if (mk.loot) { c.fillRect(X(mk.p[0]) - 1.5, Z(mk.p[2]) - 1.5, 3, 3); continue; }
-      c.beginPath(); c.arc(X(mk.p[0]), Z(mk.p[2]), mk.fob ? 5 : 4, 0, 6.3); c.fill();
-      if (mk.fob) { c.fillStyle = '#111'; c.font = 'bold 8px sans-serif'; c.textAlign = 'center'; c.fillText('H', X(mk.p[0]), Z(mk.p[2]) + 3); }
+      if (mk.loot) { c.fillRect(x - 1.8, y - 1.8, 3.6, 3.6); continue; }
+      c.beginPath(); c.arc(x, y, mk.fob ? 6 : 4.5, 0, 6.3); c.fill();
+      if (mk.fob) { c.fillStyle = '#111'; c.font = 'bold 9px sans-serif'; c.textAlign = 'center'; c.fillText('H', x, y + 3); }
+    }
+    // the Spire off the edge: an arrow pointing home
+    const sp = this.map.spire;
+    if (!big && sp) {
+      const x = X(sp.padAt[0]), y = Z(sp.padAt[2]);
+      if (x < 0 || y < 0 || x > W || y > W) {
+        const a = Math.atan2(y - W / 2, x - W / 2), ex = W / 2 + Math.cos(a) * (W / 2 - 10), ey = W / 2 + Math.sin(a) * (W / 2 - 10);
+        c.save(); c.translate(ex, ey); c.rotate(a); c.fillStyle = '#5ab4ff'; c.beginPath(); c.moveTo(8, 0); c.lineTo(-5, -6); c.lineTo(-5, 6); c.closePath(); c.fill(); c.restore();
+      }
     }
     c.save(); c.translate(X(pos[0]), Z(pos[2])); c.rotate(-heading);
     c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = 1; c.beginPath(); c.moveTo(0, -7); c.lineTo(5, 5); c.lineTo(0, 2); c.lineTo(-5, 5); c.closePath(); c.fill(); c.stroke(); c.restore();
@@ -2282,13 +2320,14 @@ export class HeliGame {
     if (this.save.gfx === 'low') fog = Math.max(fog, 0.0075);
     const aspect = r.resize();
     const vfov = (64 * Math.PI) / 180;
-    perspective(this.proj, vfov, aspect, 0.4, 1100);
+    perspective(this.proj, vfov, aspect, 0.5, this.mode === 'hangar' ? 1100 : 4200);
     lookDir(this.view, eye, fwd, [0, 1, 0], roll);
     mul(this.vp, this.proj, this.view);
     r.setStudio(null); r.setRoom(null); r.setUnder(false); r.setRim(null);
     const sc = [Math.round(focus[0] / 4) * 4, 0, Math.round(focus[2] / 4) * 4];
     r.setShadowArea(sc, 80);
-    const farCull = 2.4 / fog;
+    const farCull = this.mode === 'hangar' ? 400 : this.save.gfx === 'low' ? 1500 : this.viewDist || 2800;
+    this.hazeD = 0.12 * fog * (this.save.gfx === 'low' ? 1.3 : 1);
     const tv = Math.tan(vfov / 2), kf = Math.hypot(tv, tv * aspect), kr = Math.sqrt(1 + kf * kf);
     const view = (c, rad) => {
       const dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2], d2 = dx * dx + dy * dy + dz * dz;
@@ -2298,6 +2337,9 @@ export class HeliGame {
       return Math.sqrt(Math.max(0, d2 - al * al)) <= al * kf + rad * kr;
     };
     const near = (c, rad) => Math.abs(c[0] - sc[0]) < 130 + rad && Math.abs(c[2] - sc[2]) < 130 + rad;
+    const outside = this.mode !== 'hangar';
+    if (outside) { this.terrain.stream(r, eye, farCull + 200, this.streamBudget || 5); this.forest.stream(r, eye, this.streamBudget ? Math.max(2, this.streamBudget - 1) : 4); }
+    r.setHaze(outside ? this.hazeD : 0, 0.0042, outside, farCull);
     const zn = this.horde.fill(r, this.zBatches, eye, fwd, kf);
     const zb = Object.values(this.zBatches);
     const sn = this.fillSmoke(eye);
@@ -2307,7 +2349,10 @@ export class HeliGame {
     if (shadows) {
     r.beginShadow();
     this.batches.drawShadows(0, near);
-    if (this.terrain?.chunks && this.mode !== 'hangar') for (const c of this.terrain.chunks) if (near(c.center, 32)) r.shadowMesh(c.mesh, c.model);
+    if (outside) {
+      for (const c of this.terrain.chunks) if (near(c.center, 64)) r.shadowMesh(c.mesh, c.model);
+      for (const c of this.forest.visible) if (near(c.center, 64)) { for (const b of c.batches) r.shadowBatch(b); if (c.trunks) r.shadowBatch(c.trunks); }
+    }
     for (const b of this.live) if (!b.noShadow && near(b.center, 10)) r.shadowDraw(b.model, b.shape, b.scale);
     for (const p of solid) r.shadowDraw(p.model, p.shape, p.scale);
     for (const p of exS) r.shadowDraw(p.model, p.shape, p.scale);
@@ -2321,7 +2366,15 @@ export class HeliGame {
     r.drawSky(eye);
     r.setBlend(false);
     this.batches.draw(0, view);
-    if (this.terrain?.chunks && this.mode !== 'hangar') for (const c of this.terrain.chunks) if (view(c.center, c.radius)) r.drawMesh(c.mesh, c.model, [1, 1, 1], 60);
+    if (outside) {
+      for (const c of this.terrain.chunks) if (view(c.center, c.radius)) r.drawMesh(c.mesh, c.model, [1, 1, 1], 60);
+      this.forest.draw = this.save.gfx === 'low' ? 650 : 1100;
+      for (const c of this.forest.visible) if (view(c.center, c.radius)) {
+        for (const b of c.batches) r.drawBatch(b);
+        if (c.trunks && Math.hypot(c.center[0] - eye[0], c.center[2] - eye[2]) < 520) r.drawBatch(c.trunks);
+      }
+      r.endBatches();
+    }
     for (const b of this.live) if ((b.alpha ?? 1) >= 1 && view(b.center, 0.5 * Math.hypot(...b.scale))) r.drawBox(b);
     if (zn) { for (const b of zb) r.drawBatch(b); r.endBatches(); }
     for (const p of solid) r.drawPart(p, 0);

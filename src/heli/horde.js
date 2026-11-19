@@ -24,6 +24,8 @@ const PANTS = [[0.15, 0.17, 0.24], [0.22, 0.2, 0.16], [0.12, 0.12, 0.12], [0.3, 
 
 const CELL = 4, GX0 = -WORLD, GZ0 = -WORLD, NX = Math.ceil((2 * WORLD) / CELL), NZ = NX;
 const cellOf = (x, z) => { const i = Math.floor((x - GX0) / CELL), k = Math.floor((z - GZ0) / CELL); return i < 0 || k < 0 || i >= NX || k >= NZ ? -1 : k * NX + i; };
+const FR = 110, HB = 1 << 16;
+const fv = (F, c) => { const a = (c % NX) - F.i0, b = Math.floor(c / NX) - F.k0; return a < 0 || b < 0 || a >= F.W || b >= F.W ? 65535 : F.f[b * F.W + a]; };
 const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 const hash = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
@@ -34,43 +36,52 @@ export class Horde {
     this.m = mat4();
     this.fields = new Map();
     this.piles = new Map();
-    this.head = new Int32Array(NX * NZ); this.next = new Int32Array(4000);
-    // squares zombies can't stand in: buildings, water, cliffs
-    this.block = new Uint8Array(NX * NZ);
-    const T = this.T;
-    for (let k = 0; k < NZ; k++) for (let i = 0; i < NX; i++) {
+    this.head = new Int32Array(HB); this.next = new Int32Array(4000);
+    // squares zombies can't stand in (buildings, water, cliffs), worked out 16 x 16 squares at a time when first asked
+    this.blk = new Uint8Array(NX * NZ);        // 0 = not worked out yet, 1 = open, 2 = blocked
+    this.blockedAt = (x, z) => { const c = cellOf(x, z); return c < 0 || this.isBlocked(c); };
+  }
+  isBlocked(c) { let v = this.blk[c]; if (!v) { this.blockTile(c); v = this.blk[c]; } return v === 2; }
+  blockTile(c) {
+    const T = this.T, world = this.world, i0 = (c % NX) - ((c % NX) % 16), k0 = Math.floor(c / NX) - (Math.floor(c / NX) % 16);
+    for (let k = k0; k < Math.min(NZ, k0 + 16); k++) for (let i = i0; i < Math.min(NX, i0 + 16); i++) {
       const x = GX0 + (i + 0.5) * CELL, z = GZ0 + (k + 0.5) * CELL, gy = T.heightAt(x, z);
-      if (gy < WATER + 0.4 || T.slopeAt(x, z) > 0.55 || World_pointInside(world, [x, gy + 2, z]) || World_pointInside(world, [x + 1.4, gy + 2, z + 1.4]) || World_pointInside(world, [x - 1.4, gy + 2, z - 1.4])) this.block[k * NX + i] = 1;
+      const b = gy < WATER + 0.4 || T.slopeAt(x, z) > 0.55 || World_pointInside(world, [x, gy + 2, z]) || World_pointInside(world, [x + 1.4, gy + 2, z + 1.4]) || World_pointInside(world, [x - 1.4, gy + 2, z - 1.4]);
+      this.blk[k * NX + i] = b ? 2 : 1;
     }
-    this.blockedAt = (x, z) => { const c = cellOf(x, z); return c < 0 || !!this.block[c]; };
   }
 
   clear() { this.list.length = 0; this.events.length = 0; this.piles.clear(); }
   groundAt(x, z) { return this.T.heightAt(x, z); }
 
-  // distance-to-goal for every square
-  field(key, isGoal) {
-    let f = this.fields.get(key);
-    if (f) return f;
-    f = new Uint16Array(NX * NZ).fill(65535);
-    const q = new Int32Array(NX * NZ); let h = 0, t = 0;
-    for (let c = 0; c < NX * NZ; c++) if (!this.block[c] && isGoal(GX0 + ((c % NX) + 0.5) * CELL, GZ0 + (Math.floor(c / NX) + 0.5) * CELL)) { f[c] = 0; q[t++] = c; }
+  // distance-to-goal for every square within FR squares of the goal (further out they just head straight for it)
+  field(key, isGoal, cx, cz) {
+    let F = this.fields.get(key);
+    if (F) return F;
+    const W = FR * 2 + 1, i0 = Math.floor((cx - GX0) / CELL) - FR, k0 = Math.floor((cz - GZ0) / CELL) - FR;
+    const f = new Uint16Array(W * W).fill(65535), q = new Int32Array(W * W); let h = 0, t = 0;
+    F = { f, i0, k0, W };
+    const ok = (i, k) => i >= 0 && k >= 0 && i < NX && k < NZ && !this.isBlocked(k * NX + i);
+    for (let b = 0; b < W; b++) for (let a = 0; a < W; a++) {
+      const i = i0 + a, k = k0 + b;
+      if (ok(i, k) && isGoal(GX0 + (i + 0.5) * CELL, GZ0 + (k + 0.5) * CELL)) { f[b * W + a] = 0; q[t++] = b * W + a; }
+    }
     while (h < t) {
-      const c = q[h++], i = c % NX, k = (c - i) / NX, d = f[c] + 1;
-      if (d > 400) continue;                         // far enough: beyond this they just head straight for it
+      const c = q[h++], a = c % W, b = (c - a) / W, d = f[c] + 1;
       for (let n = 0; n < 4; n++) {
-        const ii = i + N8[n][0], kk = k + N8[n][1];
-        if (ii < 0 || kk < 0 || ii >= NX || kk >= NZ) continue;
-        const cc = kk * NX + ii;
-        if (this.block[cc] || f[cc] <= d) continue;
+        const aa = a + N8[n][0], bb = b + N8[n][1];
+        if (aa < 0 || bb < 0 || aa >= W || bb >= W) continue;
+        const cc = bb * W + aa;
+        if (f[cc] <= d || !ok(i0 + aa, k0 + bb)) continue;
         f[cc] = d; q[t++] = cc;
       }
     }
-    this.fields.set(key, f);
-    return f;
+    if (this.fields.size > 40) this.fields.delete(this.fields.keys().next().value);
+    this.fields.set(key, F);
+    return F;
   }
-  roofField(r) { const b = r.box; return this.field(`roof${b.id}`, (x, z) => x > b.min[0] - 5 && x < b.max[0] + 5 && z > b.min[2] - 5 && z < b.max[2] + 5); }
-  pointField(key, px, pz, r = 6) { return this.field(key, (x, z) => Math.hypot(x - px, z - pz) < r); }
+  roofField(r) { const b = r.box; return this.field(`roof${b.id}`, (x, z) => x > b.min[0] - 5 && x < b.max[0] + 5 && z > b.min[2] - 5 && z < b.max[2] + 5, r.x, r.z); }
+  pointField(key, px, pz, r = 6) { return this.field(key, (x, z) => Math.hypot(x - px, z - pz) < r, px, pz); }
   dropField(key) { this.fields.delete(key); }
 
   spawn(type, x, z, o = {}) {
@@ -130,7 +141,7 @@ export class Horde {
     for (let i = 0; i < L.length && i < 4000; i++) {
       const z = L[i]; if (!z.alive || z.st !== 'walk') continue;
       const c = cellOf(z.x, z.z); if (c < 0) continue;
-      this.next[i] = this.head[c]; this.head[c] = i;
+      this.next[i] = this.head[c & (HB - 1)]; this.head[c & (HB - 1)] = i;
     }
     let grabbers = 0;
     for (const z of L) if (z.alive && z.st === 'grab') grabbers++;
@@ -247,7 +258,7 @@ export class Horde {
         else this.followField(z, this.pointField(`foot${tg.box.id}`, pl.x + pl.nx * 3, pl.z + pl.nz * 3, 5), (x, y) => { dirx = x; dirz = y; }, fx, fz);
       }
       const f = pl ? null : this.roofField(tg), c = cellOf(z.x, z.z);
-      if (pl) { /* steering set above */ } else if (c >= 0 && f[c] === 0) {
+      if (pl) { /* steering set above */ } else if (c >= 0 && fv(f, c) === 0) {
         // at the wall: join (or start) the pile against it
         const b = tg.box, cx = clamp(z.x, b.min[0], b.max[0]), cz = clamp(z.z, b.min[2], b.max[2]);
         let nx = z.x - cx, nz = z.z - cz; const nd = Math.hypot(nx, nz);
@@ -271,7 +282,7 @@ export class Horde {
       const i = c % NX, k = (c - i) / NX;
       for (let kk = k - 1; kk <= k + 1; kk++) for (let ii = i - 1; ii <= i + 1; ii++) {
         if (ii < 0 || kk < 0 || ii >= NX || kk >= NZ) continue;
-        for (let j = this.head[kk * NX + ii]; j >= 0; j = this.next[j]) {
+        for (let j = this.head[(kk * NX + ii) & (HB - 1)]; j >= 0; j = this.next[j]) {
           if (j === idx) continue;
           const o = this.list[j], ox = z.x - o.x, oz = z.z - o.z, d2 = ox * ox + oz * oz, rr = 0.42 * (z.s + o.s);
           if (d2 < rr * rr && d2 > 1e-6) { const d = Math.sqrt(d2), k2 = (rr - d) / d; px += ox * k2; pz += oz * k2; }
@@ -291,14 +302,14 @@ export class Horde {
   stuck(x, z) { const gy = this.T.heightAt(x, z); return gy < WATER + 0.3 || World_pointInside(this.world, [x, gy + 2, z]); }
   followField(z, f, set, fx, fz) {
     const c = cellOf(z.x, z.z);
-    if (c < 0 || f[c] >= 65535) { if (fx != null) { const dx = fx - z.x, dz = fz - z.z, d = Math.hypot(dx, dz) || 1; set(dx / d, dz / d); } return; }
+    if (c < 0 || fv(f, c) >= 65535) { if (fx != null) { const dx = fx - z.x, dz = fz - z.z, d = Math.hypot(dx, dz) || 1; set(dx / d, dz / d); } return; }
     const i = c % NX, k = (c - i) / NX;
-    let best = f[c], bi = -1;
+    let best = fv(f, c), bi = -1;
     for (let n = 0; n < 8; n++) {
       const ii = i + N8[n][0], kk = k + N8[n][1];
       if (ii < 0 || kk < 0 || ii >= NX || kk >= NZ) continue;
-      const cc = kk * NX + ii, v = f[cc] + (n >= 4 ? 0.4 : 0);
-      if (n >= 4 && (this.block[k * NX + ii] || this.block[kk * NX + i])) continue;
+      const cc = kk * NX + ii, v = fv(f, cc) + (n >= 4 ? 0.4 : 0);
+      if (n >= 4 && (this.isBlocked(k * NX + ii) || this.isBlocked(kk * NX + i))) continue;
       if (v < best) { best = v; bi = cc; }
     }
     if (bi >= 0) {

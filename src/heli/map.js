@@ -1,13 +1,17 @@
-// DEAD AIR: the open world, made from a seed. Procedural hills and lakes (terrain.js), a dense city in the flattest
-// valley (narrow streets between tall blocks: close quarters), villages out in the hills joined by roads, woods, and one
-// base: THE SPIRE, a huge tower in the city with a landing bay jutting out of its side, high above the streets.
+// DEAD AIR: the open world, made from a seed: 6.4 km of procedural land (terrain.js) with forests (trees.js), and on it
+//   THE CITY      in the flattest valley near the middle: narrow streets between tall blocks (close quarters), and the
+//                 one base, THE SPIRE: a huge tower with a landing bay jutting out of its side, high above the streets
+//   2 SMALL CITIES further out, lower and looser
+//   TOWNS         a crossroads with shops, houses, a gas station and a church
+//   VILLAGES      a few houses and a shop along the road
+//   FARMS, GAS STATIONS on the roads, wrecks, and roads winding between all of it (round the hills, over the rivers)
 // Some buildings are worth raiding (shops, police, pharmacies...): send your team in from the roof or the street.
 import { makeBox } from '../world.js';
 import { compose } from '../math.js';
-import { Terrain, GeoWorld, rng, WATER, HALF as TH } from './terrain.js';
+import { Terrain, GeoWorld, rng, smooth, WATER, HALF as TH } from './terrain.js';
 
 export const WORLD = TH - 60;               // how far you can fly
-export const HANGAR = [1900, 0, 0];         // the upgrade hangar scene, off the map
+export const HANGAR = [5600, 0, 0];         // the upgrade hangar scene, off the map
 export const HALF = 0;                      // (unused now; kept for old imports)
 
 const FACADES = [
@@ -17,6 +21,7 @@ const FACADES = [
 const HOUSES = [[0.85, 0.8, 0.7], [0.7, 0.75, 0.82], [0.88, 0.78, 0.6], [0.75, 0.82, 0.72], [0.9, 0.88, 0.85], [0.8, 0.62, 0.55]];
 const ROOFS = [[0.35, 0.18, 0.14], [0.22, 0.22, 0.25], [0.4, 0.3, 0.22]];
 const CARS = [[0.6, 0.1, 0.08], [0.15, 0.25, 0.5], [0.75, 0.75, 0.72], [0.12, 0.12, 0.13], [0.5, 0.48, 0.3], [0.2, 0.4, 0.3], [0.85, 0.7, 0.15]];
+const LEAFC = [[0.2, 0.32, 0.11], [0.26, 0.36, 0.13], [0.36, 0.38, 0.13], [0.5, 0.36, 0.12]];
 const NEON = [[1, 0.2, 0.6], [0.2, 0.9, 1], [1, 0.85, 0.2], [0.4, 1, 0.4], [0.7, 0.35, 1], [1, 0.45, 0.15]];
 
 // what you can find in a building, by type: [name, sign colour, loot weights]
@@ -31,10 +36,69 @@ export const LOOT_TYPES = {
   gunshop: { n: 'GUN SHOP', col: [0.9, 0.2, 0.2], loot: { weapon: 5, ammo: 5 } },
 };
 
+// the ground map: what's where on the land, as a texture for the terrain shader (and for placing trees).
+//   r = distance to the nearest road (0..16 m), g = town ground, b = how wooded, a = water depth (0..32 m)
+export class Ground {
+  constructor(T, size = 2048) {
+    this.T = T; this.size = size; this.span = TH * 2; this.x0 = -TH; this.z0 = -TH;
+    this.data = new Uint8Array(size * size * 4);
+    for (let i = 0; i < size * size; i++) this.data[i * 4] = 255;
+  }
+  tx(x) { return (x - this.x0) / this.span * this.size; }
+  // stamp a road segment's distance field
+  road(ax, az, bx, bz) {
+    const S = this.size, D = this.data, k = this.span / S, m = 17;
+    const i0 = Math.max(0, Math.floor(this.tx(Math.min(ax, bx) - m))), i1 = Math.min(S - 1, Math.ceil(this.tx(Math.max(ax, bx) + m)));
+    const j0 = Math.max(0, Math.floor(this.tx(Math.min(az, bz) - m))), j1 = Math.min(S - 1, Math.ceil(this.tx(Math.max(az, bz) + m)));
+    const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const px = this.x0 + (i + 0.5) * k, pz = this.z0 + (j + 0.5) * k;
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L2));
+      const d = Math.hypot(px - ax - dx * t, pz - az - dz * t), v = Math.min(255, Math.round(d / 16 * 255)), o = (j * S + i) * 4;
+      if (v < D[o]) D[o] = v;
+    }
+  }
+  // town ground: a rounded square (r) fading out over `fade` metres
+  town(x, z, r, fade = 20) {
+    const S = this.size, D = this.data, k = this.span / S, m = r + fade;
+    const i0 = Math.max(0, Math.floor(this.tx(x - m))), i1 = Math.min(S - 1, Math.ceil(this.tx(x + m)));
+    const j0 = Math.max(0, Math.floor(this.tx(z - m))), j1 = Math.min(S - 1, Math.ceil(this.tx(z + m)));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const px = this.x0 + (i + 0.5) * k, pz = this.z0 + (j + 0.5) * k;
+      const d = Math.max(Math.abs(px - x), Math.abs(pz - z)) * 0.7 + Math.hypot(px - x, pz - z) * 0.3;
+      const v = Math.round((1 - smooth(r, r + fade, d)) * 255), o = (j * S + i) * 4 + 1;
+      if (v > D[o]) D[o] = v;
+    }
+  }
+  // the woods and the water: worked out on a coarse grid and blended up
+  nature() {
+    const S = this.size, D = this.data, C = 512, step = this.span / C, T = this.T;
+    const f = new Float32Array((C + 1) * (C + 1)), w = new Float32Array((C + 1) * (C + 1));
+    this.heights = new Float32Array((C + 1) * (C + 1)); this.hC = C;
+    for (let j = 0; j <= C; j++) for (let i = 0; i <= C; i++) {
+      const x = this.x0 + i * step, z = this.z0 + j * step, h = T.natural(x, z);
+      f[j * (C + 1) + i] = T.forest(x, z); w[j * (C + 1) + i] = Math.max(0, WATER - h); this.heights[j * (C + 1) + i] = h;
+    }
+    const r = C / S;
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+      const u = (i + 0.5) * r, v = (j + 0.5) * r, a = Math.min(C - 1, Math.floor(u)), b = Math.min(C - 1, Math.floor(v)), fu = u - a, fv = v - b;
+      const q = (A) => { const o = b * (C + 1) + a; return (A[o] * (1 - fu) + A[o + 1] * fu) * (1 - fv) + (A[o + C + 1] * (1 - fu) + A[o + C + 2] * fu) * fv; };
+      const o = (j * S + i) * 4;
+      D[o + 2] = Math.round(q(f) * 255 * (1 - D[o + 1] / 255));
+      D[o + 3] = Math.min(255, Math.round(q(w) / 32 * 255));
+    }
+  }
+  at(x, z) {
+    const S = this.size, i = Math.max(0, Math.min(S - 1, Math.floor(this.tx(x)))), j = Math.max(0, Math.min(S - 1, Math.floor(this.tx(z)))), o = (j * S + i) * 4;
+    return { road: this.data[o] / 255 * 16, town: this.data[o + 1] / 255, forest: this.data[o + 2] / 255 };
+  }
+}
+
 export function buildWorld(seed = 1337) {
   const R = rng(seed * 7 + 3);
   const T = new Terrain(seed);
   const world = new GeoWorld(T);
+  const ground = new Ground(T);
   const roofs = [], burning = [], open = [], loot = [], roads = [], towns = [];
   const add = (min, max, o = {}) => world.add(makeBox(min, max, { grid: false, edges: false, ...o }));
   const at = (x, y, z, sx, sy, sz, o) => add([x - sx / 2, y, z - sz / 2], [x + sx / 2, y + sy, z + sz / 2], o);
@@ -50,83 +114,109 @@ export function buildWorld(seed = 1337) {
     rot(x + 0.3 * s, y + 0.75, z + 0.3 * c, [0, yaw, 0], 1.7, 0.6, 2.1, { color: burn ? col : [0.1, 0.13, 0.16], shape: 0.15, mat: 'glass', solid: false });
     if (burn) burning.push([x, y + 1.2, z]);
   };
-  const tree = (x, z, big = 1, pine = false) => {
+  const tree = (x, z, big = 1) => {
     const y = T.heightAt(x, z), th = (3 + R() * 2) * big;
-    at(x, y - 0.3, z, 0.45 * big, th + 0.3, 0.45 * big, { color: [0.3, 0.22, 0.15], shape: 'cylY' });
-    if (pine) for (let k = 0; k < 3; k++) at(x, y + th * 0.55 + k * 2.2 * big, z, (4.2 - k * 1.2) * big, 3 * big, (4.2 - k * 1.2) * big, { color: [0.1 + R() * 0.05, 0.2 + R() * 0.06, 0.12], shape: 'sphere', solid: k === 0 });
-    else at(x, y + th - 0.8 * big, z, (4 + R() * 2) * big, (4 + R() * 1.5) * big, (4 + R() * 2) * big, { color: [0.16 + R() * 0.08, 0.26 + R() * 0.1, 0.11], shape: 'sphere', solid: false });
+    at(x, y - 0.3, z, 0.45 * big, th + 0.3, 0.45 * big, { color: [0.3, 0.22, 0.15], shape: 'cylY', tex: 62 });
+    at(x, y + th - 0.8 * big, z, (4 + R() * 2) * big, (4 + R() * 1.5) * big, (4 + R() * 2) * big, { color: LEAFC[Math.floor(R() * LEAFC.length)], shape: 'blob', tex: 61, solid: false });
   };
-  const ok = (x, z, r) => Math.abs(x) < WORLD - r && Math.abs(z) < WORLD - r;
-  const flatTarget = (x, z) => Math.max(T.heightAt(x, z), WATER + 6);
+  const flatTarget = (x, z) => Math.max(T.natural(x, z), WATER + 6);
+  // how flat and dry a patch of land is (lower = better for building on)
+  const rough = (x, z, r) => {
+    let lo = Infinity, hi = -Infinity;
+    for (let a = 0; a < 8; a++) for (const f of [0.5, 1]) { const h = T.natural(x + Math.cos(a * 0.785) * r * f, z + Math.sin(a * 0.785) * r * f); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    const c = T.natural(x, z);
+    return (hi - lo) + (lo < WATER + 3 ? 60 : 0) + (c > 110 ? 80 : 0);
+  };
 
-  // ---- where things go: the city in the middle, towns round it
-  let cx = 0, cz = 0;
-  for (let i = 0; i < 40; i++) { const x = (R() - 0.5) * 400, z = (R() - 0.5) * 400; if (T.heightAt(x, z) > WATER + 4) { cx = x; cz = z; break; } }
-  const CITY_R = 280, cityY = flatTarget(cx, cz);
-  T.flatten(cx, cz, CITY_R, cityY, 90);
-  const townSpots = [];
-  for (let tries = 0; tries < 400 && townSpots.length < 7; tries++) {
-    const a = R() * Math.PI * 2, d = 520 + R() * 420, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
-    if (!ok(x, z, 140) || T.heightAt(x, z) < WATER + 3) continue;
-    if (townSpots.some((t) => Math.hypot(t[0] - x, t[1] - z) < 330)) continue;
-    townSpots.push([x, z]);
+  // ---- where everything goes
+  const spots = [];      // { x, z, r, kind }
+  const free = (x, z, r, gap) => Math.abs(x) < TH - 300 - r && Math.abs(z) < TH - 300 - r && spots.every((s) => Math.hypot(s.x - x, s.z - z) > s.r + r + gap);
+  const best = (n, gen) => { let b = null, bs = Infinity; for (let i = 0; i < n; i++) { const [x, z, r] = gen(); const sc = rough(x, z, r); if (sc < bs) { bs = sc; b = [x, z, sc]; } } return b; };
+  // the city near the middle
+  const CITY_R = 290;
+  const cb = best(60, () => [(R() - 0.5) * 900, (R() - 0.5) * 900, CITY_R]);
+  const cx = cb[0], cz = cb[1], cityY = flatTarget(cx, cz);
+  T.flatten(cx, cz, CITY_R, cityY, 150);
+  spots.push({ x: cx, z: cz, r: CITY_R + 80, kind: 'city', y: cityY });
+  // two small cities further out
+  for (let n = 0; n < 2; n++) {
+    let b = null;
+    for (let tries = 0; tries < 6 && !b; tries++) {
+      b = best(50, () => { const a = (n * Math.PI) + (R() - 0.5) * 2.2, d = 1500 + R() * 1000; return [cx + Math.cos(a) * d, cz + Math.sin(a) * d, 170]; });
+      if (b && (!free(b[0], b[1], 170, 400) || b[2] > 40)) b = null;
+    }
+    if (!b) continue;
+    const y = flatTarget(b[0], b[1]);
+    T.flatten(b[0], b[1], 160, y, 110);
+    spots.push({ x: b[0], z: b[1], r: 170, kind: 'small', y });
   }
-  for (const [x, z] of townSpots) { const y = flatTarget(x, z); T.flatten(x, z, 62, y, 60); towns.push({ x, z, y }); }
-  // roads: from the city's edge out to each town, and a few between towns
-  const roadTo = (ax, az, ay, bx, bz, by) => { T.road(ax, az, ay, bx, bz, by); roads.push([ax, az, bx, bz]); };
-  for (const t of towns) {
-    const a = Math.atan2(t.z - cz, t.x - cx), ex = cx + Math.cos(a) * (CITY_R - 10), ez = cz + Math.sin(a) * (CITY_R - 10);
-    roadTo(ex, ez, cityY, t.x, t.z, t.y);
+  // towns and villages
+  const place = (count, r, gap, kind) => {
+    for (let n = 0, tries = 0; n < count && tries < count * 40; tries++) {
+      const x = (R() - 0.5) * 2 * (TH - 400), z = (R() - 0.5) * 2 * (TH - 400);
+      if (!free(x, z, r, gap) || rough(x, z, r) > 26) continue;
+      const y = flatTarget(x, z);
+      T.flatten(x, z, r, y, r * 0.9);
+      spots.push({ x, z, r, kind, y }); n++;
+    }
+  };
+  place(8, 70, 420, 'town');
+  place(14, 42, 260, 'village');
+
+  // ---- roads: join everything up (a spanning tree, plus a few loops), each one winding round the hills
+  const nodes = spots.map((s, i) => ({ ...s, i }));
+  const edges = [], inTree = new Set([0]);
+  while (inTree.size < nodes.length) {
+    let bd = Infinity, be = null;
+    for (const a of inTree) for (const b of nodes) if (!inTree.has(b.i)) { const d = Math.hypot(nodes[a].x - b.x, nodes[a].z - b.z); if (d < bd) { bd = d; be = [a, b.i]; } }
+    inTree.add(be[1]); edges.push(be);
   }
-  const ring = [...towns].sort((a, b) => Math.atan2(a.z - cz, a.x - cx) - Math.atan2(b.z - cz, b.x - cx));
-  for (let i = 0; i < ring.length; i++) { const a = ring[i], b = ring[(i + 1) % ring.length]; if (Math.hypot(a.x - b.x, a.z - b.z) < 700 && R() < 0.7) roadTo(a.x, a.z, a.y, b.x, b.z, b.y); }
+  for (const a of nodes) {
+    const near = nodes.filter((b) => b.i !== a.i && !edges.some((e) => (e[0] === a.i && e[1] === b.i) || (e[1] === a.i && e[0] === b.i))).sort((p, q) => Math.hypot(p.x - a.x, p.z - a.z) - Math.hypot(q.x - a.x, q.z - a.z))[0];
+    if (near && Math.hypot(near.x - a.x, near.z - a.z) < 1100 && R() < 0.45) edges.push([a.i, near.i]);
+  }
+  const inSpot = (x, z, m = 0) => spots.find((s) => Math.hypot(s.x - x, s.z - z) < s.r * 0.85 + m);
+  const route = (A, B) => {
+    // start and finish at the edge of each place, then step across the land, picking the gentlest way that still heads there
+    const ang = Math.atan2(B.z - A.z, B.x - A.x);
+    let x = A.x + Math.cos(ang) * A.r * 0.8, z = A.z + Math.sin(ang) * A.r * 0.8;
+    const ex = B.x - Math.cos(ang) * B.r * 0.8, ez = B.z - Math.sin(ang) * B.r * 0.8;
+    const pts = [[A.x, A.z], [x, z]];
+    let heading = ang;
+    for (let s = 0; s < 120; s++) {
+      const d = Math.hypot(ex - x, ez - z);
+      if (d < 70) break;
+      const want = Math.atan2(ez - z, ex - x), h0 = T.natural(x, z);
+      let bc = Infinity, bh = want;
+      for (let k = -5; k <= 5; k++) {
+        const a = want + k * 0.13, nx = x + Math.cos(a) * 55, nz = z + Math.sin(a) * 55, h = T.natural(nx, nz);
+        const turn = Math.abs(((a - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        const c = Math.abs(h - h0) * 2.2 + Math.abs(k) * 1.2 + turn * 8 + (h < WATER + 1 ? 30 : 0) + (h > 120 ? 40 : 0) + (inSpot(nx, nz) && inSpot(nx, nz) !== B && inSpot(nx, nz) !== A ? 50 : 0);
+        if (c < bc) { bc = c; bh = a; }
+      }
+      heading = bh; x += Math.cos(bh) * 55; z += Math.sin(bh) * 55;
+      pts.push([x, z]);
+    }
+    pts.push([ex, ez], [B.x, B.z]);
+    // smooth the bends
+    for (let it = 0; it < 2; it++) for (let i = 2; i < pts.length - 2; i++) { pts[i][0] = (pts[i - 1][0] + pts[i][0] * 2 + pts[i + 1][0]) / 4; pts[i][1] = (pts[i - 1][1] + pts[i][1] * 2 + pts[i + 1][1]) / 4; }
+    // heights: follow the land but never steeper than about 1 in 9; held up out of the water (a causeway)
+    const hs = pts.map(([px, pz], i) => (i === 0 ? A.y : i === pts.length - 1 ? B.y : Math.max(WATER + 1.6, T.natural(px, pz))));
+    for (let it = 0; it < 3; it++) for (let i = 1; i < hs.length - 1; i++) hs[i] = Math.max(WATER + 1.6, (hs[i - 1] + hs[i] * 2 + hs[i + 1]) / 4);
+    for (let i = 1; i < pts.length - 2; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+      T.road(ax, az, hs[i], bx, bz, hs[i + 1], 5.5, 15);
+      roads.push([ax, az, bx, bz, hs[i], hs[i + 1]]);
+      ground.road(ax, az, bx, bz);
+    }
+    return { pts, hs };
+  };
+  const routes = edges.map(([a, b]) => route(nodes[a], nodes[b]));
 
   // water: one big sheet at sea level shows wherever the land dips below it
   add([-TH, WATER - 40, -TH], [TH, WATER, TH], { color: [0.16, 0.27, 0.3], tex: 15, noShadow: true, noBullet: true });
 
-  // ---- the city: narrow streets, tall blocks, an avenue every few blocks
-  const lines = [];               // street centre lines along one axis (same both ways)
-  { let p = -CITY_R + 6; let n = 0; while (p < CITY_R) { lines.push(p); p += (n % 4 === 3 ? 26 : 14) / 2 + 36 + (n % 4 === 2 ? 26 : 14) / 2; n++; } }
-  const sw = (k) => (k % 4 === 3 ? 26 : 14);
-  const Y = cityY;
-  // streets: a dark tarmac sheet over the whole city, kerbs are the block plinths
-  add([cx - CITY_R, Y - 1, cz - CITY_R], [cx + CITY_R, Y + 0.02, cz + CITY_R], { color: [0.17, 0.17, 0.18], tex: 7, noShadow: true });
-  let spire = null;
-  const midI = Math.floor(lines.length / 2) - 1;
-  for (let i = 0; i < lines.length - 1; i++) for (let j = 0; j < lines.length - 1; j++) {
-    const x0 = cx + lines[i] + sw(i) / 2, x1 = cx + lines[i + 1] - sw(i + 1) / 2, z0 = cz + lines[j] + sw(j) / 2, z1 = cz + lines[j + 1] - sw(j + 1) / 2;
-    if (x1 - x0 < 10 || z1 - z0 < 10) continue;
-    const bx = (x0 + x1) / 2, bz = (z0 + z1) / 2, W = x1 - x0, D = z1 - z0;
-    const dc = Math.hypot(bx - cx, bz - cz) / CITY_R;          // 0 in the middle, 1 at the edge
-    if (dc > 0.98) continue;
-    add([x0, Y, z0], [x1, Y + 0.18, z1], { color: [0.5, 0.49, 0.46], tex: 4 });
-    const base = Y + 0.18;
-    if (i === midI && j === midI) { spire = buildSpire({ add, at, R }, bx, bz, base, Math.min(W, D)); continue; }
-    const r = R();
-    if (r < 0.07 && dc > 0.2) {                                // a little park or square
-      for (let t = 0; t < 5; t++) tree(x0 + 3 + R() * (W - 6), z0 + 3 + R() * (D - 6), 0.9);
-      open.push([bx, bz, base]);
-      continue;
-    }
-    if (r < 0.12) {                                            // a car park
-      for (let c = 0; c < 6; c++) car(x0 + 5 + (c % 3) * ((W - 10) / 2), base, z0 + 6 + Math.floor(c / 3) * (D - 12), (R() - 0.5) * 0.3, R() < 0.12);
-      open.push([bx, bz, base]);
-      continue;
-    }
-    // 1-4 buildings filling the block, taller towards the middle
-    const tall = 1 - dc;
-    const split = R() < 0.55 ? 2 : 1;
-    const parts = split === 2 ? (R() < 0.5 ? [[x0, z0, bx - 1.5, z1], [bx + 1.5, z0, x1, z1]] : [[x0, z0, x1, bz - 1.5], [x0, bz + 1.5, x1, z1]]) : [[x0, z0, x1, z1]];
-    for (const [a0, b0, a1, b1] of parts) {
-      const h = 10 + R() * 14 + tall * tall * (40 + R() * 60);
-      building(a0 + 0.5, b0 + 0.5, a1 - 0.5, b1 - 0.5, base, h, dc);
-    }
-    // street clutter: wrecks and lamps on the corners
-    if (R() < 0.5) car(x0 - sw(i) / 2 + (R() < 0.5 ? -3 : 3), Y, bz + (R() - 0.5) * D * 0.7, (R() - 0.5) * 0.6, R() < 0.18);
-    at(x0 + 0.6, base, z0 + 0.6, 0.18, 6.5, 0.18, { color: [0.2, 0.2, 0.22], mat: 'metal' });
-    at(x0 + 0.6, base + 6.5, z0 + 0.6, 0.55, 0.22, 0.55, { color: [1, 0.85, 0.55], emissive: R() < 0.5 ? 0.9 : 0, noShadow: true });
-  }
-
+  // ---- buildings
   function building(x0, z0, x1, z1, base, h, dc, kind) {
     const sx = x1 - x0, sz = z1 - z0, bx = (x0 + x1) / 2, bz = (z0 + z1) / 2;
     const f = FACADES[Math.floor(R() * FACADES.length)];
@@ -146,7 +236,6 @@ export function buildWorld(seed = 1337) {
       for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) at(wx + dx * 1.1, top, wz + dz * 1.1, 0.2, 2.6, 0.2, { color: [0.25, 0.2, 0.15] });
       at(wx, top + 2.6, wz, 3.2, 3, 3.2, { color: [0.42, 0.3, 0.2], shape: 'cylY', tex: 12 });
     }
-    // neon down the side of some
     if (h > 18 && R() < 0.4) {
       const nc = NEON[Math.floor(R() * NEON.length)], len = Math.min(h * 0.5, 16), side = R() < 0.5;
       const px = side ? x0 - 0.25 : bx + (R() - 0.5) * sx * 0.4, pz = side ? bz + (R() - 0.5) * sz * 0.4 : z0 - 0.25;
@@ -155,83 +244,139 @@ export function buildWorld(seed = 1337) {
     }
     const rec = { box: b, top, x: bx, z: bz, sx, sz, h, base, door: [bx, base, z0 - 0.5], stair: [hx, top, hz] };
     if (h > 7 && sx >= 12 && sz >= 12) roofs.push(rec);
-    // some are worth raiding
     const types = Object.keys(LOOT_TYPES);
     if (kind || (h < 60 && R() < 0.14)) {
       const type = kind || (h > 40 ? (R() < 0.5 ? 'hospital' : 'flats') : types[Math.floor(R() * types.length)]);
       rec.loot = type; rec.floors = Math.max(1, Math.round(h / 3.6));
       const L = LOOT_TYPES[type];
-      // a lit sign over the door
       at(bx, base + 3.6, z0 - 0.3, Math.min(sx - 2, 7), 1.1, 0.2, { color: L.col, emissive: 0.85, noShadow: true, solid: false });
       loot.push(rec);
     }
     return rec;
   }
+  const house = (x, y, z, yaw = 0) => {
+    const sx = 9, sz = 8, hh = 4 + R() * 2.5, col = HOUSES[Math.floor(R() * HOUSES.length)], rc = ROOFS[Math.floor(R() * ROOFS.length)];
+    at(x, y - 0.6, z, sx, hh + 0.6, sz, { color: col, tex: 10 });
+    const half = sx / 2 + 0.4, rise = 2.2, sl = Math.hypot(half, rise), ang = Math.atan2(rise, half);
+    for (const sd of [-1, 1]) rot(x + sd * half / 2, y + hh + rise / 2 - 0.15, z, [0, 0, -sd * ang], sl, 0.22, sz + 0.8, { color: rc, shape: 0.05, solid: false });
+    at(x + 2.2, y + hh - 0.2, z + 1.5, 0.9, 2.2, 0.9, { color: [0.45, 0.3, 0.25], tex: 13 });          // chimney
+    if (R() < 0.5) tree(x + 7, z + 6, 0.9);
+  };
 
-  // ---- towns: a crossroads with shops, houses, a gas station and a church
-  for (const t of towns) {
-    const y = t.y;
-    for (const [ax, az, bx, bz] of [[-60, 0, 60, 0], [0, -60, 0, 60]]) roads.push([t.x + ax, t.z + az, t.x + bx, t.z + bz]);
-    const lots = [];
-    for (const qx of [-1, 1]) for (const qz of [-1, 1]) for (const k of [0, 1]) lots.push([t.x + qx * (13 + k * 22), t.z + qz * 14, qx, qz], [t.x + qx * 14, t.z + qz * (36 + k * 0), qx, qz]);
-    const kinds = ['gas', 'market', 'pharmacy', 'police', 'hardware', 'gunshop'];
-    lots.forEach(([x, z], n) => {
+  // a city block grid: narrow streets, an avenue every 4th, taller towards the middle
+  const city = (cx, cz, CR, Y, tallMul, withSpire) => {
+    const lines = [];
+    { let p = -CR + 6, n = 0; while (p < CR) { lines.push(p); p += (n % 4 === 3 ? 26 : 14) / 2 + 36 + (n % 4 === 2 ? 26 : 14) / 2; n++; } }
+    const sw = (k) => (k % 4 === 3 ? 26 : 14);
+    add([cx - CR, Y - 1, cz - CR], [cx + CR, Y + 0.02, cz + CR], { color: [0.17, 0.17, 0.18], tex: 7, noShadow: true });
+    ground.town(cx, cz, CR, 40);
+    let sp = null;
+    const midI = Math.floor(lines.length / 2) - 1;
+    for (let i = 0; i < lines.length - 1; i++) for (let j = 0; j < lines.length - 1; j++) {
+      const x0 = cx + lines[i] + sw(i) / 2, x1 = cx + lines[i + 1] - sw(i + 1) / 2, z0 = cz + lines[j] + sw(j) / 2, z1 = cz + lines[j + 1] - sw(j + 1) / 2;
+      if (x1 - x0 < 10 || z1 - z0 < 10) continue;
+      const bx = (x0 + x1) / 2, bz = (z0 + z1) / 2, W = x1 - x0, D = z1 - z0;
+      const dc = Math.hypot(bx - cx, bz - cz) / CR;
+      if (dc > 0.98) continue;
+      add([x0, Y, z0], [x1, Y + 0.18, z1], { color: [0.5, 0.49, 0.46], tex: 4 });
+      const base = Y + 0.18;
+      if (withSpire && i === midI && j === midI) { sp = buildSpire({ add, at, R }, bx, bz, base, Math.min(W, D)); continue; }
       const r = R();
-      if (n < 4) {                                            // shops on the main street (flat roofs: land on them)
-        const kind = kinds[(n + Math.floor(R() * 6)) % kinds.length];
-        if (kind === 'gas') {
-          at(x, y, z, 14, 0.2, 10, { color: [0.4, 0.4, 0.42], tex: 4 });
-          for (const [dx, dz] of [[-5, -3], [5, -3], [-5, 3], [5, 3]]) at(x + dx, y, z + dz, 0.4, 5, 0.4, { color: [0.85, 0.85, 0.85], mat: 'paint' });
-          at(x, y + 5, z, 14, 0.6, 9, { color: [0.9, 0.9, 0.88], mat: 'paint' });
-          at(x, y + 5.6, z, 14.2, 0.5, 9.2, { color: [1, 0.55, 0.1], emissive: 0.6 });
-          for (const dx of [-2.5, 2.5]) at(x + dx, y, z, 0.8, 1.6, 0.6, { color: [0.85, 0.2, 0.15], mat: 'paint' });
-          building(x - 7, z + 6, x + 7, z + 14, y, 4, 1, 'gas');
-        } else building(x - 9, z - 7, x + 9, z + 7, y, 4 + Math.floor(R() * 3) * 3.6, 1, kind);
-        return;
-      }
-      if (r < 0.15) { tree(x, z, 1.2); return; }
-      // a house with a pitched roof
-      const sx = 9, sz = 8, hh = 4 + R() * 2.5, col = HOUSES[Math.floor(R() * HOUSES.length)], rc = ROOFS[Math.floor(R() * ROOFS.length)];
-      at(x, y, z, sx, hh, sz, { color: col, tex: 10 });
-      const half = sx / 2 + 0.4, rise = 2.2, sl = Math.hypot(half, rise), ang = Math.atan2(rise, half);
-      for (const sd of [-1, 1]) rot(x + sd * half / 2, y + hh + rise / 2 - 0.15, z, [0, 0, -sd * ang], sl, 0.22, sz + 0.8, { color: rc, shape: 0.05, solid: false });
-      if (R() < 0.5) tree(x + 7, z + 6, 0.9);
-    });
-    // a church tower
-    const ch = [t.x - 30, t.z + 40];
-    at(ch[0], y, ch[1], 10, 9, 16, { color: [0.7, 0.68, 0.62], tex: 3 });
-    at(ch[0], y, ch[1] - 9, 5, 20, 5, { color: [0.7, 0.68, 0.62], tex: 3 });
-    at(ch[0], y + 20, ch[1] - 9, 3.4, 5, 3.4, { color: [0.3, 0.3, 0.32], shape: { taper: [1, 1] } });
-    open.push([t.x, t.z, y]);
-    for (let n = 0; n < 4; n++) car(t.x + (R() - 0.5) * 80, y, t.z + (R() < 0.5 ? -1 : 1) * 2.5, Math.PI / 2 + (R() - 0.5) * 0.5, R() < 0.2);
-  }
+      if (r < 0.08 && dc > 0.2) { for (let t = 0; t < 5; t++) tree(x0 + 3 + R() * (W - 6), z0 + 3 + R() * (D - 6), 0.9); open.push([bx, bz, base]); continue; }
+      if (r < 0.13) { for (let c = 0; c < 6; c++) car(x0 + 5 + (c % 3) * ((W - 10) / 2), base, z0 + 6 + Math.floor(c / 3) * (D - 12), (R() - 0.5) * 0.3, R() < 0.12); open.push([bx, bz, base]); continue; }
+      const tall = 1 - dc;
+      const parts = R() < 0.55 ? (R() < 0.5 ? [[x0, z0, bx - 1.5, z1], [bx + 1.5, z0, x1, z1]] : [[x0, z0, x1, bz - 1.5], [x0, bz + 1.5, x1, z1]]) : [[x0, z0, x1, z1]];
+      for (const [a0, b0, a1, b1] of parts) building(a0 + 0.5, b0 + 0.5, a1 - 0.5, b1 - 0.5, base, 10 + R() * 14 + tall * tall * (40 + R() * 60) * tallMul, dc);
+      if (R() < 0.5) car(x0 - sw(i) / 2 + (R() < 0.5 ? -3 : 3), Y, bz + (R() - 0.5) * D * 0.7, (R() - 0.5) * 0.6, R() < 0.18);
+      at(x0 + 0.6, base, z0 + 0.6, 0.18, 6.5, 0.18, { color: [0.2, 0.2, 0.22], mat: 'metal' });
+      at(x0 + 0.6, base + 6.5, z0 + 0.6, 0.55, 0.22, 0.55, { color: [1, 0.85, 0.55], emissive: R() < 0.5 ? 0.9 : 0, noShadow: true });
+    }
+    return sp;
+  };
 
-  // ---- the countryside: woods, farms, wrecks on the roads
-  const inTown = (x, z, m) => Math.hypot(x - cx, z - cz) < CITY_R + m || towns.some((t) => Math.hypot(x - t.x, z - t.z) < 80 + m);
-  const nearRoad = (x, z) => roads.some(([ax, az, bx, bz]) => { const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz, tt = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)); return Math.hypot(x - ax - dx * tt, z - az - dz * tt) < 12; });
-  for (let n = 0; n < 90; n++) {
-    const x = (R() - 0.5) * 2 * (WORLD - 40), z = (R() - 0.5) * 2 * (WORLD - 40);
-    if (inTown(x, z, 40)) continue;
-    const pine = T.heightAt(x, z) > 40 || R() < 0.4;
-    for (let k = 0; k < 16; k++) {
-      const tx = x + (R() - 0.5) * 70, tz = z + (R() - 0.5) * 70, gy = T.heightAt(tx, tz);
-      if (gy < WATER + 1.5 || T.slopeAt(tx, tz) > 0.35 || nearRoad(tx, tz) || inTown(tx, tz, 10)) continue;
-      tree(tx, tz, 1.1 + R() * 0.6, pine);
+  let spire = null;
+  const cities = [];
+  for (const s of spots) {
+    if (s.kind === 'city') { spire = city(s.x, s.z, CITY_R, s.y, 1, true); cities.push(s); continue; }
+    if (s.kind === 'small') { city(s.x, s.z, 150, s.y, 0.35, false); cities.push(s); continue; }
+    const t = s, y = t.y;
+    towns.push({ x: t.x, z: t.z, y, r: t.r, kind: t.kind });
+    ground.town(t.x, t.z, t.r * 0.75, t.r * 0.4);
+    open.push([t.x, t.z, y]);
+    if (t.kind === 'town') {
+      ground.road(t.x - 60, t.z, t.x + 60, t.z); ground.road(t.x, t.z - 60, t.x, t.z + 60);
+      const lots = [];
+      for (const qx of [-1, 1]) for (const qz of [-1, 1]) for (const k of [0, 1]) lots.push([t.x + qx * (13 + k * 22), t.z + qz * 14], [t.x + qx * 14, t.z + qz * 36]);
+      const kinds = ['gas', 'market', 'pharmacy', 'police', 'hardware', 'gunshop'];
+      for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
+      lots.forEach(([x, z], n) => {
+        if (n < 4) {
+          const kind = kinds[n];
+          if (kind === 'gas') gasStation(x, y, z);
+          else building(x - 9, z - 7, x + 9, z + 7, y, 4 + Math.floor(R() * 3) * 3.6, 1, kind);
+          return;
+        }
+        if (R() < 0.15) { tree(x, z, 1.2); return; }
+        house(x, y, z);
+      });
+      const ch = [t.x - 30, t.z + 40];
+      at(ch[0], y - 0.5, ch[1], 10, 9.5, 16, { color: [0.7, 0.68, 0.62], tex: 3 });
+      at(ch[0], y - 0.5, ch[1] - 9, 5, 20.5, 5, { color: [0.7, 0.68, 0.62], tex: 3 });
+      at(ch[0], y + 20, ch[1] - 9, 3.4, 5, 3.4, { color: [0.3, 0.3, 0.32], shape: { taper: [1, 1] } });
+      for (let n = 0; n < 4; n++) car(t.x + (R() - 0.5) * 80, y, t.z + (R() < 0.5 ? -1 : 1) * 2.5, Math.PI / 2 + (R() - 0.5) * 0.5, R() < 0.2);
+    } else {
+      // a village: a row of houses either side of the road through it, and one shop
+      const a = R() * Math.PI, c = Math.cos(a), sn = Math.sin(a);
+      ground.road(t.x - c * 45, t.z - sn * 45, t.x + c * 45, t.z + sn * 45);
+      for (let k = -2; k <= 2; k++) for (const side of [-1, 1]) {
+        const x = t.x + c * k * 16 - sn * side * 13, z = t.z + sn * k * 16 + c * side * 13;
+        if (k === 0 && side === 1) { building(x - 8, z - 6, x + 8, z + 6, y, 4 + Math.floor(R() * 2) * 3.6, 1, ['market', 'pharmacy', 'hardware'][Math.floor(R() * 3)]); continue; }
+        if (R() < 0.75) house(x, y, z); else tree(x, z, 1.1);
+      }
+      if (R() < 0.6) car(t.x + c * (R() - 0.5) * 50, y, t.z + sn * (R() - 0.5) * 50, Math.PI / 2 - a, R() < 0.3);
     }
   }
-  for (let n = 0; n < 10; n++) {
-    const x = (R() - 0.5) * 2 * (WORLD - 100), z = (R() - 0.5) * 2 * (WORLD - 100), y = T.heightAt(x, z);
-    if (inTown(x, z, 60) || y < WATER + 3 || T.slopeAt(x, z) > 0.15 || nearRoad(x, z)) continue;
+  function gasStation(x, y, z) {
+    at(x, y - 0.3, z, 14, 0.5, 10, { color: [0.4, 0.4, 0.42], tex: 4 });
+    for (const [dx, dz] of [[-5, -3], [5, -3], [-5, 3], [5, 3]]) at(x + dx, y, z + dz, 0.4, 5, 0.4, { color: [0.85, 0.85, 0.85], mat: 'paint' });
+    at(x, y + 5, z, 14, 0.6, 9, { color: [0.9, 0.9, 0.88], mat: 'paint' });
+    at(x, y + 5.6, z, 14.2, 0.5, 9.2, { color: [1, 0.55, 0.1], emissive: 0.6 });
+    for (const dx of [-2.5, 2.5]) at(x + dx, y, z, 0.8, 1.6, 0.6, { color: [0.85, 0.2, 0.15], mat: 'paint' });
+    building(x - 7, z + 6, x + 7, z + 14, y, 4, 1, 'gas');
+  }
+
+  // ---- out on the roads: gas stations, farms, wrecks
+  const clear = (x, z, r) => !inSpot(x, z, r + 20) && world.boxes.length && T.slopeAt(x, z) < 0.12 && T.heightAt(x, z) > WATER + 2;
+  const offRoad = (x, z, m) => { for (const r of roads) { const dx = r[2] - r[0], dz = r[3] - r[1], L = dx * dx + dz * dz || 1, tt = Math.max(0, Math.min(1, ((x - r[0]) * dx + (z - r[1]) * dz) / L)); if (Math.hypot(x - r[0] - dx * tt, z - r[1] - dz * tt) < m) return false; } return true; };
+  // gas stations beside the roads
+  let gs = 0;
+  for (const rt of routes) {
+    if (rt.pts.length < 14 || gs >= 9 || R() < 0.35) continue;
+    const i = Math.floor(rt.pts.length / 2), [px, pz] = rt.pts[i], [qx, qz] = rt.pts[i + 1], a = Math.atan2(qz - pz, qx - px);
+    const x = px - Math.sin(a) * 22, z = pz + Math.cos(a) * 22;
+    if (!clear(x, z, 20) || !offRoad(x, z, 14)) continue;
+    const y = T.heightAt(x, z); T.flatten(x, z, 14, y, 14); ground.town(x, z, 12, 10); gasStation(x, y, z); open.push([x, z, y]); gs++;
+  }
+  // farms: a barn, a silo and a farmhouse out in the fields
+  for (let n = 0, tries = 0; n < 34 && tries < 600; tries++) {
+    const x = (R() - 0.5) * 2 * (TH - 300), z = (R() - 0.5) * 2 * (TH - 300);
+    if (T.forest(x, z) > 0.25 || T.natural(x, z) > 100 || T.natural(x, z) < WATER + 3 || rough(x, z, 30) > 9 || inSpot(x, z, 60) || !offRoad(x, z, 22)) continue;
+    const y = T.natural(x, z);
+    T.flatten(x, z, 22, y, 22); ground.town(x, z, 18, 14);
     const b = at(x, y - 0.5, z, 16, 8.5, 12, { color: [0.55, 0.18, 0.12], tex: 12 });
     roofs.push({ box: b, top: y + 8, x, z, sx: 16, sz: 12, h: 8, base: y, farm: true, door: [x, y, z - 6.5], stair: [x - 6, y + 8, z - 4] });
     at(x + 12, y - 0.5, z - 4, 4, 12.5, 4, { color: [0.7, 0.7, 0.66], shape: 'cylY', mat: 'paint' });
-    open.push([x, z + 20, T.heightAt(x, z + 20)]);
+    at(x + 12, y + 12, z - 4, 4.1, 1.6, 4.1, { color: [0.55, 0.55, 0.52], shape: 'sphere', mat: 'metal' });
+    house(x - 4, y, z + 16);
+    open.push([x, z + 22, y]);
+    n++;
   }
-  for (const [ax, az, bx, bz] of roads) for (let n = 0; n < 3; n++) {
-    const t = R(), x = ax + (bx - ax) * t + (R() - 0.5) * 5, z = az + (bz - az) * t + (R() - 0.5) * 5;
-    if (inTown(x, z, 0)) continue;
-    car(x, T.heightAt(x, z), z, Math.atan2(bx - ax, bz - az) + (R() - 0.5) * 0.8, R() < 0.25);
+  for (const r of roads) if (R() < 0.12) {
+    const t = R(), x = r[0] + (r[2] - r[0]) * t + (R() - 0.5) * 5, z = r[1] + (r[3] - r[1]) * t + (R() - 0.5) * 5;
+    if (inSpot(x, z, 0)) continue;
+    car(x, T.heightAt(x, z), z, Math.atan2(r[2] - r[0], r[3] - r[1]) + (R() - 0.5) * 0.8, R() < 0.25);
   }
+  ground.nature();
 
   // ---- the upgrade hangar scene (off the map)
   const [hx, , hz] = HANGAR;
@@ -246,7 +391,7 @@ export function buildWorld(seed = 1337) {
   at(hx + 15, 0.1, hz + 14, 3, 1.1, 1.2, { color: [0.75, 0.15, 0.1], mat: 'paint', shape: 0.08 });
   for (let s = -9; s <= 9; s++) for (const zz of [-19.6, 19.6]) at(hx + s * 2, 0.12, hz + zz, 1, 0.02, 0.4, { color: s % 2 ? [0.95, 0.75, 0.1] : [0.08, 0.08, 0.08], noShadow: true, solid: false });
 
-  return { world, terrain: T, roofs, burning, open, loot, roads, towns, city: { x: cx, z: cz, r: CITY_R, y: cityY }, spire, fobs: spire ? [spire] : [] };
+  return { world, terrain: T, ground, roofs, burning, open, loot, roads, towns, cities, city: { x: cx, z: cz, r: CITY_R, y: cityY }, spire, fobs: spire ? [spire] : [] };
 }
 
 // THE SPIRE: a tower 170 m tall with a landing bay cut into one side 70 m up, the pad sticking out over the street.

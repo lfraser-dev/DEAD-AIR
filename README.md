@@ -4,7 +4,7 @@ A third-person helicopter shooter in an open world full of zombies. Plain JavaSc
 
 **Flying**: three styles, picked in the hangar. EASY (the default): the mouse steers (left/right turns, forward/back flies forward/back), A / D slide sideways, W / S up and down, it hovers when you let go, crashes hurt less and the gun helps you aim. ASSIST and PRO fly like Battlefield 2042 (mouse tilts, A / D turn; PRO has no levelling). Click: nose gun · right click: rockets · Space: bombs · Shift: afterburner · V: siren (with the loudspeaker) · C: camera.
 
-**The world**: made from a seed, so every NEW WORLD (in the hangar) is different, and friends who join get the same one. Hills, lakes, a ring of mountains, woods, farms, small towns and one big burning city, joined by roads. Your one base is THE SPIRE: a landing pad sticking out of the side of a huge tower, with fuel, repairs, the hangar and your team.
+**The world**: 6.4 km across and made from a seed, so every NEW WORLD (in the hangar) is different, and friends who join get the same one. Mountain ranges with snow on top, rivers winding through valleys, lakes, forests of thousands of trees (you can crash into them), farmland, farms, 22 towns and villages, two small cities and one big burning city, joined by roads that wind round the hills. The land is made bit by bit as you fly (finer close up), so it loads in about a second. Press M for the map. Your one base is THE SPIRE: a landing pad sticking out of the side of a huge tower in the big city, with fuel, repairs, the hangar and your team.
 
 **Zombies**: just infected people, but lots of them: walkers, runners, crawlers (can't climb) and screamers (they shriek and the whole horde comes). They can't fly or spit: they climb on top of each other. A pile builds up against a wall until the top ones reach the roof, and a heap forms under you if you hover low and slow. Spikes on the skids (ANTI-CLIMB) knock grabbers off.
 
@@ -16,6 +16,6 @@ A third-person helicopter shooter in an open world full of zombies. Plain JavaSc
 
 **Online**: friends join as door gunners: TEAM → INVITE FRIENDS for a code, friends press JOIN A FRIEND on the title screen (`?net=local` tests it in two tabs).
 
-Code: `src/heli/`: `game.js` (hangar, flying, landing, raids, HUD, the friend's view), `terrain.js` (the procedural land), `map.js` (city, towns, the Spire), `horde.js` (zombies and piles), `team.js` (team, gear, raids), `events.js`, `chopper.js` (model and flight), `coop.js` (online), `data.js` (upgrades, save), `ui.js` (styles). The renderer and helpers in `src/` come from The Semi-Finals.
+Code: `src/heli/`: `game.js` (hangar, flying, landing, raids, HUD, the friend's view), `terrain.js` (the procedural land, streamed in chunks), `trees.js` (the forests), `map.js` (city, towns, the Spire), `horde.js` (zombies and piles), `team.js` (team, gear, raids), `events.js`, `chopper.js` (model and flight), `coop.js` (online), `data.js` (upgrades, save), `ui.js` (styles). The renderer and helpers in `src/` come from The Semi-Finals.
 
 `mech.html` is the earlier mech sketch.
