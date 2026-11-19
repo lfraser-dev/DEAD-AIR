@@ -379,8 +379,8 @@ export class Horde {
     const s = z.s, c = Math.cos(z.yaw), sn = Math.sin(z.yaw);
     const flash = z.hitT > 0;
     const tint = (col) => flash ? [Math.min(1, col[0] + 0.5), Math.min(1, col[1] + 0.4), Math.min(1, col[2] + 0.4)] : col;
-    const P = (lx, ly, lz, rx, sx, sy, sz, col, em = 0) => {
-      out.push({ pos: [z.x + (lx * c + lz * sn) * s, z.y + ly * s, z.z + (-lx * sn + lz * c) * s], rot: [rx, z.yaw, 0], size: [sx * s, sy * s, sz * s], col: tint(col), em });
+    const P = (lx, ly, lz, rx, sx, sy, sz, col, em = 0, mesh = 'box') => {
+      out.push({ pos: [z.x + (lx * c + lz * sn) * s, z.y + ly * s, z.z + (-lx * sn + lz * c) * s], rot: [rx, z.yaw, 0], size: [sx * s, sy * s, sz * s], col: tint(col), em, mesh });
     };
     const st = z.st, ph = z.ph, run = z.type === 'runner', big = z.type === 'brute' || z.type === 'titan';
     if (lod === 0) {
@@ -396,40 +396,49 @@ export class Horde {
     else if ((z.type === 'brute' || z.type === 'titan') && z.cd > (z.type === 'titan' ? 3.6 : 3.2)) { armA = 2.4; lean = 0.2; }
     for (const sd of [-1, 1]) {
       const a = legA * sd;
-      P(sd * 0.13, 0.85 - 0.425 * Math.cos(a), -0.425 * Math.sin(a), a, big ? 0.28 : 0.2, 0.85, big ? 0.3 : 0.22, z.pants);
+      P(sd * 0.13, 0.85 - 0.425 * Math.cos(a), -0.425 * Math.sin(a), a, big ? 0.3 : 0.22, 0.88, big ? 0.3 : 0.22, z.pants, 0, 'cylY');
+      P(sd * 0.13, 0.85 - 0.85 * Math.cos(a) + 0.05, -0.85 * Math.sin(a) - 0.06, 0, big ? 0.3 : 0.22, 0.1, 0.34, [0.12, 0.1, 0.09]);
     }
     const tw = big ? 0.75 : z.type === 'spitter' ? 0.66 : run ? 0.42 : 0.48, td = z.type === 'spitter' ? 0.5 : big ? 0.42 : 0.28;
     const tl = Math.sin(lean);
     P(0, 1.18, -0.33 * tl, lean, tw, 0.66, td, z.shirt);
-    P(0, 1.66, -0.62 * tl - 0.05, lean * 0.6 + 0.2, 0.28, 0.3, 0.28, z.skin);
+    P(0, 1.18 + 0.3, -0.5 * tl, lean, tw * 1.05, 0.16, td * 1.1, z.shirt.map((v) => v * 0.8));
+    P(0, 0.88, -0.2 * tl, lean, tw * 0.92, 0.12, td * 0.95, z.pants.map((v) => v * 0.8));
+    P(0, 1.67, -0.62 * tl - 0.05, lean * 0.6 + 0.2, 0.3, 0.34, 0.3, z.skin, 0, 'sphere');
+    P(0, 1.6, -0.62 * tl - 0.2, lean * 0.6 + 0.2, 0.16, 0.06, 0.06, [0.2, 0.05, 0.04]);
+    for (const dx of [-0.065, 0.065]) P(dx, 1.7, -0.62 * tl - 0.19, lean * 0.6, 0.06, 0.05, 0.04, z.type === 'runner' ? [1, 0.2, 0.1] : [0.85, 0.85, 0.6], z.type === 'runner' ? 1 : 0.4);
     if (z.type === 'spitter') {
-      P(0, 1.25, 0.25 - 0.33 * tl, lean, 0.42, 0.42, 0.24, [0.45, 1, 0.2], 0.85);
-      P(0.22, 1.0, -0.22 - 0.3 * tl, lean, 0.18, 0.18, 0.12, [0.45, 1, 0.2], 0.85);
+      P(0, 1.25, 0.25 - 0.33 * tl, lean, 0.48, 0.48, 0.34, [0.45, 1, 0.2], 0.85, 'sphere');
+      P(0.22, 1.0, -0.22 - 0.3 * tl, lean, 0.2, 0.2, 0.16, [0.45, 1, 0.2], 0.85, 'sphere');
+      P(-0.2, 1.4, -0.2 - 0.3 * tl, lean, 0.16, 0.16, 0.12, [0.45, 1, 0.2], 0.85, 'sphere');
     }
     if (z.type === 'titan' || z.type === 'brute') for (const dx of [-0.07, 0.07]) P(dx, 1.7 - 0.62 * tl, -0.62 * tl - 0.2, lean * 0.6 + 0.2, 0.06, 0.04, 0.02, [1, 0.15, 0.05], 1);
     if (z.type === 'titan') for (const dx of [-0.25, 0, 0.25]) P(dx, 1.45, 0.25 - 0.4 * tl, lean - 0.5, 0.08, 0.3, 0.08, [0.85, 0.82, 0.7]);
     for (const sd of [-1, 1]) {
       const a = armA + (st === 'walk' ? Math.sin(ph + sd) * 0.15 : Math.sin(ph * 2 + sd) * 0.2) * sd;
       const sx = sd * (tw / 2 + 0.07), sy = 1.42 - 0.1 * (1 - Math.cos(lean)), sz = -0.45 * tl;
-      P(sx, sy + Math.sin(a) * 0.31, sz - Math.cos(a) * 0.31, a, big ? 0.2 : 0.13, big ? 0.2 : 0.13, 0.62, z.skin);
+      P(sx, sy + Math.sin(a) * 0.31, sz - Math.cos(a) * 0.31, a, big ? 0.22 : 0.15, big ? 0.22 : 0.15, 0.66, z.skin, 0, 'cyl');
+      P(sx, sy + Math.sin(a) * 0.66, sz - Math.cos(a) * 0.66, a, big ? 0.24 : 0.16, big ? 0.24 : 0.16, big ? 0.24 : 0.16, z.skin.map((v) => v * 0.85), 0, 'sphere');
+      P(sx, sy + Math.sin(a) * 0.12, sz - Math.cos(a) * 0.12, a, tw * 0.36, 0.2, 0.22, z.shirt);
     }
     return out;
   }
 
-  // fill the instanced batch; returns how many boxes
-  fill(r, batch, cam, fwd, kf) {
-    const D = this.data, m = this.m, tmp = [];
-    let n = 0;
+  // fill the instanced batches (one per mesh: box, sphere, cylinder along z, cylinder along y); returns how many parts
+  fill(r, batches, cam, fwd, kf) {
+    if (!this.datas) this.datas = { box: new Float32Array(INST_FLOATS * 9000), sphere: new Float32Array(INST_FLOATS * 4000), cyl: new Float32Array(INST_FLOATS * 4000), cylY: new Float32Array(INST_FLOATS * 4000) };
+    const m = this.m, tmp = [], N = { box: 0, sphere: 0, cyl: 0, cylY: 0 }, MAX = { box: 9000, sphere: 4000, cyl: 4000, cylY: 4000 };
     const put = (p) => {
-      if (n >= 6000) return;
+      const mesh = p.mesh || 'box', D = this.datas[mesh], n = N[mesh];
+      if (n >= MAX[mesh]) return;
       compose(m, p.pos, p.rot, p.size);
       const o = n * INST_FLOATS;
       for (let k = 0; k < 16; k++) D[o + k] = m[k];
-      D[o + 16] = p.size[0]; D[o + 17] = p.size[1]; D[o + 18] = p.size[2]; D[o + 19] = 1;
-      D[o + 20] = p.col[0]; D[o + 21] = p.col[1]; D[o + 22] = p.col[2]; D[o + 23] = 1;
-      D[o + 24] = 0; D[o + 25] = 0; D[o + 26] = p.em; D[o + 27] = 0;
-      D[o + 28] = 0; D[o + 29] = 0.85; D[o + 30] = 0; D[o + 31] = 0;
-      n++;
+      D[o + 16] = p.size[0]; D[o + 17] = p.size[1]; D[o + 18] = p.size[2]; D[o + 19] = mesh === 'box' ? 1 : 0;
+      D[o + 20] = p.col[0]; D[o + 21] = p.col[1]; D[o + 22] = p.col[2]; D[o + 23] = p.alpha ?? 1;
+      D[o + 24] = 0; D[o + 25] = 0; D[o + 26] = p.em || 0; D[o + 27] = 0;
+      D[o + 28] = 0; D[o + 29] = 0.8; D[o + 30] = 0; D[o + 31] = 0;
+      N[mesh] = n + 1;
     };
     for (const z of this.list) {
       if (!z.alive) continue;
@@ -442,13 +451,13 @@ export class Horde {
       this.parts(z, tmp, d2 > 150 * 150 && z.type !== 'titan' ? 0 : 1);
       for (const p of tmp) put(p);
     }
-    // what they throw
     for (const s of this.shots) {
-      if (s.kind === 'glob') put({ pos: s.pos, rot: [s.rot, s.rot, 0], size: [0.6, 0.6, 0.6], col: [0.4, 1, 0.2], em: 1 });
+      if (s.kind === 'glob') put({ pos: s.pos, rot: [s.rot, s.rot, 0], size: [0.7, 0.7, 0.7], col: [0.4, 1, 0.2], em: 1, mesh: 'sphere' });
       else if (s.kind === 'rock') put({ pos: s.pos, rot: [s.rot, s.rot * 0.7, 0], size: [1.3, 1.0, 1.1], col: [0.5, 0.48, 0.44], em: 0 });
-      else { put({ pos: s.pos, rot: [s.rot, s.rot * 0.5, 0], size: [1.9, 1.3, 4.3], col: [0.55, 0.15, 0.1], em: 0 }); }
+      else put({ pos: s.pos, rot: [s.rot, s.rot * 0.5, 0], size: [1.9, 1.3, 4.3], col: [0.55, 0.15, 0.1], em: 0 });
     }
-    r.fillBatch(batch, D, n, n);
-    return n;
+    let total = 0;
+    for (const k of Object.keys(N)) { r.fillBatch(batches[k], this.datas[k], N[k], N[k]); total += N[k]; }
+    return total;
   }
 }

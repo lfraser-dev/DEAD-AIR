@@ -21,7 +21,7 @@ import { ROLES, ROLE_IDS, has, count } from './crew.js';
 import { makeTransport, code5, ZT, ZS, q1, q2 } from './coop.js';
 import { CSS } from './ui.js';
 
-const FOG = [0.58, 0.5, 0.46], SKY = [0.26, 0.28, 0.4];
+const FOG = [0.76, 0.56, 0.42], SKY = [0.2, 0.25, 0.46], SUN = [0.62, 0.42, 0.34];
 const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const CAMS = {
   all: [0.75, 0.22, 21, [0, 0.4, 1.5]], gun: [0.55, 0.02, 8.5, [0, -0.9, -3.6]], rockets: [1.15, 0.15, 10, [1.6, -0.5, 0.4]],
@@ -58,7 +58,16 @@ export class HeliGame {
     this.batches = new StaticBatches(this.r);
     this.batches.build(this.world, () => 0);
     this.live = this.world.boxes.filter((b) => !b.batched && !b.hidden);
-    this.zBatch = this.r.makeBatch(this.r.cube);
+    const lo = this.r.meshesLo;
+    this.zBatches = { box: this.r.makeBatch(this.r.cube), sphere: this.r.makeBatch(lo.sphere), cyl: this.r.makeBatch(lo.cyl), cylY: this.r.makeBatch(lo.cylY) };
+    this.smokeBatch = this.r.makeBatch(lo.sphere);
+    this.smokeData = new Float32Array(32 * 1200);
+    this.smokes = [];
+    // smoke columns over the burning city: a few roofs, fixed for everyone
+    let sd = 99; const rnd = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+    this.plumes = [];
+    for (let i = 0; i < 9; i++) { const r = this.map.roofs[Math.floor(rnd() * this.map.roofs.length)]; this.plumes.push([r.x, r.top + 1, r.z, 0.7 + rnd() * 0.6]); }
+    for (const b of this.map.burning) if (rnd() < 0.35) this.plumes.push([b[0], b[1], b[2], 0.35]);
     this.heli = new Chopper();
     this.director = new Director();
   }
@@ -92,6 +101,9 @@ export class HeliGame {
     this.r.fogColor = on ? [...FOG] : [0.86, 0.89, 0.93];
     gl.uniform3fv(this.r.u.uFogColor, this.r.fogColor);
     gl.uniform3fv(this.r.u.uSkyTop, on ? SKY : [0.48, 0.64, 0.86]);
+    const sd = on ? SUN : [0.45, 0.8, 0.38], l = Math.hypot(...sd);
+    this.r.sunDir = sd.map((v) => v / l);
+    gl.uniform3fv(this.r.u.uSunDir, this.r.sunDir);
   }
 
   // ---------------------------------------------------------------- input
@@ -618,6 +630,11 @@ export class HeliGame {
   }
   boomFx(p, size) {
     this.fx.sparks(p, 18 * size, [1, 0.6, 0.15], 14 * Math.sqrt(size), 0.7, 0.12, 3);
+    if (this.smokes) for (let i = 0; i < 5 + size * 3; i++) {
+      if (this.smokes.length > 220) this.smokes.shift();
+      this.smokes.push({ pos: [p[0] + (Math.random() - 0.5) * 3 * size, p[1] + Math.random() * 2, p[2] + (Math.random() - 0.5) * 3 * size], t: 0, life: 4 + Math.random() * 3, size: 1.5 + size * 1.4 * Math.random(), drift: [(Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2] });
+    }
+    if (this.blasts) this.blasts.push({ pos: [p[0], Math.max(p[1] - 0.5, 0.3), p[2]], t: 0, size, ring: true });
     for (let i = 0; i < 10 * size; i++) this.fx.flame([p[0] + (Math.random() - 0.5) * 2 * size, p[1] + Math.random(), p[2] + (Math.random() - 0.5) * 2 * size], [(Math.random() - 0.5) * 6, 3, (Math.random() - 0.5) * 6], 3 * size);
     for (let i = 0; i < 8 * size; i++) {
       const s = 0.4 + Math.random() * 0.8 * size;
@@ -804,32 +821,47 @@ export class HeliGame {
   // ---------------------------------------------------------------- landing: what you can do where you are
   landing(dt) {
     const H = this.heli, S = this.S, crew = this.save.crew;
-    const settled = H.contacts >= 3 && Math.hypot(...H.vel) < 3 && !H.dead && this.mode === 'fly';
-    const over = (b) => H.pos[0] > b.min[0] - 0.5 && H.pos[0] < b.max[0] + 0.5 && H.pos[2] > b.min[2] - 0.5 && H.pos[2] < b.max[2] + 0.5 && Math.abs(H.pos[1] - 1.92 - b.max[1]) < 1.3;
-    this.atFob = settled ? this.fobs.find((f) => over(f.pad)) || null : null;
-    this.atRoof = settled ? this.director.list.find((e) => e.kind === 'rescue' && e.roof.active && over(e.roof.box)) || null : null;
-    this.nearCrate = settled ? this.director.list.find((e) => e.kind === 'crate' && e.landed && !e.carried && Math.hypot(e.x - H.pos[0], e.z - H.pos[2]) < 16) || null : null;
+    const ok = !H.dead && this.mode === 'fly', spd = Math.hypot(...H.vel);
+    const settled = ok && H.contacts >= 2 && spd < 3.5;
+    // forgiving: anywhere over (or just next to) the roof / pad, low and slow, counts. You don't even have to touch down.
+    const near = (b, up) => {
+      const h = H.pos[1] - 1.92 - b.max[1];
+      return ok && spd < 6 && H.pos[0] > b.min[0] - 4 && H.pos[0] < b.max[0] + 4 && H.pos[2] > b.min[2] - 4 && H.pos[2] < b.max[2] + 4 && h > -2 && h < up;
+    };
+    this.atFob = this.fobs.find((f) => near(f.pad, 6)) || null;
+    this.atRoof = this.director.list.find((e) => e.kind === 'rescue' && e.roof.active && e.roof.count > 0 && near(e.roof.box, 12)) || null;
+    this.nearCrate = ok && spd < 6 ? this.director.list.find((e) => e.kind === 'crate' && e.landed && !e.carried && Math.hypot(e.x - H.pos[0], e.z - H.pos[2]) < 20 && H.pos[1] - e.y < 14) || null : null;
     this.settled = settled;
     const seatsFree = Math.max(2, S.seats - crew.length) - this.riders;
-    // what you can do here
     const acts = [];
-    if (settled) {
-      if (this.atRoof && this.atRoof.roof.count > 0) acts.push(['KeyE', 'E', this.boarding ? 'LOADING…' : `PICK UP ${this.atRoof.roof.count}`, () => { this.boarding = true; }]);
-      if (this.atFob && !this.atFob.wrecked) {
-        if (this.riders > 0 && !this.atFob.fuelOnly) acts.push(['KeyE', 'E', this.unloading ? 'DROPPING OFF…' : `DROP OFF ${this.riders}`, () => { this.unloading = true; }]);
-        if (this.crate && this.crate.carried && !this.atFob.fuelOnly) acts.push(['KeyE', 'E', 'DROP THE CRATE', () => this.deliverCrate()]);
-        if (!this.atFob.fuelOnly) { acts.push(['KeyH', 'H', 'HANGAR', () => { this.session.fob = this.atFob; this.toHangar(); }, true]); }
+    if (this.atRoof) acts.push(['KeyE', 'E', this.boarding ? `LOADING… ${this.atRoof.roof.count} LEFT` : seatsFree <= 0 ? 'CABIN FULL' : `PICK UP ${this.atRoof.roof.count}`, () => { this.boarding = true; }]);
+    const f = this.atFob;
+    if (f && !f.wrecked) {
+      if (this.riders > 0 && !f.fuelOnly) acts.push(['KeyE', 'E', this.unloading ? 'DROPPING OFF…' : `DROP OFF ${this.riders}`, () => { this.unloading = true; }]);
+      if (this.crate && this.crate.carried && !f.fuelOnly) acts.push(['KeyE', 'E', 'DROP THE CRATE', () => this.deliverCrate()]);
+      const pct = (v) => `${Math.round(v * 100)}%`;
+      acts.push(['Digit1', '1', this.fuel >= S.fuel - 0.5 ? 'FUEL FULL' : this.svc === 'fuel' ? `REFUELLING ${pct(this.fuel / S.fuel)}` : `REFUEL (${pct(this.fuel / S.fuel)})`, () => { this.svc = 'fuel'; this.snd.click?.(1800, 0.3); }, this.fuel >= S.fuel - 0.5]);
+      if (!f.fuelOnly) {
+        acts.push(['Digit2', '2', this.hp >= S.hp ? 'NO DAMAGE' : this.svc === 'fix' ? `REPAIRING ${pct(this.hp / S.hp)}` : `REPAIR (${pct(this.hp / S.hp)})`, () => { this.svc = 'fix'; this.snd.click?.(1800, 0.3); }, this.hp >= S.hp]);
+        const full = this.rockets >= S.rockets && this.bombs >= S.bombs && this.heat <= 0;
+        acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.rockets = S.rockets; this.bombs = S.bombs; this.heat = 0; this.overT = 0; this.snd.magIn?.(); setTimeout(() => this.snd.bolt?.(), 200); this.feed('REARMED', 'g'); }, full]);
+        acts.push(['KeyH', 'H', 'HANGAR', () => { this.session.fob = f; this.toHangar(); }, true]);
       }
-      if (this.nearCrate && !this.crate) acts.push(['KeyE', 'E', 'HOOK ON THE CRATE', () => { this.crate = this.nearCrate; this.crate.carried = true; this.feed('CRATE HOOKED ON · TAKE IT TO A BASE', 'y'); this.snd.grab?.(); }]);
-      if (!this.atFob && !this.scav && (this.riders > 0 || has(crew, 'scavenger'))) acts.push(['KeyQ', 'Q', 'SEND FOR FUEL', () => this.sendForFuel(), true]);
-      if (!this.atFob && !this.drop && this.fuel < S.fuel * 0.3) acts.push(['KeyG', 'G', `FUEL DROP ⚙150`, () => this.callDrop(), true]);
-    }
+    } else if (f && f.wrecked) this.svc = null;
+    if (this.nearCrate && !this.crate) acts.push(['KeyE', 'E', 'HOOK ON THE CRATE', () => { this.crate = this.nearCrate; this.crate.carried = true; this.feed('CRATE HOOKED ON · TAKE IT TO A BASE', 'y'); this.snd.grab?.(); }]);
+    if (settled && !f && !this.scav && (this.riders > 0 || has(crew, 'scavenger'))) acts.push(['KeyQ', 'Q', 'SEND FOR FUEL', () => this.sendForFuel(), true]);
+    if (settled && !f && !this.drop && this.fuel < S.fuel * 0.3) acts.push(['KeyG', 'G', 'FUEL DROP ⚙150', () => this.callDrop(), true]);
+    // quick service: fuel and repairs fill up in about a second
+    if (!f || f.wrecked) this.svc = null;
+    if (this.svc === 'fuel') { this.fuelUp(S.fuel * 1.2 * dt); if (this.fuel >= S.fuel) { this.svc = null; this.feed('TANK FULL', 'g'); this.snd.checkpoint?.(); } }
+    if (this.svc === 'fix') { this.hp = Math.min(S.hp, this.hp + S.hp * 1.2 * dt * (has(crew, 'mechanic') ? 1.5 : 1)); if (this.hp >= S.hp) { this.svc = null; this.feed('ALL FIXED', 'g'); this.snd.checkpoint?.(); } }
     this.actions = acts;
     for (const [code, , , fn] of acts) if (this.hit(code) && !this.panel) { fn(); break; }
     // let go of the mouse when you land somewhere you can do something, so you can click the buttons
     if (settled && acts.length && !this.wasSettled && this.locked) this.unlockSoft();
     this.wasSettled = settled && acts.length > 0;
-    if (!settled) { this.boarding = false; this.unloading = false; }
+    if (!this.atRoof) this.boarding = false;
+    if (!this.atFob) this.unloading = false;
     if (this.scav && !settled && H.pos[1] - this.scav.y > 8 && !this.scav.left) {
       this.scav.left = true;
       const n = this.scav.team.length;
@@ -845,7 +877,7 @@ export class HeliGame {
       if (seatsFree <= 0) { this.boarding = false; this.feed('CABIN FULL · FLY TO A BASE', 'y'); }
       else if (r.count <= 0) this.boarding = false;
       else if (this.boardT <= 0) {
-        this.boardT = 0.45;
+        this.boardT = 0.3;
         r.count--; this.riders++;
         const ang = (r.start - r.count) * 2.1 + r.wave;
         this.runners.push({ from: [r.x + Math.cos(ang) * 2.4, r.top, r.z + Math.sin(ang) * 2.4], to: H.toWorld([1.3, -1.5, 0.7]), t: 0 });
@@ -853,13 +885,12 @@ export class HeliGame {
         if (r.count <= 0) { r.active = false; this.boarding = false; this.feed('ROOF CLEARED · EVERYONE\'S ON BOARD', 'g'); this.snd.checkpoint?.(); }
       }
     }
-    // dropping off, refuel, repairs
-    const f = this.atFob;
+    // dropping off
     if (f && !f.wrecked) {
       if (this.unloading && this.riders > 0) {
         this.unloadT -= dt;
         if (this.unloadT <= 0) {
-          this.unloadT = 0.3; this.riders--; this.run.rescued++; this.save.rescued++;
+          this.unloadT = 0.2; this.riders--; this.run.rescued++; this.save.rescued++;
           this.addScrap(Math.round(25 * (has(crew, 'medic') ? 1.25 : 1)));
           this.runners.push({ from: H.toWorld([1.3, -1.5, 0.7]), to: [f.padAt[0] + 20, f.padAt[1], f.padAt[2] + 18], t: 0 });
           this.snd.coins?.();
@@ -871,15 +902,7 @@ export class HeliGame {
           if (this.riders === 0) { this.unloading = false; this.feed(`SURVIVORS SAFE · ${this.run.rescued} SAVED`, 'g'); }
         }
       }
-      const fuelB = this.fuel, hpB = this.hp;
-      this.fuelUp(28 * dt);
-      if (!f.fuelOnly) {
-        this.hp = Math.min(S.hp, this.hp + 90 * dt * (has(crew, 'mechanic') ? 1.5 : 1));
-        this.rocketRegen += dt * 6; if (this.rocketRegen > 8 && this.rockets < S.rockets) { this.rocketRegen = 0; this.rockets++; }
-        this.bombT2 = (this.bombT2 || 0) + dt; if (this.bombT2 > 1 && this.bombs < S.bombs) { this.bombT2 = 0; this.bombs++; }
-        this.heat = Math.max(0, this.heat - dt);
-      }
-      this.servicing = this.fuel > fuelB || this.hp > hpB;
+      this.servicing = !!this.svc;
     } else this.servicing = false;
     // mechanics patch you up in the air
     if (!f && count(crew, 'mechanic') && this.hp < S.hp && !H.dead) this.hp = Math.min(S.hp, this.hp + 3 * count(crew, 'mechanic') * dt);
@@ -1039,7 +1062,20 @@ export class HeliGame {
     if (H.boost > 0.2) for (const x of [-1, 1]) { const p = H.toWorld([x, 1.32, 3]); this.fx.spawnPiece(p, [0.3, 0.3, 0.3], [0, 0, 0], [0.5, 0.75, 1], 0.2, 1); this.fx.debris[this.fx.debris.length - 1].noGravity = true; }
     this.shake = Math.max(0, this.shake - dt * 1.6);
     this.dmgT = Math.max(0, this.dmgT - dt * 1.2);
+    this.ageSmoke(dt);
+    // rotor wash kicks up dust when you're low
+    if (this.agl < 14 && H.rpm > 0.7 && this.mode === 'fly') {
+      this.washT = (this.washT || 0) - dt;
+      if (this.washT <= 0) {
+        this.washT = 0.05;
+        const a = Math.random() * 6.28, r = 3 + Math.random() * 6, g = this.groundAt(H.pos[0], H.pos[2]);
+        const k = 1 - this.agl / 14;
+        this.fx.spawnPiece([H.pos[0] + Math.cos(a) * r, g + 0.3, H.pos[2] + Math.sin(a) * r], [0.5 * k + 0.2, 0.5 * k + 0.2, 0.5 * k + 0.2], [Math.cos(a) * 9 * k, 0.8, Math.sin(a) * 9 * k], [0.62, 0.58, 0.5], 0.8);
+        this.fx.debris[this.fx.debris.length - 1].noGravity = true;
+      }
+    }
   }
+  ageSmoke(dt) { for (let i = this.smokes.length - 1; i >= 0; i--) { const s = this.smokes[i]; s.t += dt; if (s.t > s.life) this.smokes.splice(i, 1); } }
 
   pause(on) {
     const p = this.$('pause');
@@ -1321,7 +1357,7 @@ export class HeliGame {
     }
     for (let i = this.tracers.length - 1; i >= 0; i--) { const t = this.tracers[i]; t.d += dt * 700; if (t.d > t.len) this.tracers.splice(i, 1); }
     for (let i = this.blasts.length - 1; i >= 0; i--) { const b = this.blasts[i]; b.t += dt; if (b.t > 0.5) this.blasts.splice(i, 1); }
-    this.fx.update(dt);
+    this.fx.update(dt); this.ageSmoke(dt);
     this.shake = Math.max(0, (this.shake || 0) - dt * 1.6);
     // camera: over the gunner's shoulder
     const up = qrot(H.q, [0, 1, 0]);
@@ -1405,7 +1441,7 @@ export class HeliGame {
       doorFriend: [0, 1].map((sd) => { const f = fr.find((q) => q.seat === sd); return f ? { col: f.col } : count(s.crew, 'gunner') > sd - S.gunners && sd >= S.gunners ? { col: ROLES.gunner.col } : null; }),
     };
     const parts = this.mode === 'down' ? [] : chopperParts(s.eq, PAINT[s.paint], st, H.H);
-    this.draw(eye, look, roll, parts, this.extraParts(false), H.pos, 0.0045);
+    this.draw(eye, look, roll, parts, this.extraParts(false), H.pos, 0.0038);
   }
 
   // survivors, scenarios, turrets, shots, blasts, tracers
@@ -1450,6 +1486,22 @@ export class HeliGame {
         person(p[0], p[1], p[2], Math.atan2(-(rn.to[0] - rn.from[0]), -(rn.to[2] - rn.from[2])), false, Math.floor(rn.from[0]));
       }
       if (this.drop) crateParts(P, this.drop.x, this.drop.y, this.drop.z, false, false, this.t);
+      if (this.mode !== 'down' && this.heli.rpm > 0.5) {
+        // the searchlight under the nose, pointing where the gun points
+        const { o, d } = this.bore(), L = 40, c = o.map((v, i) => v + d[i] * (L / 2 + 0.5));
+        const ang = [Math.asin(clamp(d[1], -1, 1)), Math.atan2(-d[0], -d[2]), 0];
+        P(c, ang, [3.2, 3.2, L], [1, 0.93, 0.75], { em: 1, shape: 'cyl', alpha: 0.05 });
+        P(c, ang, [1.4, 1.4, L], [1, 0.95, 0.8], { em: 1, shape: 'cyl', alpha: 0.05 });
+        P(this.heli.toWorld([0, -0.7, -3.75]), ang, [0.35, 0.35, 0.1], [1, 0.95, 0.8], { em: 1, shape: 'cyl' });
+      }
+      if (this.boarding && this.atRoof) {
+        // a rope ladder down from the door
+        const top = this.heli.toWorld([1.3, -1.2, 0.7]), bot = [top[0], this.atRoof.roof.top, top[2]], l = top[1] - bot[1];
+        if (l > 0.5) {
+          for (const dx of [-0.25, 0.25]) P([top[0] + dx, bot[1] + l / 2, top[2]], [0, 0, 0], [0.04, l, 0.04], [0.55, 0.45, 0.3], {});
+          for (let y = 0.4; y < l; y += 0.45) P([top[0], bot[1] + y, top[2]], [0, 0, 0], [0.55, 0.05, 0.06], [0.45, 0.35, 0.22], {});
+        }
+      }
       for (const f of this.fobs) for (const tu of f.turrets) {
         if (Math.abs(tu.pos[0] - this.heli.pos[0]) > 500 || Math.abs(tu.pos[2] - this.heli.pos[2]) > 500) continue;
         P(tu.pos, [0, tu.yaw, 0], [1.1, 0.8, 1.4], [0.25, 0.28, 0.22], { shape: 0.08, mat: 'metal' });
@@ -1464,8 +1516,11 @@ export class HeliGame {
       }
     }
     for (const b of this.blasts || []) {
-      const k = b.t / 0.5, s = (2 + k * 6) * b.size;
+      const k = b.t / 0.5;
+      if (b.ring) { const s = (3 + k * 16) * b.size; P(b.pos, [0, 0, 0], [s, 0.15, s], [1, 0.85, 0.6], { em: 1, shape: 'cylY', alpha: (1 - k) * 0.35 }); continue; }
+      const s = (2 + k * 6) * b.size;
       P(b.pos, [0, 0, 0], [s, s, s], b.col || [1, 0.65, 0.25], { em: 1, shape: 'sphere', alpha: (1 - k) * 0.6 });
+      if (!b.col) P(b.pos, [0, 0, 0], [s * 0.55, s * 0.55, s * 0.55], [1, 0.95, 0.7], { em: 1, shape: 'sphere', alpha: (1 - k) * 0.9 });
     }
     for (const t of this.tracers || []) {
       const l = Math.min(14, t.len - t.d);
@@ -1522,6 +1577,7 @@ export class HeliGame {
     const H = this.heli, S = this.S, run = this.run;
     this.helpT = Math.max(0, (this.helpT || 0) - dt);
     this.$('help').style.opacity = this.helpT > 0 ? 1 : 0;
+    this.$('help').style.visibility = this.helpT > 0 ? 'visible' : 'hidden';
     const aim = this.aimPoint();
     const c = this.project(aim.p), cr = this.$('cross');
     cr.style.left = `${c.x}px`; cr.style.top = `${c.y}px`; cr.style.display = c.behind || H.dead || this.mode === 'down' ? 'none' : '';
@@ -1558,22 +1614,32 @@ export class HeliGame {
     const fr = this.coop ? this.coop.friends.size : 0;
     this.$('right').innerHTML = `${S.rockets ? `<div><small>ROCKETS</small>${this.rockets} / ${S.rockets}</div>` : ''}${S.bombs ? `<div><small>BOMBS</small>${this.bombs} / ${S.bombs}</div>` : ''}<div><small>ON BOARD</small>${this.riders} / ${seats}</div>${this.save.crew.length ? `<div><small>CREW</small>${this.save.crew.map((m) => `<span style="color:rgb(${ROLES[m.role].col.map((v) => Math.round(v * 255))})">●</span>`).join('')}</div>` : ''}${fr ? `<div><small>FRIENDS</small>${fr}</div>` : ''}<div><small>KILLS</small>${run.kills}</div><div><small>SCRAP</small>⚙ ${this.save.scrap.toLocaleString('en-GB')}</div>`;
     // actions you can take here (buttons you can click when the mouse is free)
-    const sig = (this.actions || []).map((a) => a[2]).join('|');
+    // rebuilt only when the set of buttons changes (so a click isn't lost); the labels update in place
+    const acts = this.actions || [], sig = acts.map((a) => a[1]).join('|');
+    const box = this.$('acts');
     if (sig !== this.actSig) {
       this.actSig = sig;
-      const box = this.$('acts'); box.replaceChildren();
-      for (const [, key, label, fn, alt] of this.actions || []) {
+      box.replaceChildren();
+      acts.forEach((a, i) => {
         const b = document.createElement('button');
-        b.type = 'button'; b.className = `da-act${alt ? ' alt' : ''}`; b.innerHTML = `<kbd>${key}</kbd>${label}`;
-        b.onclick = () => { fn(); this.actSig = null; };
+        b.type = 'button';
+        b.onclick = () => { const cur = (this.actions || [])[i]; if (cur) cur[3](); };
         box.append(b);
-      }
+      });
     }
+    acts.forEach(([, key, label, , alt], i) => {
+      const b = box.children[i]; if (!b) return;
+      const html = `<kbd>${key}</kbd>${label}`;
+      if (b.innerHTML !== html) b.innerHTML = html;
+      const cls = `da-act${alt ? ' alt' : ''}`;
+      if (b.className !== cls) b.className = cls;
+    });
     let status = '';
     if (this.scav) status = `FUEL RUN · BACK IN ${Math.ceil(this.scav.t)}s · DON'T TAKE OFF!`;
     else if (this.drop) status = 'FUEL DROP INCOMING…';
     else if (this.atFob && this.atFob.wrecked) status = `${this.atFob.name} IS WRECKED · BACK IN ${fmtT(this.atFob.wreckT)}`;
-    else if (this.servicing) status = this.atFob.fuelOnly ? 'REFUELLING…' : 'REFUELLING · REPAIRING · REARMING';
+    else if (this.servicing) status = this.svc === 'fuel' ? 'REFUELLING…' : 'REPAIRING…';
+    else if (this.atRoof && !this.settled && !this.boarding) status = 'PRESS E TO LOWER THE LADDER';
     else if (this.settled && this.actions?.length && !this.locked) status = 'PRESS W TO TAKE OFF AGAIN';
     this.$('status').textContent = status;
     const grab = this.horde.list.filter((z) => z.alive && z.st === 'grab').length;
@@ -1656,7 +1722,9 @@ export class HeliGame {
       return Math.sqrt(Math.max(0, d2 - al * al)) <= al * kf + rad * kr;
     };
     const near = (c, rad) => Math.abs(c[0] - sc[0]) < 130 + rad && Math.abs(c[2] - sc[2]) < 130 + rad;
-    const zn = this.horde.fill(r, this.zBatch, eye, fwd, kf);
+    const zn = this.horde.fill(r, this.zBatches, eye, fwd, kf);
+    const zb = Object.values(this.zBatches);
+    const sn = this.fillSmoke(eye);
     const solid = heliParts.filter((p) => (p.alpha ?? 1) >= 1), clear = heliParts.filter((p) => (p.alpha ?? 1) < 1);
     const exS = extra.filter((p) => (p.alpha ?? 1) >= 1), exC = extra.filter((p) => (p.alpha ?? 1) < 1);
     const shadows = !this.noShadow;
@@ -1666,7 +1734,7 @@ export class HeliGame {
     for (const b of this.live) if (!b.noShadow && near(b.center, 10)) r.shadowDraw(b.model, b.shape, b.scale);
     for (const p of solid) r.shadowDraw(p.model, p.shape, p.scale);
     for (const p of exS) r.shadowDraw(p.model, p.shape, p.scale);
-    if (zn) r.shadowBatch(this.zBatch);
+    if (zn) for (const b of zb) r.shadowBatch(b);
     r.gl.bindVertexArray(null); r.boundMesh = null;
     this.fx.drawShadows(r);
     r.endShadow();
@@ -1677,7 +1745,7 @@ export class HeliGame {
     r.setBlend(false);
     this.batches.draw(0, view);
     for (const b of this.live) if ((b.alpha ?? 1) >= 1 && view(b.center, 0.5 * Math.hypot(...b.scale))) r.drawBox(b);
-    if (zn) { r.drawBatch(this.zBatch); r.endBatches(); }
+    if (zn) { for (const b of zb) r.drawBatch(b); r.endBatches(); }
     for (const p of solid) r.drawPart(p, 0);
     for (const p of exS) r.drawPart(p, 0);
     this.fx.drawOpaque(r);
@@ -1685,7 +1753,49 @@ export class HeliGame {
     for (const p of clear) r.drawPart(p, 0);
     for (const p of exC) r.drawPart(p, 0);
     this.fx.drawTransparent(r);
+    if (sn) { r.drawBatch(this.smokeBatch); r.endBatches(); }
     r.setBlend(false);
+  }
+
+  // smoke: tall columns over the fires (worked out from the clock, nothing stored) and puffs left by explosions
+  fillSmoke(eye) {
+    const D = this.smokeData, m = mat4();
+    let n = 0;
+    const put = (x, y, z, sz, col, a) => {
+      if (n >= 1200) return;
+      compose(m, [x, y, z], [0, 0, 0], [sz, sz * 0.8, sz]);
+      const o = n * 32;
+      for (let k = 0; k < 16; k++) D[o + k] = m[k];
+      D[o + 16] = sz; D[o + 17] = sz * 0.8; D[o + 18] = sz; D[o + 19] = 0;
+      D[o + 20] = col[0]; D[o + 21] = col[1]; D[o + 22] = col[2]; D[o + 23] = a;
+      D[o + 24] = 0; D[o + 25] = 0; D[o + 26] = col[3] || 0; D[o + 27] = 0; D[o + 28] = 0; D[o + 29] = 1; D[o + 30] = 0; D[o + 31] = 0;
+      n++;
+    };
+    const t = this.t, wind = [0.8, 0.6];
+    for (const [x, y, z, k] of this.plumes || []) {
+      if (Math.abs(x - eye[0]) > 650 || Math.abs(z - eye[2]) > 650) continue;
+      const N = Math.round(10 + 8 * k), H = 90 * k;
+      for (let i = 0; i < N; i++) {
+        const ph = (t * 0.035 / k + i / N) % 1, h = ph * H, sz = (3 + ph * 22) * k;
+        const a = 0.32 * Math.min(1, ph * 8) * (1 - ph);
+        const g = 0.09 + ph * 0.12;
+        put(x + wind[0] * h * 0.4 + Math.sin(i * 7.1 + t * 0.2) * sz * 0.2, y + h, z + wind[1] * h * 0.4 + Math.cos(i * 3.3) * sz * 0.2, sz, [g, g * 0.95, g * 0.9], a);
+        if (ph < 0.12) put(x, y + h * 0.5, z, sz * 0.6, [1, 0.45, 0.1, 1], 0.5 * (1 - ph / 0.12));
+      }
+    }
+    for (const sm of this.smokes) {
+      const k = sm.t / sm.life;
+      put(sm.pos[0] + sm.drift[0] * sm.t, sm.pos[1] + sm.t * 2.2, sm.pos[2] + sm.drift[1] * sm.t, sm.size * (1 + k * 2.2), [0.16, 0.15, 0.14], 0.45 * (1 - k) * Math.min(1, sm.t * 6));
+    }
+    // ash and embers drifting round you
+    if (this.mode !== 'hangar') for (let i = 0; i < 70; i++) {
+      const sx = ((i * 37.7) % 60) - 30, sz = ((i * 91.3) % 60) - 30, sy = ((i * 13.1) % 30) - 10;
+      const x = eye[0] + (((sx + t * 1.5 + 30) % 60) + 60) % 60 - 30, y = eye[1] + ((((sy - t * (0.6 + (i % 5) * 0.2)) + 10) % 30) + 30) % 30 - 10, z = eye[2] + (((sz + t * 1.1 + 30) % 60) + 60) % 60 - 30;
+      const ember = i % 3 === 0;
+      put(x, y, z, ember ? 0.07 : 0.1, ember ? [1, 0.5, 0.15, 1] : [0.35, 0.33, 0.32], ember ? 0.9 : 0.5);
+    }
+    this.r.fillBatch(this.smokeBatch, D, n, 0);
+    return n;
   }
 }
 const norm4 = (q) => { const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1; return q.map((v) => v / l); };
