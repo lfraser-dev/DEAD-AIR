@@ -5,7 +5,7 @@
 // of its batch (which is rebuilt) and goes back to being drawn on its own.
 import { INST_FLOATS } from './renderer.js';
 
-const CHUNK = 28;          // m, chunk size on the xz plane
+const CHUNK = 56;          // m, chunk size on the xz plane
 const BIG_R = 40;          // boxes bigger than this go in their own per-mesh "big" chunk
 
 const snap = (b) => [b.center[0], b.center[1], b.center[2], b.scale[0], b.scale[1], b.scale[2],

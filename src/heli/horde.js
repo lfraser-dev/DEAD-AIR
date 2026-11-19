@@ -11,7 +11,7 @@
 //   TITAN    the boss: as tall as a building, throws cars and heads for the outpost
 import { compose, mat4, clamp } from '../math.js';
 import { INST_FLOATS } from '../renderer.js';
-import { HALF, BASE } from './city.js';
+import { WORLD } from './map.js';
 
 export const TYPES = {
   walker: { hp: 45, spd: [2.0, 3.0], s: 1, climb: 1.3, scrap: 2 },
@@ -25,7 +25,7 @@ const SHIRT = [[0.3, 0.12, 0.1], [0.15, 0.2, 0.32], [0.38, 0.36, 0.3], [0.2, 0.2
 const PANTS = [[0.15, 0.17, 0.24], [0.22, 0.2, 0.16], [0.12, 0.12, 0.12], [0.3, 0.28, 0.22]];
 
 // the flow-field grid
-const CELL = 3, GX0 = -HALF - 60, GZ0 = -HALF - 60, NX = Math.ceil((2 * HALF + 120) / CELL), NZ = Math.ceil((2 * HALF + 200) / CELL);
+const CELL = 4, GX0 = -WORLD, GZ0 = -WORLD, NX = Math.ceil((2 * WORLD) / CELL), NZ = NX;
 const cellOf = (x, z) => { const i = Math.floor((x - GX0) / CELL), k = Math.floor((z - GZ0) / CELL); return i < 0 || k < 0 || i >= NX || k >= NZ ? -1 : k * NX + i; };
 const N8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -37,11 +37,12 @@ export class Horde {
     this.m = mat4();
     this.fields = new Map();
     this.head = new Int32Array(NX * NZ); this.next = new Int32Array(4000);
+    this.blockedAt = (x, z) => { const c = cellOf(x, z); return c < 0 || !!this.block[c]; };
     // which squares are blocked at waist height (buildings, walls)
     this.block = new Uint8Array(NX * NZ);
     for (let k = 0; k < NZ; k++) for (let i = 0; i < NX; i++) {
       const x = GX0 + (i + 0.5) * CELL, z = GZ0 + (k + 0.5) * CELL;
-      if (world.pointInside([x, 2, z]) || world.pointInside([x + 1, 2, z + 1]) || world.pointInside([x - 1, 2, z - 1])) this.block[k * NX + i] = 1;
+      if (world.pointInside([x, 2, z]) || world.pointInside([x + 1.4, 2, z + 1.4]) || world.pointInside([x - 1.4, 2, z - 1.4])) this.block[k * NX + i] = 1;
     }
   }
 
@@ -69,9 +70,10 @@ export class Horde {
   }
   roofField(r) {
     const b = r.box;
-    return this.field(`roof${b.id}`, (x, z) => x > b.min[0] - 4 && x < b.max[0] + 4 && z > b.min[2] - 4 && z < b.max[2] + 4);
+    return this.field(`roof${b.id}`, (x, z) => x > b.min[0] - 5 && x < b.max[0] + 5 && z > b.min[2] - 5 && z < b.max[2] + 5);
   }
-  baseField() { return this.field('base', (x, z) => Math.abs(x - BASE[0]) < 16 && Math.abs(z - (BASE[2] + 6)) < 16); }
+  fobField(f) { return this.field(`fob${f.id}`, (x, z) => Math.abs(x - f.padAt[0]) < 14 && Math.abs(z - f.padAt[2]) < 14); }
+  dropField(key) { this.fields.delete(key); }
 
   spawn(type, x, z, o = {}) {
     const T = TYPES[type], r = Math.random;
@@ -176,6 +178,8 @@ export class Horde {
         this.shots.splice(i, 1);
       }
     }
+    // forget the ones far from the action (events keep theirs)
+    for (const z of L) if (z.alive && !z.keep && z.st !== 'grab' && Math.abs(z.x - hp[0]) + Math.abs(z.z - hp[2]) > 620) z.alive = false;
     // drop the dead
     let w = 0;
     for (let i = 0; i < L.length; i++) if (L[i].alive) L[w++] = L[i];
@@ -187,22 +191,23 @@ export class Horde {
     z.think -= dt;
     const dxh = hp[0] - z.x, dzh = hp[2] - z.z, dh = Math.hypot(dxh, dzh);
     // fly low near them and they come for you
-    const chase = !H.dead && g.heliAlt < 22 && dh < 60 && z.type !== 'titan';
+    const chase = !H.dead && g.heliAlt < 22 && dh < 60 && z.type !== 'titan' && !(z.tgt && z.tgt.kind === 'chase' && z.tgt.sticky);
     let dirx = 0, dirz = 0, reached = false;
-    if (z.type === 'titan') {
-      // straight down the middle avenue to the outpost, smashing through anything in the way
-      const gx = BASE[0] - z.x, gz = BASE[2] - 30 - z.z, gd = Math.hypot(gx, gz);
-      if (gd < 4) reached = true; else { dirx = gx / gd; dirz = gz / gd; }
+    const tg = z.tgt;
+    if (z.type === 'titan' && tg && tg.kind === 'fob') {
+      // straight at the base, smashing through anything in the way
+      const gx = tg.padAt[0] - z.x, gz = tg.padAt[2] - z.z, gd = Math.hypot(gx, gz);
+      if (gd < 30) reached = true; else { dirx = gx / gd; dirz = gz / gd; }
     } else if (chase) { dirx = dxh / (dh || 1); dirz = dzh / (dh || 1); }
-    else {
-      if (z.think <= 0) {
-        z.think = 1.5 + Math.random();
-        if (z.tgt !== 'base' && (!z.tgt || !z.tgt.active)) {
-          const rs = g.roofs.filter((r) => r.active && r.count > 0);
-          z.tgt = g.phase2 || !rs.length || z.type === 'brute' && Math.random() < 0.5 ? 'base' : rs[Math.floor(Math.random() * rs.length)];
-        }
-      }
-      const f = z.tgt === 'base' || !z.tgt ? this.baseField() : this.roofField(z.tgt);
+    else if (tg && tg.kind === 'chase') {
+      // something that moves: a convoy truck, a dropped crate
+      if (!tg.alive) z.tgt = null;
+      const gx = tg.x - z.x, gz = tg.z - z.z, gd = Math.hypot(gx, gz) || 1;
+      if (gd < 2.6 + (tg.r || 0)) { reached = true; if (z.cd <= 0) { z.cd = 1; this.events.push({ type: 'hitTarget', tgt: tg, z, dmg: z.type === 'brute' ? 30 : z.type === 'titan' ? 200 : 6 }); } }
+      else { dirx = gx / gd; dirz = gz / gd; }
+    } else if (tg && (tg.kind === 'roof' || tg.kind === 'fob')) {
+      if (tg.kind === 'roof' && (!tg.active || tg.count <= 0)) z.tgt = null;
+      const f = tg.kind === 'roof' ? this.roofField(tg) : this.fobField(tg);
       const c = cellOf(z.x, z.z);
       if (c >= 0 && f[c] === 0) reached = true;
       else if (c >= 0 && f[c] < 65535) {
@@ -216,30 +221,32 @@ export class Horde {
           if (v < best) { best = v; bi = cc; }
         }
         if (bi >= 0) {
-          const tx = GX0 + ((bi % NX) + 0.5) * CELL + z.side * 0.9, tz = GZ0 + (Math.floor(bi / NX) + 0.5) * CELL + z.side * 0.9;
+          const tx = GX0 + ((bi % NX) + 0.5) * CELL + z.side * 1.1, tz = GZ0 + (Math.floor(bi / NX) + 0.5) * CELL + z.side * 1.1;
           const ddx = tx - z.x, ddz = tz - z.z, dd = Math.hypot(ddx, ddz) || 1;
           dirx = ddx / dd; dirz = ddz / dd;
         }
-      } else { const gx = BASE[0] - z.x, gz = BASE[2] - z.z, gd = Math.hypot(gx, gz) || 1; dirx = gx / gd; dirz = gz / gd; }
+      } else { const gx = tg.x ?? tg.padAt[0], gz = tg.z ?? tg.padAt[2]; const dx = gx - z.x, dz = gz - z.z, d = Math.hypot(dx, dz) || 1; dirx = dx / d; dirz = dz / d; }
+    } else if (dh > 8) {
+      // nothing to do: shamble towards the noise (you)
+      dirx = dxh / dh * 0.6; dirz = dzh / dh * 0.6;
     }
     if (reached) {
-      if (z.tgt && z.tgt !== 'base' && T.climb > 0 && z.tgt.active) {
-        const b = z.tgt.box, cx = clamp(z.x, b.min[0], b.max[0]), cz = clamp(z.z, b.min[2], b.max[2]);
+      if (tg && tg.kind === 'roof' && T.climb > 0 && tg.active) {
+        const b = tg.box, cx = clamp(z.x, b.min[0], b.max[0]), cz = clamp(z.z, b.min[2], b.max[2]);
         const nx = z.x - cx, nz = z.z - cz, nd = Math.hypot(nx, nz);
         if (nd < 1.6) {
-          z.st = 'climb'; z.roof = z.tgt;
+          z.st = 'climb'; z.roof = tg;
           z.nx = nd > 1e-3 ? nx / nd : 0; z.nz = nd > 1e-3 ? nz / nd : 1;
           z.x = cx + z.nx * 0.35 + (-z.nz) * z.side * 0.6; z.z = cz + z.nz * 0.35 + z.nx * z.side * 0.6;
           z.yaw = Math.atan2(z.nx, z.nz);
-          z.y = 0.18 + Math.random() * 0.6;
+          z.y = (b.min[1] || 0) + Math.random() * 0.6;
           return;
         }
         const d = Math.hypot(cx - z.x, cz - z.z) || 1; dirx = (cx - z.x) / d; dirz = (cz - z.z) / d;
-      } else if (z.tgt === 'base' || !z.tgt || z.type === 'titan') {
-        // inside the outpost: tear it up
-        if (z.cd <= 0) { z.cd = 1; this.events.push({ type: 'baseHit', dmg: z.type === 'titan' ? 90 : z.type === 'brute' ? 14 : 3 }); }
-        const gx = BASE[0] - z.x, gz = BASE[2] + 6 - z.z, gd = Math.hypot(gx, gz) || 1;
-        if (gd > 6) { dirx = gx / gd; dirz = gz / gd; }
+      } else if (tg && tg.kind === 'fob') {
+        if (z.cd <= 0) { z.cd = 1; this.events.push({ type: 'baseHit', fob: tg, dmg: z.type === 'titan' ? 90 : z.type === 'brute' ? 14 : 3 }); }
+        const gx = tg.padAt[0] - z.x, gz = tg.padAt[2] - z.z, gd = Math.hypot(gx, gz) || 1;
+        if (gd > 6 && z.type !== 'titan') { dirx = gx / gd; dirz = gz / gd; }
       }
     }
     // keep apart

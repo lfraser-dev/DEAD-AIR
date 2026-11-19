@@ -18,6 +18,8 @@
   #title p { margin: 10px 0 34px; font: 800 clamp(14px, 2vw, 20px) var(--font); letter-spacing: .3em; opacity: .85; }
   #title button { background: #ffcf3a; color: #111; border: 0; padding: 14px 46px; font: 900 italic 36px var(--font); letter-spacing: .04em; cursor: pointer; box-shadow: 0 5px 0 #8a6a10; }
   #title button:hover { background: #fff; }
+  #title .row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  #title button.alt { background: rgba(255,255,255,.12); color: #fff; box-shadow: 0 5px 0 #000; font-size: 26px; }
   #title small { margin-top: 26px; font: 700 14px/1.7 var(--font); letter-spacing: .08em; opacity: .7; max-width: 560px; }
   #title a { color: #ffcf3a; }
   #err { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; font: 800 20px var(--font); background: #111; padding: 20px; text-align: center; }
@@ -27,9 +29,9 @@
 <canvas id="game"></canvas>
 <div id="title">
   <h1>DEAD AIR</h1>
-  <p>HELICOPTER · ZOMBIE CITY · RESCUE · UPGRADE</p>
-  <button id="start" type="button">PLAY ▶</button>
-  <small>Needs a keyboard and mouse.<br>W / S up and down · A / D turn · mouse to tilt · click to shoot · right click rockets · space bombs<br><a href="mech.html">the old mech sketch</a></small>
+  <p>OPEN WORLD · HELICOPTER · ZOMBIES · FRIENDS</p>
+  <div class="row"><button id="start" type="button">PLAY ▶</button><button id="join" class="alt" type="button">JOIN A FRIEND</button></div>
+  <small>Needs a keyboard and mouse.<br>W / S up and down · mouse to steer · click to shoot · right click rockets · space bombs · land to pick up, drop off and refuel<br><a href="mech.html">the old mech sketch</a></small>
 </div>
 <div id="err" class="hidden"></div>
 <script type="module">
@@ -46,6 +48,7 @@ const sounds = new Sounds();
 const game = new HeliGame({ renderer, sounds, canvas, onExit: () => title.classList.remove('hidden'), isDev: () => false });
 window.game = game;
 document.getElementById('start').onclick = () => { sounds.unlock(); title.classList.add('hidden'); game.open(); };
+document.getElementById('join').onclick = () => { sounds.unlock(); title.classList.add('hidden'); game.showJoin(); };
 
 // behind the title screen: a slow fly-round of the city
 let last = performance.now(), t = 0;

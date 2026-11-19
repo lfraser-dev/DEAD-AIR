@@ -92,12 +92,12 @@ export function chopperParts(eq, paint, st, H) {
     for (const z of [-1.0, 1.4]) B([x * 0.86, -1.5, z], [0.1, 0.78, 0.1], GUNM, { r: [0, 0, x > 0 ? 0.4 : -0.4], shape: 0.03, mat: 'metal' });
   }
   // nav lights: red on the left, green on the right, a white strobe on the tail
-  const wingX = eq.rockets || eq.bombs ? 2.35 : 1.2;
+  const wings = eq.rockets || eq.bombs || eq.fuel === 2, wingX = wings ? 2.35 : 1.2;
   B([-wingX, -0.33, 0.5], [0.12, 0.12, 0.12], [1, 0.1, 0.05], { em: 1, shape: 'sphere' });
   B([wingX, -0.33, 0.5], [0.12, 0.12, 0.12], [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
   B([0, 2.45, 8.25], [0.12, 0.12, 0.12], [1, 1, 1], { em: (st.t * 1.2) % 1 < 0.08 ? 1 : 0.1, shape: 'sphere' });
   // stub wings carry pods and bombs
-  if (eq.rockets || eq.bombs) add(eq.rockets ? 'rockets' : 'bombs', [0, -0.35, 0.5], [0, 0, 0], [4.5, 0.16, 0.9], trim, { mat: pm, shape: 0.05 });
+  if (wings) add(eq.rockets ? 'rockets' : eq.bombs ? 'bombs' : 'fuel', [0, -0.35, 0.5], [0, 0, 0], [4.5, 0.16, 0.9], trim, { mat: pm, shape: 0.05 });
 
   // ---- paint patterns
   if (paint.stripe) {
@@ -216,6 +216,17 @@ export function chopperParts(eq, paint, st, H) {
     });
   }
 
+  // ---- fuel tanks
+  if (eq.fuel === 1) for (const x of [-1, 1]) {
+    add('fuel', [x * 1.3, -0.95, 0.4], [0, 0, 0], [0.55, 0.55, 2.6], trim, { mat: pm, shape: { cap: [0.27, 0.27] } });
+    add('fuel', [x * 1.3, -0.95, 0.4], [0, 0, 0], [0.58, 0.58, 0.1], [0.85, 0.65, 0.1], { shape: 'cyl' });
+  }
+  if (eq.fuel === 2) for (const x of [-1.9, 1.9]) {
+    add('fuel', [x, -0.62, 0.5], [0, 0, 0], [0.12, 0.3, 0.5], GUNM, { mat: 'metal', shape: 0.02 });
+    add('fuel', [x, -1.05, 0.4], [0, 0, 0], [0.75, 0.75, 3.4], body, { mat: pm, shape: { cap: [0.37, 0.2] } });
+    for (const dz of [-0.6, 0.9]) add('fuel', [x, -1.05, 0.4 + dz], [0, 0, 0], [0.78, 0.78, 0.1], [0.85, 0.65, 0.1], { shape: 'cyl' });
+  }
+
   // ---- armour
   const ar = eq.armor;
   if (ar >= 1) {
@@ -246,6 +257,14 @@ export function chopperParts(eq, paint, st, H) {
     add('cabin', [x * 1.93, -0.4, 0.9], [0, 0, 0], [0.04, 0.3, 1.6], GLASS, { mat: 'glass' });
   }
   const seats = [[0.7, -0.4, 0.2], [-0.7, -0.4, 0.2], [0.7, -0.4, 1.2], [-0.7, -0.4, 1.2], [0.3, -0.4, 0.7], [-0.3, -0.4, 0.7], [0.7, -0.4, -0.5], [-0.7, -0.4, -0.5], [1.55, -0.5, 0.4], [-1.55, -0.5, 0.4], [1.55, -0.5, 1.4], [-1.55, -0.5, 1.4]];
+  // crew sit up front, in helmets the colour of their job
+  const crew = st.crew || [];
+  crew.forEach((c, i) => {
+    const [x, y, z] = [[0.55, -0.35, -0.95], [-0.55, -0.35, -0.95], [0.55, -0.35, -0.2], [-0.55, -0.35, -0.2]][i % 4];
+    B([x, y, z], [0.44, 0.6, 0.38], [0.3, 0.33, 0.25], { shape: 0.08, mat: 'cloth' });
+    B([x, y + 0.48, z], [0.27, 0.29, 0.27], SKIN[(i + 1) % SKIN.length], { shape: 'sphere', mat: 'skin' });
+    B([x, y + 0.6, z], [0.33, 0.2, 0.35], c.col || [0.3, 0.3, 0.3], { shape: 'sphere' });
+  });
   for (let i = 0; i < Math.min(st.riders || 0, seats.length); i++) {
     const [x, y, z] = seats[i];
     B([x, y, z], [0.42, 0.55, 0.35], SHIRTS[i % SHIRTS.length], { shape: 0.08, mat: 'cloth' });
@@ -253,11 +272,15 @@ export function chopperParts(eq, paint, st, H) {
   }
 
   // ---- door gunners (they turn their guns to shoot)
-  for (let sd = 0; sd < eq.door; sd++) {
+  for (let sd = 0; sd < 2; sd++) {
+    const friend = st.doorFriend && st.doorFriend[sd];
+    if (sd >= eq.door && !friend) continue;
     const x = sd === 0 ? 1 : -1, aim = (st.doorAim && st.doorAim[sd]) || [x > 0 ? -Math.PI / 2 : Math.PI / 2, -0.3];
-    add('door', [x * 0.75, -0.35, 0.65], [0, 0, 0], [0.5, 0.65, 0.45], [0.3, 0.34, 0.24], { mat: 'cloth', shape: 0.1 });
-    add('door', [x * 0.75, 0.15, 0.65], [0, 0, 0], [0.32, 0.32, 0.34], [0.86, 0.68, 0.55], { mat: 'skin', shape: 'sphere' });
-    add('door', [x * 0.75, 0.26, 0.65], [0, 0, 0], [0.38, 0.22, 0.4], [0.25, 0.3, 0.2], { shape: 'sphere' });
+    if (!(friend && friend.self)) {
+      add('door', [x * 0.75, -0.35, 0.65], [0, 0, 0], [0.5, 0.65, 0.45], friend ? [0.15, 0.2, 0.35] : [0.3, 0.34, 0.24], { mat: 'cloth', shape: 0.1 });
+      add('door', [x * 0.75, 0.15, 0.65], [0, 0, 0], [0.32, 0.32, 0.34], [0.86, 0.68, 0.55], { mat: 'skin', shape: 'sphere' });
+      add('door', [x * 0.75, 0.26, 0.65], [0, 0, 0], [0.38, 0.22, 0.4], friend ? friend.col || [1, 0.8, 0.1] : [0.25, 0.3, 0.2], { shape: 'sphere', em: friend ? 0.3 : 0 });
+    }
     add('door', [x * 1.25, -0.3, 0.6], [0, 0, 0], [0.08, 0.7, 0.08], GUNM, { mat: 'metal', shape: 'cylY' });
     const [yw, pt] = aim, d = [-Math.sin(yw) * Math.cos(pt), Math.sin(pt), -Math.cos(yw) * Math.cos(pt)];
     add('door', [x * 1.25 + d[0] * 0.5, 0.1 + d[1] * 0.5, 0.6 + d[2] * 0.5], [pt, yw, 0], [0.14, 0.16, 1.1], GUNM, { mat: 'metal', shape: 0.03 });
@@ -316,9 +339,9 @@ export class Chopper {
 
   sub(dt, ctl, world, first) {
     const S = this.stats, ag = S.agility || 1;
-    const assist = ctl.assist;
+    const assist = ctl.assist || ctl.mode === 'easy';
     // rotor spin
-    const want = this.dead ? 0.55 : ctl.engineOn ? 1 : 0;
+    const want = this.dead ? 0.55 : ctl.noFuel ? 0.62 : ctl.engineOn ? 1 : 0;
     this.rpm += (want - this.rpm) * damp(this.dead ? 0.6 : 0.9, dt);
     this.rotorA += this.rpm * 26 * dt; this.tailA += this.rpm * 70 * dt;
 
@@ -329,7 +352,26 @@ export class Chopper {
     // Mouse forward = nose down (fly forward), like a joystick. INVERT MOUSE flips that.
     const w = this.w;
     const inv = ctl.invert ? -1 : 1, pitch = this.pitch, roll = this.rollL;
-    if (assist) {
+    const hs0 = Math.hypot(this.vel[0], this.vel[2]);
+    if (ctl.mode === 'easy') {
+      // EASY: the mouse steers (left / right turns the nose, forward / back flies forward / back), A / D slide sideways.
+      // It banks into turns by itself and eases back to a hover when you let go.
+      if (first) {
+        const k = 0.0021 * (ctl.sens || 1);
+        this.stickP = clamp((this.stickP || 0) + ctl.my * k * inv, -0.5, 0.42);
+        this.yawAcc = clamp((this.yawAcc || 0) - ctl.mx * 0.0034 * (ctl.sens || 1), -1.2, 1.2);
+      }
+      this.stickP = clamp(this.stickP + ctl.pk * 0.9 * dt, -0.5, 0.42);
+      this.yawAcc = clamp(this.yawAcc - ctl.rk * 1.8 * dt, -1.2, 1.2);
+      this.stickP *= Math.exp(-0.08 * dt);
+      const wyT = clamp(this.yawAcc * 7, -2.2, 2.2) * ag;
+      this.yawAcc -= wyT * dt;
+      this.stickR = (this.dead ? 0.3 : ctl.yaw * 0.4) + wyT * 0.2 * clamp(hs0 / 14, 0.2, 1);
+      if (this.dead) this.stickP = 0.1;
+      w[0] += ((this.stickP - pitch) * 4.5 * ag - w[0]) * damp(9, dt);
+      w[2] += ((this.stickR - roll) * 4.5 * ag - w[2]) * damp(9, dt);
+      w[1] += ((this.dead ? 3.2 : wyT) - w[1]) * damp(10, dt);
+    } else if (assist) {
       if (first) {
         const k = 0.0022 * (ctl.sens || 1);
         this.stickP = clamp((this.stickP || 0) + ctl.my * k * inv, -0.75, 0.6);
@@ -356,9 +398,10 @@ export class Chopper {
       w[0] *= dmp; w[2] *= dmp;
       this.stickP = pitch; this.stickR = roll;
     }
-    const hs = Math.hypot(this.vel[0], this.vel[2]);
-    const yawT = ctl.yaw * 1.7 * ag + roll * 1.5 * clamp(hs / 22, 0, 1) * (assist ? 1 : 0.6) + (this.dead ? 3.2 : 0);
-    w[1] += (yawT - w[1]) * damp(3.8, dt);
+    if (ctl.mode !== 'easy') {
+      const yawT = ctl.yaw * 1.7 * ag + roll * 1.5 * clamp(hs0 / 22, 0, 1) * (assist ? 1 : 0.6) + (this.dead ? 3.2 : 0);
+      w[1] += (yawT - w[1]) * damp(3.8, dt);
+    }
     w[0] = clamp(w[0], -3, 3); w[2] = clamp(w[2], -3.5, 3.5);
     const wl = Math.hypot(w[0], w[1], w[2]);
     if (wl > 1e-6) this.q = qnorm(qmul(this.q, qaxis([w[0] / wl, w[1] / wl, w[2] / wl], wl * dt)));
@@ -369,7 +412,9 @@ export class Chopper {
     let c = ctl.coll;
     if (assist && Math.abs(c) < 0.1) c = clamp(-this.vel[1] * 0.38, -0.45, 0.45);       // hold height
     const comp = assist ? 1 / Math.max(0.62, up[1]) : 1 / Math.max(0.85, up[1]) * 0.35 + 0.65;
-    const T = G * this.rpm * this.rpm * comp * (this.dead ? 0.55 : Math.max(0, 1 - this.extraMass + 0.85 * c * lr));
+    // out of fuel: the rotor windmills (autorotation) and you sink slowly; S sinks faster, W slows it a little
+    const T = ctl.noFuel && !this.dead ? G * comp * Math.min(1, this.rpm / 0.62) * (0.84 + 0.1 * ctl.coll - this.extraMass * 0.5)
+      : G * this.rpm * this.rpm * comp * (this.dead ? 0.55 : Math.max(0, 1 - this.extraMass + 0.85 * c * lr));
     const a = [up[0] * T, up[1] * T - G, up[2] * T];
     // afterburner
     this.boost += ((ctl.boost && S.boost && this.boostT > 0 && !this.dead ? 1 : 0) - this.boost) * damp(6, dt);

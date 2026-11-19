@@ -43,6 +43,11 @@ export const SLOTS = [
     { n: 'DOOR GUNNER', cost: 900, d: 'A gunner in the right door shoots zombies by himself.' },
     { n: 'TWIN GUNNERS', cost: 2200, d: 'Gunners in both doors.' },
   ] },
+  { id: 'fuel', name: 'FUEL TANKS', icon: '⛽', tiers: [
+    { n: 'STANDARD TANK', cost: 0, d: 'About 5 minutes of flying.' },
+    { n: 'SIDE TANKS', cost: 600, d: 'Tanks strapped to the sides. About 8 minutes.' },
+    { n: 'FERRY TANKS', cost: 1800, d: 'Huge drop tanks on the wings. About 12 minutes.' },
+  ] },
   { id: 'cabin', name: 'CABIN', icon: '♟', tiers: [
     { n: '4 SEATS', cost: 0, d: 'Carry 4 survivors at a time.' },
     { n: '8 SEATS', cost: 400, d: 'Side benches. Carry 8.' },
@@ -68,7 +73,7 @@ export const PAINT = Object.fromEntries(PAINTS.map((p) => [p.id, p]));
 
 const KEY = 'semifinals.deadair';
 export function loadSave() {
-  const s = { scrap: 0, own: {}, eq: {}, paints: ['olive', 'night'], paint: 'olive', assist: true, invert: false, sens: 1, best: 0, runs: 0, titans: 0, rescued: 0 };
+  const s = { scrap: 0, own: {}, eq: {}, paints: ['olive', 'night'], paint: 'olive', flight: 'easy', invert: false, sens: 1, best: 0, runs: 0, titans: 0, rescued: 0, crew: [], pool: [], events: 0, name: '' };
   try { Object.assign(s, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* ignore */ }
   for (const sl of SLOTS) { if (s.own[sl.id] == null) s.own[sl.id] = 0; if (s.eq[sl.id] == null) s.eq[sl.id] = 0; }
   return s;
@@ -80,7 +85,7 @@ export function statsFor(eq) {
   const g = eq.gun, ar = eq.armor, en = eq.engine, ro = eq.rotor;
   return {
     hp: Math.round(500 * [1, 1.6, 2.3, 3.2][ar]),
-    mass: [1, 1.06, 1.14, 1.26][ar] + eq.rockets * 0.02 + eq.bombs * 0.02 + eq.cabin * 0.03,
+    mass: [1, 1.06, 1.14, 1.26][ar] + eq.rockets * 0.02 + eq.bombs * 0.02 + eq.cabin * 0.03 + (eq.fuel || 0) * 0.03,
     lift: [1, 1.14, 1.28, 1.36][en] * [1, 1.07, 1.12][ro],
     speed: [1, 1.1, 1.2, 1.26][en],
     agility: [1, 1.15, 1.35][ro],
@@ -99,6 +104,8 @@ export function statsFor(eq) {
     cluster: eq.bombs === 2,
     gunners: eq.door,
     seats: [4, 8, 12][eq.cabin],
+    fuel: [100, 160, 240][eq.fuel || 0],
+    crewMax: [2, 3, 4][eq.cabin],
   };
 }
 // 0..1 bars for the hangar
@@ -109,6 +116,7 @@ export function bars(eq) {
     ['FIREPOWER', Math.min(1, (gun + s.rockets * s.rocketDmg / 12 + s.gunners * 150 + s.bombs * 60) / 1900)],
     ['SPEED', (s.speed * s.lift / s.mass - 0.7) / 0.9],
     ['HANDLING', (s.agility * s.lift / s.mass - 0.7) / 1.2],
+    ['FUEL', s.fuel / 240],
     ['SEATS', s.seats / 12],
   ];
 }
