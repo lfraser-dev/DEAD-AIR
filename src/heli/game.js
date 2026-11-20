@@ -292,18 +292,12 @@ export class HeliGame {
       slots.append(b);
     }
     const tiers = this.$('tiers'); tiers.replaceChildren();
-    // what a change does to the bars: green ups, red downs
-    const delta = (eq2, kind2) => {
-      const a = bars(capEq(s.eq, s.heli), s.heli), b = bars(capEq(eq2, kind2), kind2);
-      const c = (x) => clamp(x, 0, 1);
-      return b.map(([n, v], i) => [n, Math.round((c(v) - c(a[i][1])) * 100)]).filter(([, d]) => d).map(([n, d]) => `<em class="${d > 0 ? 'up' : 'dn'}">${d > 0 ? '▲' : '▼'} ${n} ${d > 0 ? '+' : ''}${d}</em>`).join('');
-    };
     if (this.sel === 'heli') {
       for (const k of HELI_IDS) {
         const h = HELIS[k], own = s.helis.includes(k), eq = s.heli === k;
         const st2 = statsFor(s.eq, k);
         const facts = `${st2.seats} SEATS · ${st2.hp} HEALTH · ${st2.fuel} FUEL${Object.keys(h.cap).length ? ` · CAN'T FIT: ${Object.entries(h.cap).filter(([, v]) => v === 0).map(([id]) => SLOT[id].name).join(', ') || 'THE BIGGEST UPGRADES'}` : ''}`;
-        const b = el(`<button class="da-tier${eq ? ' eq' : own ? '' : s.scrap >= h.cost ? ' buy' : ' poor'}" type="button"><b>${h.n}</b><p>${h.d}<br><small>${facts}</small></p><div class="da-delta">${eq ? '' : delta(s.eq, k)}</div><span>${eq ? 'FLYING THIS' : own ? 'FLY THIS' : `BUY ⚙ ${h.cost.toLocaleString('en-GB')}`}</span></button>`);
+        const b = el(`<button class="da-tier${eq ? ' eq' : own ? '' : s.scrap >= h.cost ? ' buy' : ' poor'}" type="button"><b>${h.n}</b><p>${h.d}<br><small>${facts}</small></p><span>${eq ? 'FLYING THIS' : own ? 'FLY THIS' : `BUY ⚙ ${h.cost.toLocaleString('en-GB')}`}</span></button>`);
         b.onclick = () => {
           if (!own) { if (s.scrap < h.cost) { this.snd.fail?.(); this.flash('NOT ENOUGH SCRAP'); return; } s.scrap -= h.cost; s.helis.push(k); this.snd.coins?.(); this.flash(`${h.n} BOUGHT`); }
           if (s.heli !== k) { s.heli = k; this.session = this.session ? { ...this.session } : null; this.snd.bolt?.(); this.toHangar(); }
@@ -328,8 +322,7 @@ export class HeliGame {
       sl.tiers.forEach((t, i) => {
         const own = i <= s.own[sl.id], eq = s.eq[sl.id] === i, next = i === s.own[sl.id] + 1, fits = i <= cap(sl.id);
         const cls = eq ? ' eq' : own ? '' : next ? s.scrap >= t.cost ? ' buy' : ' poor' : ' lock';
-        const d = delta({ ...s.eq, [sl.id]: i }, s.heli);
-        const b = el(`<button class="da-tier${cls}${fits ? '' : ' nofit'}" type="button"><b>${t.n}</b><p>${t.d}${fits ? '' : `<br><small class="warn">TOO BIG FOR THE ${HK.n} (IT'LL FIT YOUR OTHER HELICOPTERS)</small>`}</p><div class="da-delta">${eq ? '' : d}</div><span>${eq ? 'FITTED' : own ? 'FIT' : next ? `BUY ⚙ ${t.cost.toLocaleString('en-GB')}` : 'LOCKED'}</span></button>`);
+        const b = el(`<button class="da-tier${cls}${fits ? '' : ' nofit'}" type="button"><b>${t.n}</b><p>${t.d}${fits ? '' : `<br><small class="warn">TOO BIG FOR THE ${HK.n} (IT'LL FIT YOUR OTHER HELICOPTERS)</small>`}</p><span>${eq ? 'FITTED' : own ? 'FIT' : next ? `BUY ⚙ ${t.cost.toLocaleString('en-GB')}` : 'LOCKED'}</span></button>`);
         b.onclick = () => {
           if (!own) {
             if (!next) return;

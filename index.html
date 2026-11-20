@@ -23,9 +23,64 @@
   #title small { margin-top: 26px; font: 700 14px/1.7 var(--font); letter-spacing: .08em; opacity: .7; max-width: 560px; }
   #title a { color: #ffcf3a; }
   #err { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; font: 800 20px var(--font); background: #111; padding: 20px; text-align: center; }
+  /* the disguise: looks like GitHub's "no site here" page until you type the secret word */
+  #nf { z-index: 99999; position: fixed; inset: 0; background: #f1f1f1; color: #222; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; text-align: center; padding-top: 22px; }
+  #nf h1 { font: 300 46px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #000; margin: 10px 0 34px; font-style: normal; white-space: normal; }
+  #nf p { margin: 0 auto 16px; max-width: 470px; color: #666; font-size: 13px; }
+  #nf strong { color: #666; } #nf a { color: #4183c4; text-decoration: none; }
+  #nf .nf-foot { font-size: 11px; color: #666; margin-top: 22px; } #nf .nf-foot a { color: #666; } #nf .nf-foot span { color: #ddd; margin: 0 10px; }
+  #nf .nf-logo { display: inline-block; margin-top: 20px; width: 26px; height: 26px; color: #bbb; cursor: default; }
+  #nf-in { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: 160px; padding: 6px; border: 1px solid #ddd; background: #f6f6f6; color: #444; font: 13px sans-serif; letter-spacing: 0; opacity: .6; }
+  #nf.hidden { display: none !important; }
 </style>
 </head>
 <body>
+<div id="nf" class="hidden">
+  <h1>404</h1>
+  <p><strong>There isn't a GitHub Pages site here.</strong></p>
+  <p>If you're trying to publish one, <a href="https://help.github.com/pages/" rel="noreferrer">read the full documentation</a> to learn how to set up <strong>GitHub Pages</strong> for your repository, organization, or user account.</p>
+  <div class="nf-foot"><a href="https://githubstatus.com" rel="noreferrer">GitHub Status</a><span>&mdash;</span><a href="https://twitter.com/githubstatus" rel="noreferrer">@githubstatus</a></div>
+  <div class="nf-logo" id="nf-logo"><svg viewBox="0 0 16 16" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></div>
+</div>
+<script>
+// The disguise (same as The Semi-Finals): the page looks like GitHub's "no site here" page until you type the secret
+// word anywhere (there's no box). On a phone, tap the grey logo five times for a little box. Only a hash of the word is
+// in this page. A device that's been let in once remembers it (add ?lock to the address to make it forget).
+(() => {
+  const WORD_H = '30e57ce89734d7b357d882dc82c8a6f62ce72f58c192f14ecc1712f7b142ab75', WORD_L = 6, KEY = 'da.open';
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch { /* private window */ } }, del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } } };
+  if (/[?&]lock\b/.test(location.search)) { store.del(KEY); history.replaceState(null, '', location.pathname); }
+  if (store.get(KEY) === '1') return;
+  const nf = document.getElementById('nf'), title = document.title;
+  nf.classList.remove('hidden');
+  document.title = 'Site not found \u00b7 GitHub Pages';
+  window.__disguised = true;
+  const hex = (u) => [...u].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const sha = async (t) => hex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('sf-word:' + t))));
+  let buf = '', taps = 0, done = false;
+  const check = async (t) => {
+    if (done || t.length < WORD_L) return;
+    if (await sha(t.slice(-WORD_L)) === WORD_H) {
+      done = true; window.__disguised = false;
+      nf.classList.add('hidden'); document.title = title; store.set(KEY, '1');
+      document.getElementById('nf-in')?.remove();
+    }
+  };
+  addEventListener('keydown', (e) => {
+    if (done || e.key.length !== 1) return;
+    e.stopImmediatePropagation();
+    buf = (buf + e.key.toLowerCase()).slice(-40);
+    check(buf);
+  }, true);
+  document.getElementById('nf-logo').addEventListener('click', () => {
+    if (++taps < 5 || document.getElementById('nf-in')) return;
+    const i = document.createElement('input');
+    i.id = 'nf-in'; i.autocomplete = 'off'; i.autocapitalize = 'off'; i.spellcheck = false;
+    i.addEventListener('input', () => check(i.value.toLowerCase().replace(/\s+/g, '')));
+    nf.append(i); i.focus();
+  });
+})();
+</script>
 <canvas id="game"></canvas>
 <div id="title">
   <h1>DEAD AIR</h1>

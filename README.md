@@ -1,6 +1,8 @@
 # DEAD AIR
 
-A third-person helicopter shooter in an open world full of zombies. Plain JavaScript modules and WebGL2, no build step: open `index.html` from any web server (or GitHub Pages).
+A third-person helicopter shooter in an open world full of zombies. Plain JavaScript modules and WebGL2, no build step: open `index.html` from any web server.
+
+**The published copy is locked, like The Semi-Finals.** `docs/` is what GitHub Pages serves (Settings → Pages → branch `main`, folder `/docs`): it looks like GitHub's "There isn't a GitHub Pages site here." page. Type the secret word anywhere (on a phone, tap the grey logo five times) and the password screen fades in; the password unscrambles the game (`docs/g.bin`, AES-256-GCM, key from PBKDF2). Same word and password as The Semi-Finals. A device that's unlocked once goes straight in (add `?lock` to forget). After changing the game, rebuild it with `python3 tools/seal.py` (reads the git-ignored `.sealpass` and `.sealword`).
 
 **Flying**: three styles, picked in the hangar. EASY (the default): the mouse steers (left/right turns, forward/back flies forward/back), A / D slide sideways, W / S up and down, it hovers when you let go, crashes hurt less and the gun helps you aim. ASSIST and PRO fly like Battlefield 2042 (mouse tilts, A / D turn; PRO has no levelling). Click: nose gun · right click: rockets · Space: bombs · Shift: afterburner · V: siren (with the loudspeaker) · C: camera.
 

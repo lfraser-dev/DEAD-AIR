@@ -194,8 +194,6 @@ export function bars(eq, kind) {
   return [
     ['ARMOUR', s.hp / 2600],
     ['FIREPOWER', Math.min(1, (gun + s.rockets * s.rocketDmg / 12 + s.gunners * 150 * (s.doorMini ? 2 : 1) + s.bombs * 60) / 1900)],
-    ['SPEED', (s.speed * s.lift / s.mass - 0.7) / 0.9],
-    ['HANDLING', (s.agility * s.lift / s.mass - 0.7) / 1.2],
     ['FUEL', s.fuel / 450],
     ['SEATS', s.seats / 32],
   ];
