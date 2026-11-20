@@ -10,8 +10,8 @@ export const CSS = `
 .da-title span { font: 800 14px var(--font); letter-spacing: .3em; opacity: .85; }
 .da-scrap { position: absolute; right: 28px; top: 22px; background: rgba(0,0,0,.6); padding: 8px 14px; font: 900 22px var(--font); letter-spacing: .06em; border-left: 4px solid #ffcf3a; }
 .da-scrap small { display: block; font: 700 11px var(--font); letter-spacing: .2em; opacity: .7; }
-.da-slots { position: absolute; left: 28px; top: 120px; width: 230px; display: flex; flex-direction: column; gap: 5px; }
-.da-slot { display: flex; align-items: center; gap: 10px; text-align: left; background: rgba(10,12,14,.72); border: 0; border-left: 4px solid transparent; color: #fff; padding: 7px 10px; }
+.da-slots { position: absolute; left: 28px; top: 120px; width: 230px; display: flex; flex-direction: column; gap: 4px; max-height: calc(100vh - 150px); overflow-y: auto; scrollbar-width: thin; padding-right: 4px; }
+.da-slot { display: flex; align-items: center; gap: 10px; text-align: left; background: rgba(10,12,14,.72); border: 0; border-left: 4px solid transparent; color: #fff; padding: 5px 10px; flex: none; }
 .da-slot i { font-style: normal; width: 22px; text-align: center; font-size: 18px; color: #ffcf3a; }
 .da-slot b { display: block; font: 900 15px var(--font); letter-spacing: .08em; }
 .da-slot small { font: 700 11px var(--font); letter-spacing: .08em; opacity: .7; }
@@ -135,6 +135,8 @@ export const CSS = `
 .da-meter i { border-radius: 5px; overflow: hidden; } .da-meter i::after { border-radius: 5px; box-shadow: 0 0 12px var(--c, #7dff9a); }
 .da-right { background: linear-gradient(180deg, rgba(10,12,16,.55), rgba(10,12,16,.35)); padding: 10px 14px; border-radius: 10px; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.08); }
 .da-evs div { border-radius: 0 8px 8px 0; backdrop-filter: blur(6px); background: rgba(8,10,12,.5); }
+.da-delta { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; } .da-delta em { font: 800 10px var(--font); font-style: normal; padding: 2px 6px; border-radius: 4px; letter-spacing: .04em; } .da-delta em.up { background: rgba(80,220,120,.22); color: #7dff9a; } .da-delta em.dn { background: rgba(255,90,58,.2); color: #ff8a6a; }
+.da-tier.nofit { opacity: .55; } .da-tier small.warn { color: #ffcf3a; } .da-slot.off { opacity: .45; }
 .da-bigmap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(78vh, 620px); height: min(78vh, 620px); border-radius: 14px; border: 2px solid rgba(255,255,255,.25); box-shadow: 0 10px 40px rgba(0,0,0,.6); z-index: 5; }
 .da-map { border-radius: 12px; backdrop-filter: blur(6px); box-shadow: 0 6px 24px rgba(0,0,0,.4); }
 .da-act { border-radius: 8px; font-size: 15px !important; padding: 9px 12px; white-space: nowrap; box-shadow: 0 4px 0 #8a6a10, 0 0 24px rgba(255,207,58,.45); animation: dapulse 1.4s ease-in-out infinite; }

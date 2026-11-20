@@ -100,6 +100,25 @@ export const SLOTS = [
 ];
 export const SLOT = Object.fromEntries(SLOTS.map((s) => [s.id, s]));
 
+// the helicopters you can fly. cap = the highest tier of each upgrade that fits (0 = can't fit it at all).
+export const HELIS = {
+  warhorse: { n: 'WARHORSE', cost: 0, d: 'The all-rounder. Good guns, room for your team, takes a beating. Fits every upgrade.', seats: [4, 8, 12],
+    hp: 1, mass: 1, lift: 1, speed: 1, agility: 1, fuel: 1, cap: {} },
+  hornet: { n: 'HORNET', cost: 1500, d: 'A tiny, fast scout. Darts between skyscrapers and turns on a coin. Two inside, two on the benches outside. Paper-thin.', seats: [4, 6],
+    hp: 0.6, mass: 0.72, lift: 1.06, speed: 1.3, agility: 1.65, fuel: 0.85, cap: { gun: 2, rockets: 2, bombs: 1, armor: 1, cabin: 1, fuel: 1, winch: 1, turret: 0, medbay: 0, drops: 1 } },
+  reaper: { n: 'REAPER', cost: 4500, d: 'A gunship. Its chin gun hits 30% harder, its four pylons carry 50% more rockets, and it\'s armoured like a tank. Two seats only.', seats: [2],
+    hp: 1.75, mass: 1.2, lift: 1.28, speed: 1.14, agility: 1.08, fuel: 1, gunMul: 1.3, rocketMul: 1.5, cap: { cabin: 0, door: 0, winch: 0, medbay: 0 } },
+  mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32],
+    hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1 } },
+};
+export const HELI_IDS = Object.keys(HELIS);
+// the upgrades that actually fit this helicopter
+export function capEq(eq, kind = 'warhorse') {
+  const cap = (HELIS[kind] || HELIS.warhorse).cap, out = {};
+  for (const k of Object.keys(eq)) out[k] = Math.min(eq[k], cap[k] ?? 99);
+  return out;
+}
+
 // paint jobs: body colour, trim colour, a pattern, and the cost
 export const PAINTS = [
   { id: 'olive', n: 'OLIVE', body: [0.3, 0.34, 0.22], trim: [0.16, 0.17, 0.13], cost: 0 },
@@ -126,15 +145,18 @@ export function loadSave() {
   for (const k of Object.keys(s.eq)) if (!SLOTS.some((sl) => sl.id === k)) { delete s.eq[k]; delete s.own[k]; }
   s.team = s.team || []; s.stash = s.stash || { medkit: 2, pistol: 0, smg: 0, shotgun: 0, rifle: 0, vest: 0, heavy: 0, pack: 0, grenade: 0 };
   if (s.seed == null) s.seed = 0;
+  s.helis = s.helis || ['warhorse']; if (!HELIS[s.heli] || !s.helis.includes(s.heli)) s.heli = 'warhorse';
   return s;
 }
 export function saveSave(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ } }
 
 // what the fitted upgrades add up to
-export function statsFor(eq) {
+export function statsFor(eq0, kind = 'warhorse') {
+  const HK = HELIS[kind] || HELIS.warhorse, eq = capEq(eq0, kind);
   const v = (k, max) => Math.min(eq[k] || 0, max);
   const g = v('gun', 3), ar = v('armor', 3), en = v('engine', 3), ro = v('rotor', 2), rk = v('rockets', 3), bo = v('bombs', 3);
-  return {
+  const S = {
+    kind,
     hp: Math.round(500 * [1, 1.6, 2.3, 3.2][ar]),
     mass: [1, 1.06, 1.14, 1.26][ar] + rk * 0.02 + bo * 0.02 + v('cabin', 2) * 0.03 + v('fuel', 2) * 0.03 + v('winch', 2) * 0.02,
     lift: [1, 1.14, 1.28, 1.36][en] * [1, 1.07, 1.12][ro],
@@ -157,16 +179,24 @@ export function statsFor(eq) {
     light: v('light', 2), turret: v('turret', 2), medbay: v('medbay', 1), drops: v('drops', 2), radio: v('radio', 1),
     crewMax: [2, 3, 4][v('cabin', 2)],
   };
+  // the airframe
+  S.hp = Math.round(S.hp * HK.hp); S.mass *= HK.mass; S.lift *= HK.lift; S.speed *= HK.speed; S.agility *= HK.agility;
+  S.fuel = Math.round(S.fuel * HK.fuel);
+  S.seats = HK.seats[Math.min(HK.seats.length - 1, v('cabin', 2))];
+  if (HK.gunMul) S.gun = { ...S.gun, dmg: Math.round(S.gun.dmg * HK.gunMul) };
+  if (HK.rocketMul) S.rockets = Math.round(S.rockets * HK.rocketMul);
+  if ((HK.cap.door ?? 9) === 0) S.gunners = 0;
+  return S;
 }
 // 0..1 bars for the hangar
-export function bars(eq) {
-  const s = statsFor(eq), gun = s.gun.rate * s.gun.dmg * (s.gun.splash ? 2.2 : 1);
+export function bars(eq, kind) {
+  const s = statsFor(eq, kind), gun = s.gun.rate * s.gun.dmg * (s.gun.splash ? 2.2 : 1);
   return [
-    ['ARMOUR', s.hp / 1600],
+    ['ARMOUR', s.hp / 2600],
     ['FIREPOWER', Math.min(1, (gun + s.rockets * s.rocketDmg / 12 + s.gunners * 150 * (s.doorMini ? 2 : 1) + s.bombs * 60) / 1900)],
     ['SPEED', (s.speed * s.lift / s.mass - 0.7) / 0.9],
     ['HANDLING', (s.agility * s.lift / s.mass - 0.7) / 1.2],
-    ['FUEL', s.fuel / 240],
-    ['SEATS', s.seats / 12],
+    ['FUEL', s.fuel / 450],
+    ['SEATS', s.seats / 32],
   ];
 }

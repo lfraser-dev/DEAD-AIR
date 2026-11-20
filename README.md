@@ -14,6 +14,8 @@ A third-person helicopter shooter in an open world full of zombies. Plain JavaSc
 
 **Events**: RESCUE (people on a roof under a green flare, with a pile growing up the wall), BRIDGE (a crowd stuck in the traffic on a bridge, the dead walking in from both ends), HORDE (hundreds of them walking across the country towards a named town: break it up with bombs and rockets before it gets there) and SUPPLY DROP (hook it on and take it to the Spire).
 
+**Helicopters** (HELICOPTER in the hangar): WARHORSE (the all-rounder, fits everything), HORNET (a tiny fast scout with benches outside, can't fit the heaviest upgrades), REAPER (a gunship: tandem cockpit, chin gun +30% damage, +50% rockets, heavy armour, two seats, no doors) and MULE (a twin-rotor transport: 16 to 32 seats, huge fuel, very tough, slow, no rockets). Upgrades are bought once and fit any helicopter they're not too big for; the hangar shows what each choice does to your bars.
+
 **Upgrades**: nose gun, rockets, bombs, armour, engine, rotor, door gunners, fuel tanks, cabin, winch, thermal camera, loudspeaker, skids (anti-climb, then electric), searchlight, belly turret, medical bay, supply chutes (B: drop medkits and grenades to your team mid-raid) and a long range radio.
 
 **Fuel**: runs down as you fly. Refuel at the Spire, bring it back from gas stations, send passengers out for it (Q) or pay for a fuel drop (G).

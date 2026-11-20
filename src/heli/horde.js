@@ -94,7 +94,7 @@ export class Horde {
       spd: T.spd[0] + r() * (T.spd[1] - T.spd[0]), ph: r() * 6.28, st: 'walk', tgt: o.tgt || null, cd: 1 + r() * 3,
       skin: SKINS[Math.floor(r() * SKINS.length)], shirt: SHIRT[Math.floor(r() * SHIRT.length)], pants: PANTS[Math.floor(r() * PANTS.length)],
       vel: [0, 0, 0], hitT: 0, grip: 0, slot: -1, think: r(), dx: 0, dz: 0, side: (r() - 0.5) * 2, alive: true, seen: 0, id: Math.floor(r() * 1e9),
-      torn: r() < 0.5, hunch: r() * 0.25,
+      torn: r() < 0.5, hunch: r() * 0.25, tilt: 0, roll: 0,
     };
     if (type === 'screamer') { zb.skin = [0.62, 0.58, 0.55]; zb.shirt = [0.75, 0.73, 0.7]; }
     this.list.push(zb);
@@ -111,7 +111,7 @@ export class Horde {
     return p;
   }
   joinPile(z, p) { if (z.pile === p) return; z.st = 'pile'; z.pile = p; z.pileT = p.t++; p.members.push(z); }
-  leavePile(z) { const p = z.pile; if (!p) return; p.members = p.members.filter((m) => m !== z); z.pile = null; }
+  leavePile(z) { const p = z.pile; if (!p) return; p.members = p.members.filter((m) => m !== z); z.pile = null; z.tilt = 0; z.roll = 0; }
   // where a member stands: later arrivals climb higher; each body adds ~0.38 m
   pileTick(dt, H) {
     for (const [key, p] of this.piles) {
@@ -121,15 +121,32 @@ export class Horde {
       p.members.sort((a, b) => a.pileT - b.pileT);
       const n = p.members.length, want = Math.min(p.reach + 0.6, 0.52 * n * (p.nx || p.nz ? 1 : 0.75));
       p.h += (want - p.h) * Math.min(1, dt * 1.5);
+      // the shape: a wedge of bodies against the wall (a cone under the helicopter), wide at the bottom, narrow at the
+      // top. Early arrivals are down in it, later ones climb over them; everyone lies on the slope (heads up-hill),
+      // a few sprawled sideways, and the top few are up on their feet, reaching.
+      const wall = p.nx || p.nz;
       p.members.forEach((m, i) => {
-        const y = p.h * (i + 1) / n, down = p.h - y;
-        const lat = (hash(m.id) - 0.5) * Math.min(4, 1 + down * 0.5);
+        const u = (i + 0.5) / n, top = i >= n - 3;
+        const y = p.h * (1 - Math.sqrt(1 - u * 0.985)), rem = p.h - y;
+        const r1 = hash(m.id), r2 = hash(m.id + 3.3), r3 = hash(m.id + 9.1);
+        const slope = Math.atan2(1, wall ? 0.72 : 0.85);         // how steep the pile is
         let x, zz;
-        if (p.nx || p.nz) { x = p.x + p.nx * (down * 0.9 + 0.4) - p.nz * lat; zz = p.z + p.nz * (down * 0.9 + 0.4) + p.nx * lat; m.yaw = Math.atan2(p.nx, p.nz); }
-        else { const a = hash(m.id + 7) * 6.28, r = down * 0.75 + 0.3; x = p.x + Math.cos(a) * r; zz = p.z + Math.sin(a) * r; m.yaw = Math.atan2(Math.cos(a), Math.sin(a)); }
+        if (wall) {
+          const out = 0.4 + rem * 0.72 - r3 * 0.35, lat = (r1 - 0.5) * 2 * (0.5 + rem * 0.55);
+          x = p.x + p.nx * out - p.nz * lat; zz = p.z + p.nz * out + p.nx * lat;
+          m.yaw = Math.atan2(p.nx, p.nz) + (r2 - 0.5) * 0.9;
+        } else {
+          const a = r1 * 6.28, rr = 0.3 + rem * 0.85 - r3 * 0.25;
+          x = p.x + Math.cos(a) * rr; zz = p.z + Math.sin(a) * rr;
+          m.yaw = Math.atan2(Math.cos(a), Math.sin(a)) + (r2 - 0.5) * 0.6;
+        }
+        // pose: lying face down on the slope (pitched over towards the top), some rolled on their side
+        const lie = top ? 0.25 : clamp(slope + 0.35 + (r2 - 0.5) * 0.5, 0.9, 1.5);
+        m.tilt += (lie - (m.tilt || 0)) * Math.min(1, dt * 4);
+        m.roll = top ? 0 : (r3 > 0.75 ? (r1 > 0.5 ? 1.2 : -1.2) : (r3 - 0.5) * 0.5);
         m.x += (x - m.x) * Math.min(1, dt * 4); m.z += (zz - m.z) * Math.min(1, dt * 4);
-        m.y += (p.y + y - m.y * 1) * Math.min(1, dt * 3);
-        m.ph += dt * 6;
+        m.y += (p.y + y - m.y) * Math.min(1, dt * 3);
+        m.ph += dt * (top ? 6 : 2.5);
       });
       p.top = p.y + p.h;
     }
@@ -445,7 +462,19 @@ export class Horde {
     const flash = z.hitT > 0;
     const tint = (col) => flash ? [Math.min(1, col[0] + 0.5), Math.min(1, col[1] + 0.4), Math.min(1, col[2] + 0.4)] : col;
     const crawl = z.type === 'crawler' && (z.st === 'walk' || z.st === 'roof');
+    // a lying / climbing body: tip the whole thing over around the hips (tilt forward, roll sideways), then sink it so it
+    // rests on what's under it
+    const tl0 = z.st === 'pile' || z.st === 'fall' ? z.tilt || 0 : 0, rl0 = z.st === 'pile' ? z.roll || 0 : 0;
+    const ct = Math.cos(tl0), stl = Math.sin(tl0), cr = Math.cos(rl0), sr = Math.sin(rl0), sink = 0.8 * Math.abs(stl) * 0.85;
     const P = (lx, ly, lz, rx, sx, sy, sz, col, em = 0, mesh = 'box') => {
+      if (tl0 || rl0) {
+        let y = ly - 0.9, x = lx;
+        const x2 = x * cr - y * sr, y2 = x * sr + y * cr; x = x2; y = y2;
+        const y3 = y * ct + lz * stl, z3 = -y * stl + lz * ct;
+        lx = x; ly = y3 + 0.9 - sink; lz = z3;
+        out.push({ pos: [z.x + (lx * c + lz * sn) * s, z.y + ly * s, z.z + (-lx * sn + lz * c) * s], rot: [rx - tl0, z.yaw, rl0], size: [sx * s, sy * s, sz * s], col: tint(col), em, mesh });
+        return;
+      }
       out.push({ pos: [z.x + (lx * c + lz * sn) * s, z.y + ly * s, z.z + (-lx * sn + lz * c) * s], rot: [rx, z.yaw, 0], size: [sx * s, sy * s, sz * s], col: tint(col), em, mesh });
     };
     const st = z.st, ph = z.ph, run = z.type === 'runner' || z.angry > 0;
@@ -465,7 +494,7 @@ export class Horde {
       return out;
     }
     let lean = (run ? -0.45 : -0.18) - z.hunch, armA = -0.1 + Math.sin(ph * 0.5) * 0.12, legA = Math.sin(ph) * (run ? 0.9 : 0.55);
-    if (st === 'pile') { lean = 0.15 + Math.sin(ph) * 0.15; armA = 1.3 + Math.sin(ph * 1.3) * 0.5; legA = Math.sin(ph) * 0.6; }
+    if (st === 'pile') { lean = (z.tilt || 0) < 0.5 ? 0.25 + Math.sin(ph) * 0.15 : Math.sin(ph) * 0.08; armA = (z.tilt || 0) < 0.5 ? 2.4 + Math.sin(ph * 1.3) * 0.4 : 1.2 + Math.sin(ph * 1.3 + z.id) * 0.6; legA = Math.sin(ph + z.id) * 0.5; }
     else if (st === 'grab') { lean = 0; armA = 1.5; legA = Math.sin(ph) * 0.5; }
     else if (st === 'fall' || st === 'mag') { lean = Math.sin(ph) * 0.4; armA = 1 + Math.sin(ph * 1.3) * 1.2; legA = Math.sin(ph) * 1; }
     else if (z.type === 'screamer' && z.screamed && z.cd > 0.5) { lean = 0.4; armA = 0.8; }
@@ -524,6 +553,26 @@ export class Horde {
       tmp.length = 0;
       this.parts(z, tmp, d2 > 55 * 55 ? 0 : 1);
       for (const p of tmp) put(p);
+    }
+    // the piles: bodies that didn't make it (and the ones underneath) fill out the heap between the climbers
+    for (const p of this.piles.values()) {
+      if (p.h < 0.6 || !p.members.length) continue;
+      const dx = p.x - cam[0], dz = p.z - cam[2];
+      if (dx * dx + dz * dz > 260 * 260) continue;
+      const wall = p.nx || p.nz, nF = Math.min(170, Math.round(p.members.length * 2 + p.h * 6));
+      for (let k = 0; k < nF; k++) {
+        const r1 = hash(k * 7.1 + p.x), r2 = hash(k * 3.7 + p.z), r3 = hash(k * 1.3 + 5), u = (k + 0.5) / nF;
+        const y = p.h * (1 - Math.sqrt(1 - u * 0.97)) * 0.96, rem = p.h - y;
+        let x, z, yaw;
+        if (wall) { const out = 0.35 + rem * 0.72 - r3 * 0.4, lat = (r1 - 0.5) * 2 * (0.45 + rem * 0.57); x = p.x + p.nx * out - p.nz * lat; z = p.z + p.nz * out + p.nx * lat; yaw = Math.atan2(p.nx, p.nz) + (r2 - 0.5) * 2.4; }
+        else { const a = r1 * 6.28, rr = 0.25 + rem * 0.85 - r3 * 0.3; x = p.x + Math.cos(a) * rr; z = p.z + Math.sin(a) * rr; yaw = a + (r2 - 0.5) * 2; }
+        const by = p.y + y + 0.15, sh = SHIRT[Math.floor(r2 * SHIRT.length)], sk = SKINS[Math.floor(r3 * SKINS.length)], pa = PANTS[Math.floor(r1 * PANTS.length)];
+        const fx = Math.sin(yaw), fz = Math.cos(yaw), pitch = 1.2 + (r3 - 0.5) * 0.6, rl = (r1 - 0.5) * 1.6;
+        put({ pos: [x, by, z], rot: [pitch, yaw, rl], size: [0.5, 0.75, 0.3], col: sh, mesh: 'box' });
+        put({ pos: [x - fx * 0.55, by - 0.05, z - fz * 0.55], rot: [pitch, yaw, rl], size: [0.4, 0.8, 0.26], col: pa, mesh: 'box' });
+        put({ pos: [x + fx * 0.48, by + 0.05, z + fz * 0.48], rot: [0, yaw, 0], size: [0.28, 0.3, 0.28], col: sk, mesh: 'sphere' });
+        if (r2 > 0.4) put({ pos: [x + fx * 0.3 + fz * 0.3, by + 0.12, z + fz * 0.3 - fx * 0.3], rot: [1.2, yaw + 0.6, 0], size: [0.14, 0.14, 0.6], col: sk, mesh: 'cyl' });
+      }
     }
     // (a friend's view: the far-off crowd the host told us about)
     if (this.farCrowd) for (let i = 0; i < this.farCrowd.length; i += 3) {
