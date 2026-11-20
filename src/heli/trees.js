@@ -7,7 +7,7 @@ import { INST_FLOATS } from '../renderer.js';
 import { HALF, CH, WATER, rng } from './terrain.js';
 
 const PINE = [[0.1, 0.19, 0.11], [0.12, 0.22, 0.12], [0.09, 0.16, 0.1], [0.14, 0.21, 0.1]];
-const LEAF = [[0.2, 0.32, 0.11], [0.26, 0.36, 0.13], [0.17, 0.28, 0.1], [0.3, 0.38, 0.12], [0.22, 0.34, 0.16], [0.24, 0.3, 0.1], [0.36, 0.38, 0.13], [0.5, 0.36, 0.12]];
+const LEAF = [[0.2, 0.32, 0.11], [0.26, 0.36, 0.13], [0.17, 0.28, 0.1], [0.3, 0.38, 0.12], [0.22, 0.34, 0.16], [0.24, 0.3, 0.1], [0.19, 0.3, 0.12], [0.28, 0.35, 0.11], [0.36, 0.38, 0.13], [0.5, 0.36, 0.12]];
 const BARK = [[0.26, 0.2, 0.15], [0.3, 0.25, 0.19], [0.22, 0.18, 0.14]];
 
 export class Forest {
@@ -54,7 +54,7 @@ export class Forest {
       lists.trunk.push([t.x, t.y - 0.4, t.z, 0.35 + t.h * 0.025, t.dead ? t.h * 0.9 : t.h * (t.pine ? 0.4 : 0.55), BARK[Math.floor(t.c * 3)], 0]);
       if (t.dead) continue;
       if (t.pine) lists.pine.push([t.x, t.y + t.h * 0.18, t.z, t.r * 2, t.h * 0.85, PINE[Math.floor(t.c * PINE.length)], t.yaw]);
-      else lists.blob.push([t.x, t.y + t.h * 0.62, t.z, t.r * 2, t.h * 0.62, LEAF[Math.floor(t.c * (t.y > 60 ? 6 : LEAF.length))], t.yaw]);
+      else lists.blob.push([t.x, t.y + t.h * 0.62, t.z, t.r * 2, t.h * 0.62, LEAF[Math.floor(t.c * (t.y > 60 ? 8 : t.c > 0.93 ? LEAF.length : 9))], t.yaw]);
     }
     c.batches = []; c.trunks = null;
     for (const [shape, L] of Object.entries(lists)) {

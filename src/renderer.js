@@ -62,6 +62,7 @@ uniform vec4 uHaze;         // density, height falloff, clouds on, far distance 
 uniform vec4 uDay;          // DEAD AIR time of day: sun strength, night (0..1), ambient, on
 uniform vec3 uSunTint;
 uniform vec4 uSpotA, uSpotB; // searchlight: position + on, direction + cos(cone)
+uniform vec4 uCityA[2], uCityB[2]; // street grids: x0, z0, pitch x, pitch z / avenue width, street width, 0, 0
 // per-draw values arrive from the vertex shader (uniforms for single draws, instance data for batches)
 flat in vec3 fColor, fScale, fMat;   // fMat: x = metalness, y = roughness (< 0: automatic from colour), z = AO
 flat in vec4 fP;                     // grid / material, edges, emissive, alpha
@@ -256,9 +257,15 @@ void main() {
       tRough = 0.9; tMetal = 0.0;
     } else if (k == 4) {
       // paving: 1 m slabs, each a slightly different tone
-      vec2 c = p / (top ? 1.0 : 0.5);
-      float seam = 1.0 - pane(c, vec2(0.025, 0.025));
-      base *= (0.9 + 0.16 * hash(vec3(floor(c), 1.0))) * (0.92 + 0.14 * blot) * (1.0 - seam * 0.45);
+      vec2 c = p / (top ? 1.5 : 0.5);
+      float seam = (1.0 - pane(c, vec2(0.012, 0.012))) * (1.0 - smoothstep(0.3, 1.0, fwidth(c.x) * 8.0));
+      base *= (0.93 + 0.1 * hash(vec3(floor(c), 1.0))) * (0.9 + 0.16 * blot) * (1.0 - seam * 0.3);
+      base *= 1.0 - smoothstep(0.62, 0.8, noise(vWorld * 0.7)) * 0.12;                        // stains
+      // a granite curb round the edge of the slab
+      vec3 lq = (vLocal + 0.5) * uScale;
+      float ed = min(min(lq.x, uScale.x - lq.x), min(lq.z, uScale.z - lq.z));
+      float curb = top ? 1.0 - smoothstep(0.3, 0.36, ed) : step(uScale.y, 0.6);
+      base = mix(base, vec3(0.58, 0.57, 0.55) * (0.9 + 0.1 * noise(vWorld * 3.0)), curb * 0.85);
       tRough = 0.82; tMetal = 0.0;
     } else if (k == 5) {
       // ribbed metal cladding
@@ -288,6 +295,51 @@ void main() {
       // asphalt / rubber
       base *= 0.85 + 0.25 * noise(vWorld * 6.0) + 0.1 * blot;
       tRough = 0.95; tMetal = 0.0;
+    } else if (k == 63 || k == 64) {
+      // CITY STREETS: knows the street grid (uCityA/B: 63 = the island, 64 = the borough), so it paints avenues with
+      // a double yellow line, lane dashes and a parking lane, side streets with a dashed centre line, zebra crossings
+      // and stop lines at every junction, manholes, patches, cracks and the dark tyre tracks down each lane
+      int gi = k == 63 ? 0 : 1;
+      vec4 A = uCityA[gi], Bc = uCityB[gi];
+      vec2 q = vWorld.xz;
+      float lx = mod(q.x - A.x, A.z), lz = mod(q.y - A.y, A.w);
+      float AV = Bc.x, ST = Bc.y;
+      bool inA = lx < AV, inS = lz < ST;
+      float ax = lx - AV * 0.5, sz = lz - ST * 0.5;
+      float fw = max(fwidth(q.x), fwidth(q.y)), near = 1.0 - smoothstep(0.08, 0.35, fw);
+      // asphalt: tone, patches, cracks, tyre tracks
+      float n1 = noise(vec3(q * 0.08, 1.0)), n2 = noise(vec3(q * 0.6, 2.0)), n3 = noise(vec3(q * 3.1, 3.0));
+      vec3 asp = vec3(0.17, 0.17, 0.18) * (0.85 + 0.25 * n1 + 0.1 * n2 * near);
+      asp = mix(asp, vec3(0.11, 0.11, 0.12), smoothstep(0.62, 0.66, noise(vec3(floor(q / 2.5) * 0.37, 4.0))) * 0.8);          // patched squares
+      float crack = (1.0 - smoothstep(0.0, 0.02, abs(noise(vec3(q * 0.35, 5.0)) - 0.5))) * smoothstep(0.55, 0.7, n1) * near;
+      asp = mix(asp, vec3(0.07), crack * 0.8);
+      float lane = inA ? abs(mod(abs(ax), 3.5) - 1.75) : abs(abs(sz) - 3.0);
+      asp *= 1.0 - (1.0 - smoothstep(0.35, 0.7, abs(lane - 0.9))) * 0.12;                   // tyre tracks
+      base = asp;
+      float paint = 0.0; vec3 pc = vec3(0.86, 0.86, 0.8);
+      float dashZ = step(0.55, fract(q.y / 9.0)), dashX = step(0.55, fract(q.x / 9.0));
+      if (inA && !inS) {
+        float yl = (1.0 - smoothstep(0.08, 0.12, abs(abs(ax) - 0.22)));
+        if (yl > 0.0) { paint = yl; pc = vec3(0.9, 0.72, 0.18); }
+        paint = max(paint, (1.0 - smoothstep(0.07, 0.11, abs(abs(ax) - 3.6))) * dashZ);
+        paint = max(paint, 1.0 - smoothstep(0.07, 0.11, abs(abs(ax) - (AV * 0.5 - 2.4))));      // parking lane
+        // zebra crossing and stop line at each end of the block
+        float toS = min(lz - ST, A.w - lz);
+        if (toS < 3.8) paint = max(paint, step(0.5, fract(ax / 1.1)) * (1.0 - step(abs(ax), 0.5)) * step(0.4, toS));
+        if (toS > 4.3 && toS < 4.7 && abs(ax) > 0.5) paint = max(paint, 1.0);
+      } else if (inS && !inA) {
+        paint = max(paint, (1.0 - smoothstep(0.06, 0.1, abs(sz))) * dashX);
+        float toA = min(lx - AV, A.z - lx);
+        if (toA < 3.4) paint = max(paint, step(0.5, fract(sz / 1.1)) * step(0.4, toA));
+        if (toA > 3.9 && toA < 4.3) paint = max(paint, 1.0);
+      }
+      paint *= 0.55 + 0.45 * smoothstep(0.25, 0.6, noise(vec3(q * 1.7, 6.0)));                // worn
+      base = mix(base, pc, paint * 0.85);
+      // manholes
+      vec2 mc = floor(q / 13.0), mo = (fract(q / 13.0) - 0.5) * 13.0 + vec2(hash(vec3(mc, 1.0)), hash(vec3(mc, 2.0))) * 4.0 - 2.0;
+      float mh = (1.0 - smoothstep(0.38, 0.42, length(mo))) * step(0.7, hash(vec3(mc, 3.0)));
+      base = mix(base, vec3(0.1, 0.1, 0.1) * (0.8 + 0.4 * step(0.5, fract(mo.x * 4.0))), mh);
+      tRough = mix(0.9, 0.6, paint); tMetal = mh * 0.5;
     } else if (k == 8) {
       // seats with spectators: each 0.6 m seat is either empty (seat colour) or a fan in a random colour
       vec2 c = top ? p / 0.6 : vec2(p.x / 0.6, p.y / 0.9);
@@ -484,12 +536,13 @@ void main() {
       float fieldMask = (1.0 - smoothstep(0.1, 0.3, forest)) * (1.0 - smoothstep(0.06, 0.14, slope)) * step(0.3, fh) * (1.0 - urban) * smoothstep(uWater + 2.0, uWater + 5.0, q.y);
       vec2 fe = abs(fract(fq / vec2(96.0, 74.0)) - 0.5);
       fieldMask *= 1.0 - smoothstep(0.44, 0.49, max(fe.x, fe.y));          // hedges between them
-      float rows = 0.5 + 0.5 * sin((fh > 0.65 ? fq.x : fq.y) * 2.4);
+      float ra = hash(vec3(fc, 9.0)) * 3.14159, rr = q.x * cos(ra) + q.z * sin(ra);
+      float rows = mix(0.5 + 0.5 * sin(rr * 2.4), 0.5, smoothstep(0.15, 0.6, fwidth(rr * 2.4)));
       vec3 crop = fh > 0.82 ? vec3(0.62, 0.52, 0.24) : fh > 0.64 ? vec3(0.36, 0.27, 0.16) : fh > 0.47 ? vec3(0.44, 0.47, 0.17) : vec3(0.25, 0.35, 0.11);
       crop *= 0.84 + 0.24 * rows * near;
       base = mix(grass, crop, fieldMask);
-      // forest floor
-      base = mix(base, mix(vec3(0.11, 0.14, 0.07), vec3(0.2, 0.16, 0.09), n3), smoothstep(0.15, 0.55, forest));
+      // forest floor (only under real woods): moss and needles
+      base = mix(base, mix(vec3(0.13, 0.18, 0.08), vec3(0.19, 0.17, 0.09), n3), smoothstep(0.5, 0.85, forest) * 0.85);
       // rock on the slopes, in layers
       float strata = noise(vec3(q.x * 0.04, q.y * 0.8, q.z * 0.04));
       vec3 rock = mix(vec3(0.29, 0.28, 0.26), vec3(0.52, 0.49, 0.45), strata * 0.65 + n3 * 0.35);
@@ -497,11 +550,16 @@ void main() {
       base = mix(base, rock, rockAmt);
       float snow = smoothstep(205.0, 245.0, q.y + nz * 30.0) * (1.0 - smoothstep(0.4, 0.65, slope));
       base = mix(base, vec3(0.88, 0.9, 0.94), snow);
-      // towns: packed dirt and worn grass
-      base = mix(base, mix(vec3(0.34, 0.31, 0.25), vec3(0.46, 0.44, 0.39), n3), urban * 0.8);
+      // towns: mown lawns with stripes, a gravel verge along the roads
+      float mow = 0.5 + 0.5 * sign(sin((q.x + q.z) * 0.55));
+      vec3 lawn = mix(vec3(0.22, 0.33, 0.11), vec3(0.245, 0.35, 0.12), mow * near * smoothstep(0.4, 0.9, urban)) * (0.88 + 0.16 * n2) * (0.9 + 0.15 * n3 * near);
+      lawn = mix(lawn, vec3(0.42, 0.4, 0.34) * (0.85 + 0.25 * n3), (1.0 - smoothstep(6.0, 9.0, road)) * 0.85);
+      base = mix(base, lawn, smoothstep(0.05, 0.5, urban) * (1.0 - fieldMask) * 0.85);
       // the shore: sand, then dark wet mud at the waterline
-      float shore = 1.0 - smoothstep(uWater + 0.6, uWater + 3.2, q.y + nz * 1.4);
-      base = mix(base, mix(vec3(0.56, 0.5, 0.36), vec3(0.67, 0.61, 0.46), n4), shore);
+      float shore = 1.0 - smoothstep(uWater + 0.6, uWater + (slope > 0.12 ? 6.0 : 3.2), q.y + nz * 1.4);
+      vec3 sand = mix(vec3(0.56, 0.5, 0.36), vec3(0.67, 0.61, 0.46), n4);
+      vec3 riprap = mix(vec3(0.33, 0.32, 0.3), vec3(0.52, 0.5, 0.47), step(0.5, noise(q * 1.4))) * (0.8 + 0.3 * n3);
+      base = mix(base, mix(sand, riprap, smoothstep(0.08, 0.2, slope)), shore);
       base = mix(base, vec3(0.2, 0.18, 0.13), 1.0 - smoothstep(uWater - 0.3, uWater + 0.8, q.y));
       // roads: tarmac, patched, with gravel shoulders and a faded edge line
       float tarmac = 1.0 - smoothstep(4.3, 5.0, road), shoulder = (1.0 - smoothstep(5.2, 7.2, road)) * (1.0 - tarmac);
@@ -510,6 +568,7 @@ void main() {
       tar = mix(tar, vec3(0.075), smoothstep(0.62, 0.8, noise(q * 0.3)) * 0.7);
       base = mix(base, tar, tarmac);
       base = mix(base, vec3(0.72, 0.7, 0.62), (smoothstep(3.6, 3.75, road) - smoothstep(3.85, 4.0, road)) * 0.55 * near);
+      base = mix(base, vec3(0.85, 0.7, 0.2), (1.0 - smoothstep(0.1, 0.18, road)) * 0.65 * near * tarmac);
       // small bumps for the light to catch, close up
       vec3 bump = vec3(noise(q * 0.7) - 0.5, 0.0, noise(q * 0.7 + 7.3) - 0.5) * (0.5 * rockAmt + 0.16) * (1.0 - tarmac) * near;
       n = normalize(n + bump);
@@ -1133,7 +1192,7 @@ export class Renderer {
     this.shadowProg = compile(gl, SHADOW_VERT, SHADOW_FRAG);
     this.u = {};
     for (const name of ['uProj', 'uView', 'uModel', 'uScale', 'uColor', 'uFogColor', 'uSunDir', 'uCamPos',
-      'uSkyTop', 'uGrid', 'uEdges', 'uEmissive', 'uAlpha', 'uFogDensity', 'uShadowOn', 'uSky', 'uLightVP', 'uShadowMap', 'uViewUnder', 'uRoom', 'uRoomTop', 'uAO', 'uRim', 'uMat', 'uStudio', 'uStudioFwd', 'uStudioKey', 'uTime', 'uInst', 'uRoads', 'uRoadN', 'uWater', 'uGround', 'uGroundBox', 'uHaze', 'uDay', 'uSunTint', 'uSpotA', 'uSpotB']) {
+      'uSkyTop', 'uGrid', 'uEdges', 'uEmissive', 'uAlpha', 'uFogDensity', 'uShadowOn', 'uSky', 'uLightVP', 'uShadowMap', 'uViewUnder', 'uRoom', 'uRoomTop', 'uAO', 'uRim', 'uMat', 'uStudio', 'uStudioFwd', 'uStudioKey', 'uTime', 'uInst', 'uRoads', 'uRoadN', 'uWater', 'uGround', 'uGroundBox', 'uHaze', 'uDay', 'uSunTint', 'uSpotA', 'uSpotB', 'uCityA', 'uCityB']) {
       this.u[name] = gl.getUniformLocation(this.prog, name);
     }
     this.su = {
@@ -1386,6 +1445,7 @@ export class Renderer {
     gl.uniform4f(this.u.uGroundBox, x0, z0, data ? span : 0, 0);
   }
   setDay(sun, night, amb, tint, on = 1) { const gl = this.gl; gl.useProgram(this.prog); gl.uniform4f(this.u.uDay, sun, night, amb, on); gl.uniform3fv(this.u.uSunTint, tint); }
+  setCityGrids(a, b) { const gl = this.gl; gl.useProgram(this.prog); gl.uniform4fv(this.u.uCityA, new Float32Array(a)); gl.uniform4fv(this.u.uCityB, new Float32Array(b)); }
   setSpot(pos, dir, cosA, on) { const gl = this.gl; gl.useProgram(this.prog); gl.uniform4f(this.u.uSpotA, pos[0], pos[1], pos[2], on); gl.uniform4f(this.u.uSpotB, dir[0], dir[1], dir[2], cosA); }
   setHaze(density, falloff, clouds, far) { const gl = this.gl; gl.useProgram(this.prog); gl.uniform4f(this.u.uHaze, density, falloff, clouds ? 1 : 0, far); }
   drawMesh(m, model, color, grid = 0, mat) {

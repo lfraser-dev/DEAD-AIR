@@ -62,6 +62,7 @@ export class HeliGame {
     const G = this.map.ground;
     this.r.setGround(G.data, G.size, G.x0, G.z0, G.span);
     this.r.setRoads([], WATER);
+    { const g = this.map.grids; this.r.setCityGrids([...g.a[0], ...g.a[1]], [...g.b[0], ...g.b[1]]); }
     this.forest = new Forest(this.map);
     this.map.world.trees = this.forest;
     this.mapImg = null;
