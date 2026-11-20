@@ -76,7 +76,7 @@ export class Raid {
   say(t) { this.log.unshift(t); if (this.log.length > 6) this.log.pop(); this.news = t; }
   alive() { return this.team.filter((m) => m.hp > 0); }
   has(role) { return this.alive().some((m) => m.role === role); }
-  power() { return this.alive().reduce((a, m) => a + WEAPONS[m.wpn].p * (m.role === 'rifleman' ? 1.2 : 1), 0); }
+  power() { return this.alive().reduce((a, m) => a + WEAPONS[m.wpn].p * (m.role === 'rifleman' ? 1.2 : 1), 0) * (this.boost || 1); }
   speed() { return this.has('scout') ? 0.6 : 1; }
   tick(dt) {
     if (this.done) return;

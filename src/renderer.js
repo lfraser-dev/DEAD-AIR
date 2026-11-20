@@ -59,6 +59,9 @@ uniform float uRoadN, uWater;
 uniform sampler2D uGround;  // DEAD AIR ground map: r = road distance, g = town, b = forest, a = water depth
 uniform vec4 uGroundBox;    // x0, z0, span (0 = none)
 uniform vec4 uHaze;         // density, height falloff, clouds on, far distance (0 = old fog)
+uniform vec4 uDay;          // DEAD AIR time of day: sun strength, night (0..1), ambient, on
+uniform vec3 uSunTint;
+uniform vec4 uSpotA, uSpotB; // searchlight: position + on, direction + cos(cone)
 // per-draw values arrive from the vertex shader (uniforms for single draws, instance data for batches)
 flat in vec3 fColor, fScale, fMat;   // fMat: x = metalness, y = roughness (< 0: automatic from colour), z = AO
 flat in vec4 fP;                     // grid / material, edges, emissive, alpha
@@ -159,7 +162,14 @@ vec3 skyColor(vec3 d) {
     float lit = clamp(0.5 + 0.6 * dot(normalize(vec3(d.x, 0.25, d.z)), uSunDir), 0.0, 1.0);
     vec3 cc = mix(vec3(0.5, 0.5, 0.55), vec3(1.0, 0.9, 0.78), lit);
     cc = mix(cc * 0.72, cc * 1.05, smoothstep(0.5, 0.85, cl));
+    cc *= mix(1.0, 0.12, uDay.y);
     c = mix(c, cc, cov * 0.9);
+  }
+  if (uDay.w > 0.5 && uDay.y > 0.01 && d.y > 0.0) {
+    // stars
+    vec3 sp = floor(d * 380.0);
+    float st = step(0.9965, hash(sp)) * (0.5 + 0.5 * hash(sp + 3.0));
+    c += vec3(st) * uDay.y * smoothstep(0.02, 0.2, d.y) * 0.9;
   }
   c = mix(c, vec3(1.0, 0.98, 0.94), smoothstep(0.9993, 0.9997, sd));          // sun disc
   c = mix(c, horizon * 0.96, smoothstep(0.0, -0.08, d.y));                     // below horizon
@@ -194,6 +204,45 @@ void main() {
       tRough = mix(0.45, 0.04, glass);
       tMetal = mix(0.6, 0.9, glass);
       tGlow = glass * step(0.93, hash(vec3(floor(c), 7.0))) * 0.25;
+    } else if (k == 17 && !top) {
+      // art deco limestone: pale stone piers every 3 m, recessed window strips between with dark metal spandrels
+      vec2 c = vec2(p.x / 3.0, p.y / 4.0);
+      float pier = 1.0 - band(c.x, 0.2, 0.8);
+      float win = band(c.x, 0.26, 0.74) * band(c.y, 0.18, 0.82);
+      float spand = band(c.x, 0.2, 0.8) * (1.0 - band(c.y, 0.14, 0.86));
+      float lit = step(0.84, hash(vec3(floor(c), 5.0)));
+      vec3 stone = base * (0.9 + 0.12 * blot) * (0.95 + 0.08 * hash(vec3(floor(p / vec2(1.5, 0.6)), 2.0)));
+      vec3 glass = mix(vec3(0.07, 0.09, 0.11), vec3(0.95, 0.82, 0.58), lit * 0.45);
+      base = mix(stone, vec3(0.16, 0.15, 0.14), spand);
+      base = mix(base, glass, win);
+      base *= 1.0 - (1.0 - pier) * 0.06;
+      tRough = mix(0.82, 0.06, win); tMetal = mix(0.0, 0.8, win) + spand * 0.4;
+      tGlow = win * lit * 0.12;
+    } else if (k == 18 && !top) {
+      // shopfronts: a stone plinth, big shop windows with mullions and doors, some shutters down, a sign band on top
+      float hy = (vLocal.y + 0.5) * uScale.y;
+      vec2 c = vec2(p.x / 4.0, hy);
+      float bay = floor(c.x), fx = fract(c.x);
+      float hb = hash(vec3(bay, floor(vWorld.x * 0.01 + vWorld.z * 0.013), 31.0));
+      float glass = band(fx, 0.06, 0.94) * band(hy / 4.5, 0.11, 0.74);
+      float door = step(0.6, hb) * band(fx, 0.38, 0.62) * band(hy / 4.5, 0.02, 0.74);
+      float shutter = step(0.72, hash(vec3(bay, 7.0, 33.0)));
+      vec3 sign = vec3(hash(vec3(bay, 1.0, 9.0)), hash(vec3(bay, 2.0, 9.0)), hash(vec3(bay, 3.0, 9.0)));
+      sign = mix(vec3(0.15), sign, 0.85);
+      float signB = band(hy / 4.5, 0.78, 0.97);
+      vec3 shop = mix(vec3(0.04, 0.05, 0.06), vec3(0.95, 0.85, 0.65), step(0.5, hash(vec3(bay, 4.0, 3.0))) * 0.35);
+      float rib = 0.75 + 0.25 * sin(hy * 30.0);
+      vec3 shut = vec3(0.45, 0.46, 0.48) * rib;
+      shut = mix(shut, vec3(hash(vec3(bay, 5.0, 1.0)), 0.3, hash(vec3(bay, 6.0, 1.0))) * 0.8, step(0.6, noise(vec3(p * 1.3, bay))) * 0.6);   // graffiti
+      vec3 wall = base * (0.88 + 0.15 * blot);
+      vec3 g = mix(shop, shut, shutter);
+      base = mix(wall, g, max(glass, door));
+      base = mix(base, vec3(0.12, 0.1, 0.09), door * (1.0 - shutter));
+      base = mix(base, sign, signB * band(fx, 0.04, 0.96));
+      base = mix(base, vec3(0.5, 0.49, 0.46), 1.0 - step(0.45, hy));
+      tRough = mix(0.85, mix(0.05, 0.5, shutter), glass);
+      tMetal = glass * (1.0 - shutter) * 0.7;
+      tGlow = signB * step(0.45, hash(vec3(bay, 8.0, 2.0))) * 0.35 + glass * (1.0 - shutter) * 0.08;
     } else if (k == 3) {
       // concrete: precast panels with seams, stains running down
       vec2 c = top ? p / 3.0 : vec2(p.x / 3.0, p.y / 1.5);
@@ -774,6 +823,8 @@ void main() {
   vec3 sunCol = vec3(1.0, 0.95, 0.86) * 2.25;
   vec3 skyCol = mix(vec3(0.3), toLin(uSkyTop) * 0.6, 0.45) + vec3(0.03);
   vec3 groundCol = vec3(0.2, 0.19, 0.18);
+  bool dayOn = uDay.w > 0.5 && !studio && !indoor;
+  if (dayOn) { sunCol *= uSunTint * uDay.x; skyCol *= uDay.z; groundCol *= uDay.z; }
   vec3 hemi = mix(groundCol, skyCol, n.y * 0.5 + 0.5);
   float pool = 0.6;
   if (studio) {
@@ -816,8 +867,16 @@ void main() {
   env += vec3(1.0, 0.97, 0.92) * smoothstep(0.55, 0.8, Rv.y) * (1.0 - smoothstep(0.86, 0.98, Rv.y)) * (indoor ? 0.35 : 1.1);
   float gloss = (1.0 - rough) * (1.0 - rough);
 
+  if (dayOn) env *= mix(1.0, 0.18, uDay.y);
   vec3 col = albedo * (1.0 - metal * 0.88) * (hemi * ao + sunCol * ndl * sh) + sunCol * spec * ndl * sh * (1.0 - edge * 0.5)
            + env * Fv * mix(0.25, 1.0, metal) * mix(0.08, 1.0, gloss) * ao;
+  if (uSpotA.w > 0.5 && world) {
+    // the searchlight: a bright cone from under the nose
+    vec3 ls = uSpotA.xyz - vWorld; float ld = length(ls); vec3 lsn = ls / ld;
+    float cone = smoothstep(uSpotB.w, uSpotB.w + 0.025, dot(-lsn, uSpotB.xyz));
+    float att = 1.0 / (1.0 + ld * ld * 0.00025);
+    col += albedo * vec3(1.0, 0.96, 0.88) * 9.0 * cone * att * max(dot(n, lsn), 0.0) * (0.6 + 0.4 * uSpotA.w);
+  }
   if (gunFill > 0.0) {
     // guns get their own soft fill and a second highlight from over your shoulder, so the side facing you isn't a black slab
     vec3 K2 = normalize(V + vec3(0.25, 0.9, 0.15));
@@ -835,7 +894,7 @@ void main() {
   // rim light (used for characters in the showroom / arena)
   col += toLin(uRim) * pow(1.0 - max(dot(n, V), 0.0), 3.0) * 1.6;
   col = mix(col, toLin(uColor) * 2.2, uEmissive);
-  col += toLin(base) * tGlow * 2.0;
+  col += toLin(base) * tGlow * 2.0 * (1.0 + uDay.y * 7.0);
 
   vec3 display = toSrgb(aces(col * 0.85));
 
@@ -854,7 +913,7 @@ void main() {
     float hf = exp(-k * max(uCamPos.y, 0.0)) * (abs(k * dy) > 0.01 ? (1.0 - exp(-k * dy)) / (k * dy) : 1.0);
     f = 1.0 - exp(-uHaze.x * dist * hf);
     f = max(f, smoothstep(uHaze.w * 0.72, uHaze.w, dist));
-    fogCol = uFogColor + vec3(0.32, 0.2, 0.06) * pow(max(dot(vd, L), 0.0), 6.0);
+    fogCol = uFogColor + vec3(0.32, 0.2, 0.06) * pow(max(dot(vd, L), 0.0), 6.0) * (uDay.w > 0.5 ? uDay.x : 1.0);
   }
   display = mix(display, fogCol, f);
   outColor = vec4(display, uAlpha);
@@ -1074,7 +1133,7 @@ export class Renderer {
     this.shadowProg = compile(gl, SHADOW_VERT, SHADOW_FRAG);
     this.u = {};
     for (const name of ['uProj', 'uView', 'uModel', 'uScale', 'uColor', 'uFogColor', 'uSunDir', 'uCamPos',
-      'uSkyTop', 'uGrid', 'uEdges', 'uEmissive', 'uAlpha', 'uFogDensity', 'uShadowOn', 'uSky', 'uLightVP', 'uShadowMap', 'uViewUnder', 'uRoom', 'uRoomTop', 'uAO', 'uRim', 'uMat', 'uStudio', 'uStudioFwd', 'uStudioKey', 'uTime', 'uInst', 'uRoads', 'uRoadN', 'uWater', 'uGround', 'uGroundBox', 'uHaze']) {
+      'uSkyTop', 'uGrid', 'uEdges', 'uEmissive', 'uAlpha', 'uFogDensity', 'uShadowOn', 'uSky', 'uLightVP', 'uShadowMap', 'uViewUnder', 'uRoom', 'uRoomTop', 'uAO', 'uRim', 'uMat', 'uStudio', 'uStudioFwd', 'uStudioKey', 'uTime', 'uInst', 'uRoads', 'uRoadN', 'uWater', 'uGround', 'uGroundBox', 'uHaze', 'uDay', 'uSunTint', 'uSpotA', 'uSpotB']) {
       this.u[name] = gl.getUniformLocation(this.prog, name);
     }
     this.su = {
@@ -1326,6 +1385,8 @@ export class Renderer {
     gl.uniform1i(this.u.uGround, 2);
     gl.uniform4f(this.u.uGroundBox, x0, z0, data ? span : 0, 0);
   }
+  setDay(sun, night, amb, tint, on = 1) { const gl = this.gl; gl.useProgram(this.prog); gl.uniform4f(this.u.uDay, sun, night, amb, on); gl.uniform3fv(this.u.uSunTint, tint); }
+  setSpot(pos, dir, cosA, on) { const gl = this.gl; gl.useProgram(this.prog); gl.uniform4f(this.u.uSpotA, pos[0], pos[1], pos[2], on); gl.uniform4f(this.u.uSpotB, dir[0], dir[1], dir[2], cosA); }
   setHaze(density, falloff, clouds, far) { const gl = this.gl; gl.useProgram(this.prog); gl.uniform4f(this.u.uHaze, density, falloff, clouds ? 1 : 0, far); }
   drawMesh(m, model, color, grid = 0, mat) {
     const gl = this.gl, u = this.u;

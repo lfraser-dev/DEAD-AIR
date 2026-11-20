@@ -29,7 +29,8 @@ const CAMS = {
   all: [0.75, 0.22, 21, [0, 0.4, 1.5]], gun: [0.55, 0.02, 8.5, [0, -0.9, -3.6]], rockets: [1.15, 0.15, 10, [1.6, -0.5, 0.4]],
   bombs: [1.35, -0.12, 9, [0, -1.4, 0.4]], armor: [0.85, 0.15, 13, [0, -0.1, -0.6]], engine: [2.5, 0.38, 10, [0, 1.4, 1.6]],
   rotor: [0.8, 0.62, 19, [0, 2, 0.3]], door: [1.62, 0.08, 9, [1.1, 0, 0.6]], cabin: [-1.45, 0.12, 11, [-1, -0.2, 0.7]],
-  fuel: [1.25, 0.05, 11, [1.2, -0.8, 0.4]], winch: [1.55, 0.1, 9, [1.2, 0, 0.6]], flir: [0.35, -0.02, 7.5, [0, -0.9, -3.4]],
+  fuel: [1.25, 0.05, 11, [1.2, -0.8, 0.4]], winch: [1.55, 0.1, 9, [1.2, 0, 0.6]], light: [0.4, -0.05, 7.5, [0, -1.3, -3.1]], turret: [0.9, -0.25, 8, [0, -1.6, 0.6]], medbay: [1.5, 0.05, 8, [1.2, 0.3, 1.2]],
+  drops: [-1.5, -0.05, 8, [-1.5, -0.6, 0.6]], radio: [2.4, 0.25, 9, [0.25, 1.8, 4.2]], flir: [0.35, -0.02, 7.5, [0, -0.9, -3.4]],
   speaker: [1.2, 0.08, 10, [0, -0.6, 0]], skids: [1.45, -0.12, 10, [0, -1.6, 0]], paint: [0.75, 0.22, 21, [0, 0.4, 1.5]],
 };
 const FLIGHT = { easy: 'EASY', assist: 'ASSIST', pro: 'PRO' };
@@ -112,6 +113,34 @@ export class HeliGame {
     saveSave(this.save);
     this.onExit?.();
   }
+
+  // ---- time of day: 0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk. A day lasts 12 minutes (nights go a bit quicker).
+  // At night it's dark (stars, a moon, lit windows and neon across the city), and there are more of them, and faster.
+  dayTick(dt) {
+    const was = this.night || 0;
+    this.tod = ((this.tod ?? 0.3) + (dt / 720) * (1 + was * 0.5)) % 1;
+    this.applyDay();
+    if (was < 0.5 && this.night >= 0.5) { this.banner('NIGHT FALLS', 'THEY\'RE FASTER IN THE DARK · AND THERE ARE MORE OF THEM · ⚙ +50%', 'r', 3); this.snd.fail?.(); }
+    if (was >= 0.5 && this.night < 0.5) this.banner('DAWN', 'YOU MADE IT THROUGH THE NIGHT', 'g', 2.5);
+  }
+  applyDay(on = true) {
+    const r = this.r, gl = r.gl;
+    if (!on) { r.setDay(1, 0, 1, [1, 1, 1], 0); this.night = 0; this.setSky(true); return; }
+    const t = this.tod ?? 0.36, th = (t - 0.25) * Math.PI * 2, el = Math.sin(th);
+    const sun = norm([Math.cos(th), el, 0.38]);
+    const dayK = clamp((el + 0.1) / 0.3, 0, 1), dk = dayK * dayK * (3 - 2 * dayK);
+    const gold = dk * (1 - clamp((el - 0.04) / 0.38, 0, 1));
+    const mix3 = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+    const tint = mix3([0.5, 0.62, 1.0], mix3([1, 1, 1], [1.0, 0.6, 0.34], gold), dk);
+    this.night = 1 - dk;
+    r.setDay(dk + (1 - dk) * 0.1, 1 - dk, 0.2 + 0.8 * dk, tint, 1);
+    const sky = mix3([0.012, 0.02, 0.05], mix3(SKY, [0.3, 0.28, 0.45], gold), dk);
+    const fog = mix3([0.03, 0.04, 0.075], mix3(FOG, [0.92, 0.6, 0.42], gold), dk);
+    gl.useProgram(r.prog);
+    r.fogColor = fog; gl.uniform3fv(r.u.uFogColor, fog); gl.uniform3fv(r.u.uSkyTop, sky);
+    r.sunDir = el > -0.02 ? sun : sun.map((v) => -v); gl.uniform3fv(r.u.uSunDir, r.sunDir);
+  }
+  clock() { const m = Math.floor(((this.tod ?? 0.3) * 24 * 60)) % 1440; return `${this.night > 0.5 ? '☾' : '☀'} ${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
 
   setSky(on) {
     const gl = this.r.gl; gl.useProgram(this.r.prog);
@@ -245,6 +274,7 @@ export class HeliGame {
     this.$('deploy').textContent = this.session ? 'TAKE OFF ▶' : 'DEPLOY ▶';
     this.hangarHeli = this.hangarHeli || new Chopper();
     this.hangarHeli.reset([HANGAR[0], 2.04, HANGAR[2]], 0, statsFor(this.save.eq));
+    this.applyDay(false); this.spot = null;
     this.hst = { rotorA: 0.3, tailA: 0, rpm: 0, spin: 0, t: 0, install: this.install, riders: 0 };
     this.renderHangar();
   }
@@ -345,12 +375,14 @@ export class HeliGame {
     this.$('hud').classList.remove('hidden');
     this.root.classList.remove('da-gunner');
     const fob = this.map.spire;
+    this.applyDay();
     if (!this.session) {
       this.session = { fob };
       this.run = { t: 0, kills: 0, rescued: 0, lost: 0, scrap: 0 };
       this.fx.clear(); this.horde.clear(); this.director.clear();
       for (const f of this.fobs) { f.hp = f.max; f.wrecked = false; }
       this.heli.reset([fob.padAt[0], fob.padAt[1] + 1.93, fob.padAt[2]], 0, S);
+      this.tod = 0.3;
       this.director.start(this);
       this.banner('DEAD AIR', 'THE SPIRE · THE LAST SAFE PLACE · HELP WHO YOU CAN', '', 3);
       for (const m of this.save.team) { m.raid = false; }
@@ -383,7 +415,7 @@ export class HeliGame {
     const h = this.$('help');
     const mode = this.save.flight;
     h.innerHTML = mode === 'easy'
-      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
+      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>L</kbd> LIGHT · <kbd>B</kbd> DROP SUPPLIES · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
       : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
     this.helpT = on ? 22 : 0;
   }
@@ -436,6 +468,8 @@ export class HeliGame {
       this.turrets(dt);
       this.updateShots(dt);
       this.landing(dt);
+      this.dayTick(dt);
+      this.gadgets(dt);
       this.ambientSpawns(dt);
       this.director.update(dt, this);
       this.fobTick(dt);
@@ -444,7 +478,7 @@ export class HeliGame {
       const roofs = this.director.list.filter((e) => e.kind === 'rescue').map((e) => e.roof);
       if (this.raid && this.raid.roofT) roofs.push(this.raid.roofT);
       if (this.raid) this.raidTick(dt);
-      this.horde.update(dt, { heli: H, heliAlt: this.agl, roofs, lure: this.siren > 0 ? this.lure : null, skidGuard: S.skidGuard });
+      this.horde.update(dt, { heli: H, heliAlt: this.agl, noHeap: !!this.atFob, roofs, lure: this.siren > 0 ? this.lure : null, skidGuard: S.skidGuard });
       this.hordeEvents();
       this.ambient(dt);
       this.fx.update(dt);
@@ -685,6 +719,91 @@ export class HeliGame {
     if (this.hit('KeyC')) this.camMode = (this.camMode + 1) % 3;
     if (this.hit('KeyM')) { this.bigMap = !this.bigMap; this.$('bigmap').classList.toggle('hidden', !this.bigMap); }
     if (this.hit('KeyV')) this.sirenOn();
+    if (this.hit('KeyL') && this.S.light) { this.lightMode = this.lightMode === 'on' ? 'off' : this.lightMode === 'off' ? 'auto' : 'on'; this.feed(`SEARCHLIGHT: ${this.lightMode.toUpperCase()}`, 'y'); }
+    if (this.hit('KeyB')) this.dropSupplies();
+  }
+
+  // ---- the gadgets: searchlight, belly turret, electric skids, medical bay
+  gadgets(dt) {
+    const H = this.heli, S = this.S, L = this.horde.list;
+    // searchlight: on at night (or when you say), pointing ahead and down
+    const want = S.light && !H.dead && (this.lightMode === 'on' || ((this.lightMode || 'auto') === 'auto' && this.night > 0.35));
+    this.lightOn = !!want;
+    if (want) {
+      const a = H.toWorld([0, -1.55, -3.4]), b = H.toWorld([0, -1.55 - 0.62 * 10, -3.4 - 0.78 * 10]);
+      this.spot = { pos: a, dir: norm([b[0] - a[0], b[1] - a[1], b[2] - a[2]]), cos: S.light === 2 ? 0.9 : 0.94, on: S.light };
+      if (S.light === 2) {
+        this.spotT = (this.spotT || 0) - dt;
+        if (this.spotT <= 0) {
+          this.spotT = 0.3;
+          const sp = this.spot;
+          for (const z of L) {
+            if (!z.alive || z.st !== 'walk') continue;
+            const v = [z.x - sp.pos[0], z.y + 1 - sp.pos[1], z.z - sp.pos[2]], d = Math.hypot(...v);
+            if (d < 140 && (v[0] * sp.dir[0] + v[1] * sp.dir[1] + v[2] * sp.dir[2]) / d > sp.cos - 0.02) z.stun = 0.6;
+          }
+        }
+      }
+    } else this.spot = null;
+    // belly turret: whatever's climbing up at you, or hanging off the skids
+    if (S.turret && !H.dead) {
+      this.tCd = (this.tCd || 0) - dt;
+      const o = H.toWorld([0, -1.7, 0.6]);
+      let tg = null, bd = 34;
+      for (const z of L) {
+        if (!z.alive || z.st === 'fall') continue;
+        const pri = z.st === 'grab' ? 0 : z.st === 'pile' ? 8 : 16;
+        const d = Math.hypot(z.x - o[0], z.y + 1 - o[1], z.z - o[2]) + pri;
+        if (d < bd && z.y + 1 < o[1]) { bd = d; tg = z; }
+      }
+      if (tg) {
+        const want2 = Math.atan2(-(tg.x - o[0]), -(tg.z - o[2])) - H.heading;
+        this.tYaw = want2;
+        if (this.tCd <= 0) {
+          this.tCd = S.turret === 2 ? 0.05 : 0.1;
+          const dir = norm([tg.x - o[0] + (Math.random() - 0.5) * 0.6, tg.y + tg.s - o[1], tg.z - o[2] + (Math.random() - 0.5) * 0.6]);
+          const zh = this.horde.hitRay(o, dir, 60);
+          this.tracer(o, dir, zh ? zh.t : 40, -1);
+          if (zh) { if (this.horde.damage(zh.z, 20, [dir[0] * 4, 2, dir[2] * 4], 'turret')) this.hitMark(true); }
+          if (Math.random() < 0.35) this.snd.click?.(2200, 0.18, 1);
+        }
+      }
+    }
+    // electric skids: a zap every few seconds throws everyone off
+    this.zap = Math.max(0, (this.zap || 0) - dt);
+    if (S.zap && !H.dead) {
+      this.zapCd = (this.zapCd || 0) - dt;
+      const grabs = L.filter((z) => z.alive && z.st === 'grab');
+      if (grabs.length && this.zapCd <= 0) {
+        this.zapCd = 3.5; this.zap = 0.35;
+        for (const z of grabs) { z.st = 'fall'; z.slot = -1; z.vel = [(Math.random() - 0.5) * 10, 4, (Math.random() - 0.5) * 10]; this.horde.damage(z, 30, z.vel, 'zap'); }
+        this.fx.sparks(H.toWorld([0, -1.95, 0.2]), 30, [0.5, 0.75, 1], 8, 0.4, 0.04, 2);
+        this.snd.click?.(5200, 0.5, 4); this.feed('ZAP!', 'y');
+      }
+    }
+    // medical bay: the team heals on board
+    if (S.medbay) for (const m of this.save.team) if (m.aboard && !m.raid && m.hp > 0 && m.hp < m.max) m.hp = Math.min(m.max, m.hp + 4 * dt);
+    // supply chutes on their way down
+    for (const c of this.chutes || []) {
+      c.y = Math.max(c.top, c.y - 7 * dt);
+      if (!c.done && c.y <= c.top) { c.done = true; c.t = 6; this.fx.dust([c.x, c.top, c.z], 6); }
+      if (c.done) c.t -= dt;
+    }
+    if (this.chutes) this.chutes = this.chutes.filter((c) => !c.done || c.t > 0);
+  }
+  dropSupplies() {
+    const S = this.S, rd = this.raid, H = this.heli;
+    if (!S.drops) { this.feed('NO SUPPLY CHUTES FITTED (HANGAR)', 'y'); return; }
+    if (!rd || rd.done) { this.feed('NOBODY TO DROP SUPPLIES TO', 'y'); return; }
+    if (Math.hypot(rd.b.x - H.pos[0], rd.b.z - H.pos[2]) > 160) { this.feed('GET CLOSER TO YOUR TEAM\'S BUILDING', 'y'); return; }
+    if ((this.dropCd || 0) > this.run.t) { this.feed(`CHUTES READY IN ${Math.ceil(this.dropCd - this.run.t)}s`, 'y'); return; }
+    this.dropCd = this.run.t + 40;
+    for (const m of rd.alive()) { m.medkit++; m.grenade++; if (S.drops === 2 && m.armor === 'none') m.armor = 'vest'; }
+    if (S.drops === 2) rd.boost = 1.4;
+    const p = H.toWorld([-1.6, -1, 0.5]);
+    (this.chutes = this.chutes || []).push({ x: rd.b.x + (Math.random() - 0.5) * 4, z: rd.b.z + (Math.random() - 0.5) * 4, y: p[1], top: rd.b.top });
+    rd.say(`SUPPLIES! +MEDKITS +GRENADES${S.drops === 2 ? ' +ARMOUR' : ''}`);
+    this.snd.grappleRelease?.(); this.feed('SUPPLIES AWAY', 'g');
   }
 
   fireGun() {
@@ -1090,21 +1209,17 @@ export class HeliGame {
     for (const f of this.fobs) if (f.wrecked) { f.wreckT -= dt; if (f.wreckT <= 0) { f.wrecked = false; f.hp = f.max * 0.6; this.feed(`${f.name} IS BACK UP`, 'g'); } }
   }
 
-  // a trickle of zombies round you so the world never feels empty
+  // the streets full of them: how many depends on how busy the place was (the city is packed), and it's worse at night
   ambientSpawns(dt) {
-    this.ambSpawnT = (this.ambSpawnT || 0) - dt;
-    if (this.ambSpawnT > 0) return;
-    this.ambSpawnT = 0.5;
-    const H = this.heli.pos, n = this.horde.list.filter((z) => !z.ev && !z.siege).length;
-    if (n >= Math.min(140, 50 + this.run.t * 0.08) || this.horde.list.length > 300) return;
-    for (let i = 0; i < 8; i++) {
-      const a = Math.random() * Math.PI * 2, r = 110 + Math.random() * 140, x = H[0] + Math.cos(a) * r, z = H[2] + Math.sin(a) * r;
-      if (Math.abs(x) > WORLD - 10 || Math.abs(z) > WORLD - 10 || this.horde.blockedAt(x, z)) continue;
-      if (this.fobs.some((f) => Math.hypot(f.padAt[0] - x, f.padAt[2] - z) < 60)) continue;
-      const t = this.run.t, r2 = Math.random();
-      this.horde.spawn(t > 60 && r2 < 0.16 ? 'runner' : r2 > 0.92 ? 'crawler' : t > 120 && r2 > 0.9 ? 'screamer' : 'walker', x, z);
-      return;
-    }
+    const G = this.map.ground, C = this.map.city, night = this.night || 0, t = this.run.t;
+    const dens = (x, z) => {
+      const g = G.at(x, z);
+      const isl = Math.abs(x - C.x) < C.iw && Math.abs(z - C.z) < C.il ? 1.35 : 1;
+      return (0.00018 + g.town * 0.0052 * isl) * (1 + night * 0.5);
+    };
+    const cap = (this.save.gfx === 'low' ? 1300 : 3200) * (1 + night * 0.25);
+    const mix = () => { const r = Math.random(); return r < 0.1 + night * 0.15 + Math.min(0.08, t / 3000) ? 'runner' : r > 0.92 ? 'crawler' : r > 0.89 ? 'screamer' : 'walker'; };
+    this.horde.populate(dt, this.heli.pos, dens, cap, mix);
   }
 
   // ---------------------------------------------------------------- landing: what you can do where you are
@@ -1118,7 +1233,7 @@ export class HeliGame {
       return ok && spd < (S.winch ? 8 : 6) && H.pos[0] > b.min[0] - 4 && H.pos[0] < b.max[0] + 4 && H.pos[2] > b.min[2] - 4 && H.pos[2] < b.max[2] + 4 && h > -2 && h < up;
     };
     this.atFob = this.fobs.find((f) => near(f.pad, 6)) || null;
-    this.atRoof = this.director.list.find((e) => e.kind === 'rescue' && e.roof.active && e.roof.count > 0 && near(e.roof.box, S.winch ? 32 : 12)) || null;
+    this.atRoof = this.director.list.find((e) => e.kind === 'rescue' && e.roof.active && e.roof.count > 0 && near(e.roof.pick || e.roof.box, S.winch ? 32 : 12)) || null;
     this.nearCrate = ok && spd < 6 ? this.director.list.find((e) => e.kind === 'crate' && e.landed && !e.carried && Math.hypot(e.x - H.pos[0], e.z - H.pos[2]) < (S.winch ? 30 : 20) && H.pos[1] - e.y < (S.winch ? 40 : 14)) || null : null;
     this.settled = settled;
     const team = this.save.team, aboard = team.filter((m) => m.aboard && !m.raid && m.hp > 0);
@@ -1235,7 +1350,7 @@ export class HeliGame {
   // ---- raids
   startRaid(b, entry, members) {
     const H = this.heli;
-    for (const m of members) m.raid = true;
+    for (const m of members) { m.raid = true; if (this.S.medbay) m.hp = Math.min(m.max + 30, m.hp + 30); }
     const to = entry === 'roof' ? [b.stair[0] + 1.6, b.stair[1], b.stair[2]] : [b.door[0], b.door[1], b.door[2] - 1];
     members.forEach((m, i) => this.runners.push({ from: H.toWorld([1.3, -1.5, 0.7]), to: [to[0] + (i % 3) * 0.6, to[1], to[2] + Math.floor(i / 3) * 0.6], t: -i * 0.25, team: m }));
     this.raid = new Raid(b, members, entry, entry, LOOT_TYPES);
@@ -1398,7 +1513,7 @@ export class HeliGame {
         run.kills++;
         this.splat([ev.z.x, ev.z.y, ev.z.z], true);
         const T = TYPES[ev.z.type];
-        this.addScrap(T.scrap);
+        this.addScrap(Math.round(T.scrap * (1 + (this.night || 0) * 0.5)));
         if (this.nfx) this.nfx.push(['k', q1(ev.z.x), q1(ev.z.y), q1(ev.z.z), ZT.indexOf(ev.z.type)]);
         if (false) {
           const p = [ev.z.x, 8, ev.z.z];
@@ -1640,14 +1755,20 @@ export class HeliGame {
     if (C.hxT <= 0) {
       C.hxT = 1;
       send({ k: 'hx', hpm: S.hp, fum: S.fuel, cr: this.save.team.filter((m) => m.aboard && !m.raid && m.hp > 0).slice(0, 4).map((c) => ROLE_IDS.indexOf(c.role)), sc: this.save.scrap, kl: this.run?.kills || 0,
-        fr: [...C.friends.values()].map((f) => [f.seat, f.kills]), eq: this.save.eq, pt: this.save.paint, rk: this.rockets, bm: this.bombs });
+        fr: [...C.friends.values()].map((f) => [f.seat, f.kills]), eq: this.save.eq, pt: this.save.paint, rk: this.rockets, bm: this.bombs, td: this.tod });
     }
     if (C.zsT <= 0 && this.mode !== 'hangar') {
       C.zsT = 1 / 10;
-      const P = H.pos, near = this.horde.list.filter((z) => z.alive && Math.abs(z.x - P[0]) < 200 && Math.abs(z.z - P[2]) < 200);
+      const P = H.pos, near = this.horde.list.filter((z) => z.alive && Math.abs(z.x - P[0]) < 170 && Math.abs(z.z - P[2]) < 170);
       near.sort((a, b) => Math.abs(a.x - P[0]) + Math.abs(a.z - P[2]) - Math.abs(b.x - P[0]) - Math.abs(b.z - P[2]));
       const out = [];
-      for (const z of near.slice(0, 70)) {
+      if ((C.zfT = (C.zfT || 0) - 1) <= 0) {
+        C.zfT = 10;
+        const far = [];
+        for (const z of this.horde.list) if (z.alive && (Math.abs(z.x - P[0]) >= 170 || Math.abs(z.z - P[2]) >= 170) && far.length < 2400 * 3) far.push(Math.round(z.x), Math.round(z.z), (z.id || 0) % 9);
+        send({ k: 'zf', f: far });
+      }
+      for (const z of near.slice(0, 160)) {
         if (!z.nid) z.nid = (this.nidN = (this.nidN || 0) + 1);
         out.push(z.nid, Math.round(z.x * 10), Math.round(z.y * 10), Math.round(z.z * 10), Math.round(z.yaw * 100), ZT.indexOf(z.type), ZS.indexOf(z.st), z.hitT > 0 ? 1 : 0);
       }
@@ -1716,13 +1837,14 @@ export class HeliGame {
     }
     const now = performance.now();
     if (m.t != null) { const off = now - m.t; cl.off = cl.off == null ? off : Math.min(cl.off, off); }
-    if (m.k === 'hx') { cl.hx = m; cl.hs = Object.assign(cl.hs || {}, m); }
+    if (m.k === 'hx') { cl.hx = m; cl.hs = Object.assign(cl.hs || {}, m); if (m.td != null) { this.tod = m.td; this.applyDay(); } }
     if (m.k === 'hs') {
       cl.hs = Object.assign({ hpm: 1, fum: 1, cr: [], fr: [], kl: 0, sc: 0, rk: 0, bm: 0 }, cl.hx || {}, m);
       cl.hb = cl.hb || [];
       if (!cl.hb.length || m.t > cl.hb[cl.hb.length - 1].t) cl.hb.push({ t: m.t, p: m.p, q: m.q, v: m.v });
       if (cl.hb.length > 30) cl.hb.shift();
     }
+    else if (m.k === 'zf') { this.horde.farCrowd = m.f; }
     else if (m.k === 'zs') {
       const seen = new Set(), z = m.z;
       let i = 0;
@@ -1912,6 +2034,7 @@ export class HeliGame {
       rockets: this.rockets, rocketMax: S.rockets, bombs: this.bombs, bombMax: S.bombs, boost: H.boost, doorAim: this.doorAim, doorFlash: this.doorFlash, flash: this.flashT,
       shieldK: S.shield ? this.shield / S.shield : 0, shieldHit: this.shieldHit, flares: S.flares ? this.flaresLeft / S.flares : 0,
       tailAim: this.tailAI?.aim, tailFlash: this.tailFlash, magnetOn: this.mag.length > 0,
+      siren: this.siren > 0, lightOn: this.lightOn, tYaw: this.tYaw || 0, zap: this.zap || 0,
       cable: this.boarding && this.atRoof && S.winch ? Math.max(0.8, H.pos[1] - 1 - this.atRoof.roof.top) : this.mag.length ? 4.6 : 0.8,
       charge: S.gun.rail ? clamp(1 - this.gunT, 0, 1) : 1,
       doorFriend: [0, 1].map((sd) => { const f = fr.find((q) => q.seat === sd); if (f) return { col: f.col }; const rf = s.team.filter((m) => m.aboard && !m.raid && m.hp > 0 && m.role === 'rifleman'); return sd >= (S.gunners || 0) && rf.length > sd - (S.gunners || 0) ? { col: ROLES.rifleman.col } : null; }),
@@ -1936,6 +2059,8 @@ export class HeliGame {
         P([x + ox * c, y + 1.45 - Math.cos(a) * 0.3, z - ox * sn], [0, yaw, sd * a], [0.12, 0.6, 0.12], sh, { shape: 0.04 });
       }
     };
+    // supply chutes floating down to your team
+    for (const c of (!client && this.chutes) || []) crateParts(P, c.x, c.y, c.z, c.done, false, this.t, null);
     // one of your team: helmet and vest in their job's colour, and their gun
     const soldier = (x, y, z, yaw, m) => {
       const c = Math.cos(yaw), sn = Math.sin(yaw), col = ROLES[m.role].col, L = (lx, ly, lz) => [x + lx * c + lz * sn, y + ly, z - lx * sn + lz * c];
@@ -2090,7 +2215,13 @@ export class HeliGame {
     c.strokeStyle = 'rgba(232,214,170,.85)'; c.lineWidth = 1.6; c.lineCap = 'round';
     for (const r of this.map.roads) { c.beginPath(); c.moveTo(X(r[0]), X(r[1])); c.lineTo(X(r[2]), X(r[3])); c.stroke(); }
     c.fillStyle = 'rgba(60,60,66,.9)';
-    for (const s of this.map.cities) { const r = s.kind === 'city' ? this.map.city.r : 150; c.fillRect(X(s.x - r), X(s.z - r), (2 * r) / sc, (2 * r) / sc); }
+    for (const s of this.map.cities) {
+      if (s.kind === 'city') { const C = this.map.city; c.fillRect(X(C.x - C.iw), X(C.z - C.il), (2 * C.iw) / sc, (2 * C.il) / sc); continue; }
+      if (s.kind === 'borough') { const B = this.map.boro; c.fillRect(X(B.x - B.rx), X(B.z - B.rz), (2 * B.rx) / sc, (2 * B.rz) / sc); continue; }
+      c.fillRect(X(s.x - 150), X(s.z - 150), 300 / sc, 300 / sc);
+    }
+    c.strokeStyle = 'rgba(200,200,200,.9)'; c.lineWidth = 2.4;
+    for (const b of this.map.bridges || []) { c.beginPath(); c.moveTo(X(b.xa), X(b.z)); c.lineTo(X(b.xb), X(b.z)); c.stroke(); }
     for (const t of this.map.towns) { c.fillStyle = 'rgba(70,64,58,.9)'; const r = t.kind === 'town' ? 6 : 4; c.fillRect(X(t.x) - r, X(t.z) - r, r * 2, r * 2); }
     this.mapImg = cv; cv.seed = this.map.seed;
     return cv;
@@ -2107,7 +2238,7 @@ export class HeliGame {
     if (!big) { c.fillStyle = 'rgba(255,90,58,.85)'; for (const z of zombies) if (z.alive) c.fillRect(X(z.x) - 0.8, Z(z.z) - 0.8, 1.6, 1.6); }
     if (big) {
       c.font = 'bold 11px sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(255,255,255,.85)';
-      for (const s of this.map.cities) c.fillText(s.kind === 'city' ? 'THE CITY' : 'SMALL CITY', X(s.x), Z(s.z) - (s.kind === 'city' ? 46 : 26));
+      for (const s of this.map.cities) c.fillText(s.kind === 'city' ? 'THE CITY' : s.kind === 'borough' ? 'THE BOROUGH' : 'SMALL CITY', X(s.x), Z(s.z) - (s.kind === 'city' ? 0 : s.kind === 'borough' ? 0 : 26));
     }
     for (const mk of list) {
       if (!mk) continue;
@@ -2115,6 +2246,7 @@ export class HeliGame {
       if (x < -6 || y < -6 || x > W + 6 || y > W + 6) continue;
       c.fillStyle = mk.col;
       if (mk.loot) { c.fillRect(x - 1.8, y - 1.8, 3.6, 3.6); continue; }
+      if (mk.horde) { c.globalAlpha = 0.45; c.beginPath(); c.arc(x, y, Math.max(5, mk.r * sc * 1.4), 0, 6.3); c.fill(); c.globalAlpha = 1; c.font = 'bold 11px sans-serif'; c.textAlign = 'center'; c.fillStyle = '#fff'; c.fillText('☠', x, y + 4); continue; }
       c.beginPath(); c.arc(x, y, mk.fob ? 6 : 4.5, 0, 6.3); c.fill();
       if (mk.fob) { c.fillStyle = '#111'; c.font = 'bold 9px sans-serif'; c.textAlign = 'center'; c.fillText('H', x, y + 3); }
     }
@@ -2215,7 +2347,7 @@ export class HeliGame {
     this.$('heatm').classList.remove('hidden');
     this.$('boostm').classList.toggle('hidden', !S.boost);
     if (S.boost) setM('boostm', H.boostT, false);
-    this.$('alt').textContent = `ALT ${Math.round(this.agl ?? 0)}M`;
+    this.$('alt').textContent = `ALT ${Math.round(this.agl ?? 0)}M · ${this.clock()}`;
     this.$('spd').textContent = `${Math.round(Math.hypot(...H.vel) * 3.6)} KM/H`;
     const team = this.save.team.filter((m) => m.aboard && !m.raid && m.hp > 0);
     const fr = this.coop ? this.coop.friends.size : 0;
@@ -2340,6 +2472,8 @@ export class HeliGame {
     const outside = this.mode !== 'hangar';
     if (outside) { this.terrain.stream(r, eye, farCull + 200, this.streamBudget || 5); this.forest.stream(r, eye, this.streamBudget ? Math.max(2, this.streamBudget - 1) : 4); }
     r.setHaze(outside ? this.hazeD : 0, 0.0042, outside, farCull);
+    const sp = outside && this.mode !== 'off' ? this.spot : null;
+    r.setSpot(sp ? sp.pos : [0, 0, 0], sp ? sp.dir : [0, -1, 0], sp ? sp.cos : 1, sp ? sp.on : 0);
     const zn = this.horde.fill(r, this.zBatches, eye, fwd, kf);
     const zb = Object.values(this.zBatches);
     const sn = this.fillSmoke(eye);

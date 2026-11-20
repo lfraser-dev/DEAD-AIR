@@ -72,6 +72,30 @@ export const SLOTS = [
   { id: 'skids', name: 'SKIDS', icon: '⊥', tiers: [
     { n: 'PLAIN SKIDS', cost: 0, d: 'Easy to grab.' },
     { n: 'ANTI-CLIMB SKIDS', cost: 400, d: 'Spikes and greased bars: zombies can barely hang on.' },
+    { n: 'ELECTRIC SKIDS', cost: 1100, d: 'Every few seconds the skids zap: anything hanging on gets thrown off.' },
+  ] },
+  { id: 'light', name: 'SEARCHLIGHT', icon: '☀', tiers: [
+    { n: 'NONE', cost: 0, d: 'Nights are dark. Really dark.' },
+    { n: 'SEARCHLIGHT', cost: 350, d: 'A big light under the nose that points where you fly. Comes on at night (L to switch).' },
+    { n: 'SUN GUN', cost: 1100, d: 'Twin lights, much brighter: zombies caught in the beam stagger and stop.' },
+  ] },
+  { id: 'turret', name: 'BELLY TURRET', icon: '⊛', tiers: [
+    { n: 'NONE', cost: 0, d: 'Nothing underneath.' },
+    { n: 'BELLY TURRET', cost: 800, d: 'A remote gun under the belly: it shoots anything climbing up at you, or hanging off the skids, by itself.' },
+    { n: 'TWIN BELLY GUNS', cost: 1700, d: 'Two of them, faster. Piles never get close.' },
+  ] },
+  { id: 'medbay', name: 'MEDICAL BAY', icon: '✚', tiers: [
+    { n: 'NONE', cost: 0, d: 'A first aid kit somewhere.' },
+    { n: 'MEDICAL BAY', cost: 600, d: 'Stretchers and a medic station: your team heals fast on board and gets +30 health on raids.' },
+  ] },
+  { id: 'drops', name: 'SUPPLY CHUTES', icon: '☂', tiers: [
+    { n: 'NONE', cost: 0, d: 'Your team only has what they took in.' },
+    { n: 'SUPPLY CHUTES', cost: 500, d: 'Press B near the building your team is raiding: medkits and grenades parachute down to them.' },
+    { n: 'HEAVY DROPS', cost: 1200, d: 'Bigger crates: armour too, and they fight 40% harder for the rest of the raid.' },
+  ] },
+  { id: 'radio', name: 'RADIO', icon: '📡', tiers: [
+    { n: 'HANDHELD', cost: 0, d: 'You only hear calls for help close by.' },
+    { n: 'LONG RANGE RADIO', cost: 400, d: 'A big aerial on the tail: hear SOS calls from twice as far, and see hordes coming on the map.' },
   ] },
 ];
 export const SLOT = Object.fromEntries(SLOTS.map((s) => [s.id, s]));
@@ -129,7 +153,8 @@ export function statsFor(eq) {
     seats: [4, 8, 12][v('cabin', 2)],
     fuel: [100, 160, 240][v('fuel', 2)],
     winch: v('winch', 2), hook: v('winch', 2) === 2,
-    flir: v('flir', 2), speaker: v('speaker', 1), skidGuard: v('skids', 1) === 1,
+    flir: v('flir', 2), speaker: v('speaker', 1), skidGuard: v('skids', 2) >= 1, zap: v('skids', 2) === 2,
+    light: v('light', 2), turret: v('turret', 2), medbay: v('medbay', 1), drops: v('drops', 2), radio: v('radio', 1),
     crewMax: [2, 3, 4][v('cabin', 2)],
   };
 }

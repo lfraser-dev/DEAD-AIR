@@ -58,7 +58,7 @@ function frame(now) {
     if (game.active) game.frame(dt);
     else {
       game.load();
-      game.setSky(true);
+      game.tod = 0.4; game.applyDay();
       const C = game.map.city, a = t * 0.05, eye = [C.x + Math.sin(a) * 330, C.y + 140, C.z + Math.cos(a) * 330];
       const v = [C.x - eye[0], C.y + 40 - eye[1], C.z - eye[2]], l = Math.hypot(...v), fwd = v.map((c) => c / l);
       game.draw(eye, fwd, 0, [], [], [C.x, 0, C.z], 0.0032);

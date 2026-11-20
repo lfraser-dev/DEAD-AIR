@@ -7,6 +7,9 @@
 // wall, or a heap under the helicopter. Shoot the pile and it collapses. Hundreds of them, each a few shapes drawn in a
 // handful of instanced batches. They find their way with flow fields (a "how far to the goal" map per target) over the
 // ground, round buildings, water and cliffs.
+// THOUSANDS: the streets fill up to how busy a place was (the city is packed, the countryside isn't). Zombies near you
+// are worked out every frame in full; ones further off shuffle along more simply a few times a second, and are drawn as
+// fewer shapes the further away they are (a full body close up, two boxes further out, one box in the distance).
 import { compose, mat4, clamp } from '../math.js';
 import { INST_FLOATS } from '../renderer.js';
 import { WORLD } from './map.js';
@@ -36,7 +39,7 @@ export class Horde {
     this.m = mat4();
     this.fields = new Map();
     this.piles = new Map();
-    this.head = new Int32Array(HB); this.next = new Int32Array(4000);
+    this.head = new Int32Array(HB); this.next = new Int32Array(8000); this.frameN = 0; this.popT = 0;
     // squares zombies can't stand in (buildings, water, cliffs), worked out 16 x 16 squares at a time when first asked
     this.blk = new Uint8Array(NX * NZ);        // 0 = not worked out yet, 1 = open, 2 = blocked
     this.blockedAt = (x, z) => { const c = cellOf(x, z); return c < 0 || this.isBlocked(c); };
@@ -138,7 +141,9 @@ export class Horde {
     const H = g.heli, hp = H.pos;
     this.head.fill(-1);
     const L = this.list;
-    for (let i = 0; i < L.length && i < 4000; i++) {
+    if (this.next.length < L.length) this.next = new Int32Array(L.length * 2);
+    this.frameN++;
+    for (let i = 0; i < L.length; i++) {
       const z = L[i]; if (!z.alive || z.st !== 'walk') continue;
       const c = cellOf(z.x, z.z); if (c < 0) continue;
       this.next[i] = this.head[c & (HB - 1)]; this.head[c & (HB - 1)] = i;
@@ -147,7 +152,7 @@ export class Horde {
     for (const z of L) if (z.alive && z.st === 'grab') grabbers++;
     // the heap under the helicopter, if it's hovering low and slow over open ground
     const gH = this.groundAt(hp[0], hp[2]);
-    const lowSlow = !H.dead && g.heliAlt > 1.5 && g.heliAlt < 14 && Math.hypot(H.vel[0], H.vel[2]) < 6;
+    const lowSlow = !H.dead && !g.noHeap && g.heliAlt > 1.5 && g.heliAlt < 14 && hp[1] - gH < 18 && Math.hypot(H.vel[0], H.vel[2]) < 6;
     const hk = 'heli';
     if (lowSlow) { const p = this.pile(hk, hp[0], gH, hp[2], 0, 0, hp[1] - 2 - gH - 1.6); p.x += (hp[0] - p.x) * Math.min(1, dt * 0.6); p.z += (hp[2] - p.z) * Math.min(1, dt * 0.6); }
     else if (this.piles.has(hk)) { for (const m of this.piles.get(hk).members) { m.st = 'fall'; m.pile = null; m.vel = [(Math.random() - 0.5) * 3, 1, (Math.random() - 0.5) * 3]; } this.piles.delete(hk); }
@@ -159,7 +164,12 @@ export class Horde {
       z.cd -= dt;
       if (z.st === 'mag') continue;
       if (z.stun > 0 && z.st === 'walk') { z.stun -= dt; z.ph += dt * 3; continue; }
-      if (z.st === 'walk') this.walk(z, i, dt, g);
+      if (z.st === 'walk') {
+        // far away and minding its own business: a cheap shuffle, four times less often
+        const far = !z.tgt && !(z.angry > 0) && Math.abs(z.x - hp[0]) + Math.abs(z.z - hp[2]) > 190;
+        if (far) { if ((i + this.frameN) % 4 === 0) this.shuffle(z, dt * 4, g); }
+        else this.walk(z, i, dt, g);
+      }
       else if (z.st === 'pile') {
         const p = z.pile;
         if (!p || !this.piles.has(p.key)) { z.st = 'fall'; z.pile = null; z.vel = [0, 0, 0]; continue; }
@@ -211,7 +221,7 @@ export class Horde {
         if (z.y < WATER - 30) z.alive = false;
       }
     }
-    for (const z of L) if (z.alive && !z.keep && z.st !== 'grab' && Math.abs(z.x - hp[0]) + Math.abs(z.z - hp[2]) > 640) z.alive = false;
+    for (const z of L) if (z.alive && !z.keep && z.st !== 'grab' && Math.abs(z.x - hp[0]) + Math.abs(z.z - hp[2]) > 760) z.alive = false;
     let w = 0;
     for (let i = 0; i < L.length; i++) if (L[i].alive) L[w++] = L[i]; else if (L[i].pile) this.leavePile(L[i]);
     L.length = w;
@@ -245,7 +255,7 @@ export class Horde {
       // a target up on a roof: pile up the wall under it
       if (tg.roof) { z.tgt = tg.roof; return; }
       if (gd < 1.6 + (tg.r || 0)) { if (z.cd <= 0) { z.cd = 1.2; this.events.push({ type: 'hitTarget', tgt: tg, z, dmg: 6 }); } }
-      else if (gd > 30 && tg.field) this.followField(z, this.pointField(tg.field, tg.x, tg.z), (x, y) => { dirx = x; dirz = y; });
+      else if (gd > 30 && tg.field) this.followField(z, this.pointField(tg.field, tg.x, tg.z), (x, y) => { dirx = x; dirz = y; }, tg.x, tg.z);
       else { dirx = gx / gd; dirz = gz / gd; }
     } else if (tg && tg.kind === 'roof') {
       if (!tg.active || (tg.count <= 0 && !tg.team)) { z.tgt = null; return; }
@@ -299,7 +309,45 @@ export class Horde {
     z.y = this.groundAt(z.x, z.z);
     this.tryGrab(z, H, -1, false);
   }
-  stuck(x, z) { const gy = this.T.heightAt(x, z); return gy < WATER + 0.3 || World_pointInside(this.world, [x, gy + 2, z]); }
+  // quick: open squares are always fine; in a square next to a wall (or water), check exactly
+  stuck(x, z) { const c = cellOf(x, z); if (c < 0) return true; if (!this.isBlocked(c)) return false; const gy = this.T.heightAt(x, z); return gy < WATER + 0.3 || World_pointInside(this.world, [x, gy + 2, z]); }
+  // the far-off ones: wander, drift towards noise, never through walls
+  shuffle(z, dt, g) {
+    const hp = g.heli.pos, dx = hp[0] - z.x, dz = hp[2] - z.z, d = Math.hypot(dx, dz);
+    z.think -= dt;
+    if (g.lure) { const lx = g.lure[0] - z.x, lz = g.lure[1] - z.z, ld = Math.hypot(lx, lz) || 1; z.wx = lx / ld; z.wz = lz / ld; }
+    else if (z.think <= 0) {
+      z.think = 3 + Math.random() * 5;
+      // most of them drift slowly towards the noise of the helicopter
+      if (d < 420 && Math.random() < 0.6) { z.wx = dx / d; z.wz = dz / d; } else { const a = Math.random() * 6.28; z.wx = Math.cos(a) * 0.5; z.wz = Math.sin(a) * 0.5; }
+    }
+    const sp = z.spd * 0.8, mx = (z.wx || 0) * sp * dt, mz = (z.wz || 0) * sp * dt;
+    if (!this.stuck(z.x + mx * 2, z.z)) z.x += mx; else z.wx = -(z.wx || 0);
+    if (!this.stuck(z.x, z.z + mz * 2)) z.z += mz; else z.wz = -(z.wz || 0);
+    if (Math.abs(mx) + Math.abs(mz) > 1e-4) z.yaw = Math.atan2(-(z.wx || 0), -(z.wz || 0));
+    z.ph += dt * sp * 2.4 / z.s;
+    z.y = this.groundAt(z.x, z.z);
+  }
+  // keep the streets full: as many zombies round you as the place deserves (dens(x, z) = zombies per square metre)
+  populate(dt, hp, dens, cap, mix) {
+    this.popT -= dt;
+    if (this.popT > 0) return;
+    this.popT = 0.25;
+    // how busy is it round here? (sampled in a ring)
+    let tot = 0;
+    for (let k = 0; k < 12; k++) { const a = k * 0.5236, r = 120 + (k % 3) * 140; tot += dens(hp[0] + Math.cos(a) * r, hp[2] + Math.sin(a) * r); }
+    const want = Math.min(cap, (tot / 12) * Math.PI * 450 * 450);
+    let n = 0; for (const z of this.list) if (z.alive && !z.ev && !z.keep) n++;
+    let budget = Math.min(160, Math.ceil((want - n) / 3));
+    for (let tries = 0; budget > 0 && tries < budget * 4; tries++) {
+      const a = Math.random() * 6.28, r = (Math.random() < 0.2 ? 90 : 200) + Math.sqrt(Math.random()) * 270, x = hp[0] + Math.cos(a) * r, z = hp[2] + Math.sin(a) * r;
+      if (Math.abs(x) > WORLD - 10 || Math.abs(z) > WORLD - 10) continue;
+      if (Math.random() * (dens(x, z) + 1e-6) < 0.00025 && Math.random() < 0.7) continue;      // spawn where it's busy
+      if (this.blockedAt(x, z)) continue;
+      this.spawn(mix(), x, z);
+      budget--;
+    }
+  }
   followField(z, f, set, fx, fz) {
     const c = cellOf(z.x, z.z);
     if (c < 0 || fv(f, c) >= 65535) { if (fx != null) { const dx = fx - z.x, dz = fz - z.z, d = Math.hypot(dx, dz) || 1; set(dx / d, dz / d); } return; }
@@ -445,8 +493,9 @@ export class Horde {
   }
 
   fill(r, batches, cam, fwd, kf) {
-    if (!this.datas) this.datas = { box: new Float32Array(INST_FLOATS * 9000), sphere: new Float32Array(INST_FLOATS * 4000), cyl: new Float32Array(INST_FLOATS * 4000), cylY: new Float32Array(INST_FLOATS * 4000) };
-    const m = this.m, tmp = [], N = { box: 0, sphere: 0, cyl: 0, cylY: 0 }, MAX = { box: 9000, sphere: 4000, cyl: 4000, cylY: 4000 };
+    const MAX = { box: 30000, sphere: 5000, cyl: 6000, cylY: 6000 };
+    if (!this.datas) this.datas = { box: new Float32Array(INST_FLOATS * MAX.box), sphere: new Float32Array(INST_FLOATS * MAX.sphere), cyl: new Float32Array(INST_FLOATS * MAX.cyl), cylY: new Float32Array(INST_FLOATS * MAX.cylY) };
+    const m = this.m, tmp = [], N = { box: 0, sphere: 0, cyl: 0, cylY: 0 };
     const put = (p) => {
       const mesh = p.mesh || 'box', D = this.datas[mesh], n = N[mesh];
       if (n >= MAX[mesh]) return;
@@ -465,10 +514,21 @@ export class Horde {
       const al = dx * fwd[0] + dy * fwd[1] + dz * fwd[2], rr = 2 * z.s;
       if (al < -rr) continue;
       if (Math.sqrt(Math.max(0, d2 - al * al)) > al * kf + rr) continue;
-      if (d2 > 520 * 520) continue;
+      if (d2 > 600 * 600) continue;
+      if (d2 > 170 * 170) {
+        // in the distance: one box
+        const crawl = z.type === 'crawler' && z.st === 'walk';
+        put({ pos: [z.x, z.y + (crawl ? 0.25 : 0.85) * z.s, z.z], rot: [0, z.yaw, 0], size: crawl ? [0.5, 0.5, 1.2] : [0.5 * z.s, 1.75 * z.s, 0.32 * z.s], col: z.shirt, mesh: 'box' });
+        continue;
+      }
       tmp.length = 0;
-      this.parts(z, tmp, d2 > 150 * 150 ? 0 : 1);
+      this.parts(z, tmp, d2 > 55 * 55 ? 0 : 1);
       for (const p of tmp) put(p);
+    }
+    // (a friend's view: the far-off crowd the host told us about)
+    if (this.farCrowd) for (let i = 0; i < this.farCrowd.length; i += 3) {
+      const x = this.farCrowd[i], z = this.farCrowd[i + 1], y = this.groundAt(x, z), sh = SHIRT[this.farCrowd[i + 2] % SHIRT.length];
+      put({ pos: [x, y + 0.85, z], rot: [0, (i * 0.37) % 6.28, 0], size: [0.5, 1.75, 0.32], col: sh, mesh: 'box' });
     }
     let total = 0;
     for (const k of Object.keys(N)) { r.fillBatch(batches[k], this.datas[k], N[k], N[k]); total += N[k]; }

@@ -128,7 +128,12 @@ export class Terrain {
       const px = -HALF + i * CELL, pz = -HALF + k * CELL;
       if (px < op.x0 || px > op.x1 || pz < op.z0 || pz > op.z1) continue;
       let w, target;
-      if (op.k === 'flat') {
+      if (op.k === 'rect') {
+        // a rectangle (rx, rz = half sizes), sharp or blended at the edges
+        const d = Math.max(0, Math.abs(px - op.x) - op.rx, Math.abs(pz - op.z) - op.rz);
+        w = d <= 0 ? 1 : d >= op.blend ? 0 : 1 - d / op.blend;
+        target = op.h;
+      } else if (op.k === 'flat') {
         // a rounded square: flat right up to the corners of the town grid
         const d = Math.max(Math.abs(px - op.x), Math.abs(pz - op.z)) * 0.8 + Math.hypot(px - op.x, pz - op.z) * 0.2;
         w = d <= op.r ? 1 : d >= op.r + op.blend ? 0 : 1 - (d - op.r) / op.blend;
@@ -147,6 +152,7 @@ export class Terrain {
       H[k * N + i] += (target - H[k * N + i]) * s;
     }
   }
+  rect(x, z, rx, rz, h, blend = 30) { const m = blend + 4; this.addOp({ k: 'rect', x, z, rx, rz, h, blend, x0: x - rx - m, x1: x + rx + m, z0: z - rz - m, z1: z + rz + m }); }
   flatten(x, z, r, h, blend = 40) { const m = r + blend + 4; this.addOp({ k: 'flat', x, z, r, h, blend, x0: x - m, x1: x + m, z0: z - m, z1: z + m }); }
   road(ax, az, ah, bx, bz, bh, half = 6, blend = 16) {
     const m = half + blend + 4;

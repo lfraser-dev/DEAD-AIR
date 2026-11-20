@@ -444,6 +444,40 @@ export function chopperParts(eq, paint, st, H) {
     add('skids', [x, -1.98, -1.6 + k * 0.65], [0, 0, 0], [0.06, 0.32, 0.06], STEEL, { mat: 'steel', shape: { taper: [0.1, 0.1], r: 0.01 } });
     add('skids', [x + (x > 0 ? 0.12 : -0.12), -1.85, -1.6 + k * 0.65], [0, 0, x > 0 ? -1.4 : 1.4], [0.06, 0.3, 0.06], STEEL, { mat: 'steel' });
   }
+  if (eq.skids === 2) for (const x of [-1.25, 1.25]) {
+    // electric skids: coils and a crackle
+    for (let k = 0; k < 4; k++) add('skids', [x, -1.92, -1.3 + k * 1.1], [0, 0, 0], [0.16, 0.16, 0.34], [0.25, 0.45, 0.9], { em: st.zap > 0 ? 1 : 0.35, shape: 'cyl' });
+  }
+  // ---- searchlight(s): a big lamp on a yoke under the nose
+  if (eq.light) for (const x of eq.light === 2 ? [-0.45, 0.45] : [0]) {
+    add('light', [x, -1.15, -3.1], [0, 0, 0], [0.12, 0.35, 0.12], GUNM, { mat: 'metal', shape: 'cylY' });
+    add('light', [x, -1.4, -3.15], [0.55, 0, 0], [0.5, 0.5, 0.42], [0.2, 0.21, 0.22], { mat: 'metal', shape: 'cyl' });
+    add('light', [x, -1.52, -3.36], [0.55, 0, 0], [0.42, 0.42, 0.05], [1, 0.96, 0.85], { em: st.lightOn ? 1 : 0.15, shape: 'cyl' });
+  }
+  // ---- belly turret: a ball with a gun (two for tier 2) under the cabin
+  if (eq.turret) {
+    add('turret', [0, -1.4, 0.6], [0, 0, 0], [0.3, 0.25, 0.3], GUNM, { mat: 'metal', shape: 'cylY' });
+    add('turret', [0, -1.62, 0.6], [0, st.tYaw || 0, 0], [0.62, 0.5, 0.62], [0.24, 0.26, 0.24], { mat: 'metal', shape: 'sphere' });
+    const ty = st.tYaw || 0;
+    for (const o of eq.turret === 2 ? [-0.12, 0.12] : [0]) add('turret', [Math.cos(ty) * o + Math.sin(ty) * -0.5, -1.7, 0.6 + Math.cos(ty) * -0.5 - Math.sin(ty) * o], [0.35, ty, 0], [0.06, 0.06, 0.9], GUNM, { mat: 'metal', shape: 'cyl' });
+  }
+  // ---- medical bay: stretchers in the cabin and a red cross on each side
+  if (eq.medbay) for (const x of [-1, 1]) {
+    add('medbay', [x * 1.205, 0.35, 1.2], [0, 0, 0], [0.02, 0.7, 0.7], [0.95, 0.95, 0.92], { mat: 'paint' });
+    add('medbay', [x * 1.215, 0.35, 1.2], [0, 0, 0], [0.02, 0.5, 0.15], [0.85, 0.1, 0.1], { mat: 'paint' });
+    add('medbay', [x * 1.215, 0.35, 1.2], [0, 0, 0], [0.02, 0.15, 0.5], [0.85, 0.1, 0.1], { mat: 'paint' });
+  }
+  // ---- supply chutes: a rack of crates with packed chutes on the left side
+  if (eq.drops) for (let k = 0; k < (eq.drops === 2 ? 3 : 2); k++) {
+    add('drops', [-1.55, -0.7, 0.2 + k * 0.7], [0, 0, 0], [0.5, 0.5, 0.55], [0.45, 0.4, 0.22], { tex: 12, shape: 0.03 });
+    add('drops', [-1.55, -0.38, 0.2 + k * 0.7], [0, 0, 0], [0.45, 0.16, 0.5], [0.35, 0.4, 0.3], { shape: 0.05 });
+  }
+  // ---- long range radio: a tall whip aerial and a box on the tail boom
+  if (eq.radio) {
+    add('radio', [0.25, 0.9, 4.2], [0, 0, 0], [0.4, 0.35, 0.6], GUNM, { mat: 'metal', shape: 0.04 });
+    add('radio', [0.25, 2.0, 4.2], [-0.12, 0, 0], [0.04, 2.2, 0.04], [0.15, 0.15, 0.15], { mat: 'metal' });
+    add('radio', [0.25, 3.1, 4.07], [0, 0, 0], [0.09, 0.09, 0.09], [1, 0.2, 0.15], { em: (st.t * 1.2) % 1 < 0.2 ? 1 : 0.15, shape: 'sphere' });
+  }
   // ---- radar: a spinning dish on a mast
   if (eq.radar) {
     add('radar', [0, 1.95, 2.0], [0, 0, 0], [0.12, 0.6, 0.12], GUNM, { mat: 'metal', shape: 'cylY' });
