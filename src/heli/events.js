@@ -199,7 +199,7 @@ export class Director {
   add(g, kind) {
     const H = g.heli.pos, map = g.map;
     let ev = null;
-    const far = g.S && g.S.radio ? 1900 : 1000;
+    const far = g.S && g.S.radio ? (g.S.radio === 2 ? 9000 : 1900) : 1000;
     if (kind === 'bridge') {
       const used = new Set(this.list.filter((e) => e.br).map((e) => e.br));
       const c = (map.bridges || []).filter((b) => !used.has(b));

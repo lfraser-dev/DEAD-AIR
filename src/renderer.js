@@ -583,6 +583,35 @@ void main() {
       // bark
       float br = noise(vec3(vWorld.x * 7.0, vWorld.y * 0.9, vWorld.z * 7.0));
       base *= 0.65 + 0.55 * br; tRough = 0.97; tMetal = 0.0;
+    } else if (k == 65) {
+      // aircraft skin: riveted panels, slight tone changes panel to panel, oil and soot streaks running back and down,
+      // and paint worn to bare metal on the edges. All in the part's own space so it moves with the helicopter.
+      vec3 lp = vLocal * uScale, ln = abs(vLocalN);
+      vec2 q = ln.x > 0.5 ? lp.zy : (ln.y > 0.5 ? lp.xz : lp.xy);
+      vec2 cell = q / vec2(0.92, 0.58) + 0.37;
+      vec2 f = abs(fract(cell) - 0.5), fw = fwidth(cell);
+      vec2 wl = vec2(0.012) / vec2(0.92, 0.58);
+      vec2 l2 = 1.0 - smoothstep(0.5 - wl - fw * 1.2, 0.5 - wl * 0.2, f);
+      float line = max(1.0 - l2.x, 1.0 - l2.y);
+      line = max(line, 0.0) * (1.0 - smoothstep(0.25, 0.6, max(fw.x, fw.y)));
+      // rivets: little dots just inside every panel seam
+      vec2 rq = q / 0.13;
+      float rd = length(fract(rq) - 0.5);
+      vec2 near = smoothstep(0.5 - wl * 4.0, 0.5 - wl * 2.4, f) * (1.0 - smoothstep(0.5 - wl * 2.0, 0.5 - wl * 1.2, f));
+      float riv = (1.0 - smoothstep(0.16, 0.26, rd)) * max(near.x, near.y) * (1.0 - smoothstep(0.2, 0.5, fwidth(rq.x)));
+      float tone = hash(vec3(floor(cell), 3.0));
+      base *= 0.93 + 0.12 * tone;
+      base *= 1.0 - 0.34 * line;
+      base *= 1.0 + 0.22 * riv;
+      // streaks: thin, running along the length, heavier low down and towards the back
+      float st = noise(vec3(q.x * 0.6, q.y * 9.0, lp.z * 0.2)) * noise(vec3(q.x * 2.3, q.y * 3.1, 2.0));
+      float low = smoothstep(0.25, -0.5, vLocal.y);
+      base *= 1.0 - 0.32 * smoothstep(0.18, 0.5, st) * (0.35 + 0.65 * low);
+      // chipped paint on the edges: bare grey metal shows through
+      vec3 dE = uScale * 0.5 - abs(lp) + ln * 1000.0;
+      float ed = min(dE.x, min(dE.y, dE.z));
+      float chip = (1.0 - smoothstep(0.02, 0.07, ed)) * step(0.55, noise(lp * 14.0));
+      base = mix(base, vec3(0.46, 0.47, 0.48), chip * 0.55);
     } else if (k == 9) {
       // LED screen: tiny pixels, gently scrolling bands
       vec2 c = p / 0.12;

@@ -258,7 +258,8 @@ export class Horde {
     const low = !H.dead && g.heliAlt < 22 && dh < 70;
     let dirx = 0, dirz = 0;
     const tg = z.tgt;
-    if (g.lure && !tg) {
+    const lured = g.lure && (!g.lureR || Math.abs(g.lure[0] - z.x) + Math.abs(g.lure[1] - z.z) < g.lureR * 1.4);
+    if (lured && !tg) {
       const dx = g.lure[0] - z.x, dz = g.lure[1] - z.z, d = Math.hypot(dx, dz) || 1;
       if (d > 4) { dirx = dx / d; dirz = dz / d; }
     } else if ((low || z.angry > 0) && !(tg && tg.sticky)) {
@@ -332,7 +333,7 @@ export class Horde {
   shuffle(z, dt, g) {
     const hp = g.heli.pos, dx = hp[0] - z.x, dz = hp[2] - z.z, d = Math.hypot(dx, dz);
     z.think -= dt;
-    if (g.lure) { const lx = g.lure[0] - z.x, lz = g.lure[1] - z.z, ld = Math.hypot(lx, lz) || 1; z.wx = lx / ld; z.wz = lz / ld; }
+    if (g.lure && (!g.lureR || Math.abs(g.lure[0] - z.x) + Math.abs(g.lure[1] - z.z) < g.lureR * 1.4)) { const lx = g.lure[0] - z.x, lz = g.lure[1] - z.z, ld = Math.hypot(lx, lz) || 1; z.wx = lx / ld; z.wz = lz / ld; }
     else if (z.think <= 0) {
       z.think = 3 + Math.random() * 5;
       // most of them drift slowly towards the noise of the helicopter

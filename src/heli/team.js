@@ -98,6 +98,7 @@ export class Raid {
         const v = live[Math.floor(Math.random() * live.length)];
         v.hp -= hurt * ARMORS[v.armor].k * (0.6 + Math.random() * 0.8);
         if (v.hp < 40 && v.medkit > 0) { v.medkit--; v.hp = Math.min(v.max, v.hp + (this.has('medic') ? 100 : 50)); this.say(`${v.name} USED A MEDKIT`); }
+        if (v.hp <= 0 && this.saves > 0) { this.saves--; v.hp = 40; this.say(`${v.name} WAS BITTEN · THE FIELD HOSPITAL SAVED THEM`); }
         if (v.hp <= 0) { v.hp = 0; this.lost.push(v); this.say(`${v.name} WAS BITTEN`); }
       }
       return;

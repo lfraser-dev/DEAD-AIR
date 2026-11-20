@@ -174,4 +174,20 @@ export const CSS = `
 .da-mem { display: grid; grid-template-columns: 70px 1fr; gap: 6px; align-items: center; margin: 2px 0; } .da-mem i { height: 5px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; } .da-mem i b { display: block; height: 100%; background: #7dff9a; }
 .da-raid .log { margin-top: 6px; font: 700 11px/1.35 var(--font); opacity: .85; }
 .da-raid .row2 { display: flex; gap: 5px; margin-top: 7px; } .da-raid button { flex: 1; background: rgba(255,255,255,.12); color: #fff; border: 0; border-radius: 6px; padding: 5px 4px; font: 900 11px var(--font); letter-spacing: .05em; } .da-raid button.on { background: #ffcf3a; color: #111; }
+.da-slot u { display: flex; gap: 3px; margin-top: 3px; text-decoration: none; }
+.da-slot u q { width: 14px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.14); quotes: none; }
+.da-slot u q::before, .da-slot u q::after { content: none; }
+.da-slot u q.o { background: color-mix(in srgb, var(--r) 45%, transparent); }
+.da-slot u q.f { background: var(--r); box-shadow: 0 0 6px var(--r); }
+.da-slot.on u q { background: rgba(0,0,0,.18); } .da-slot.on u q.o { background: rgba(0,0,0,.4); } .da-slot.on u q.f { background: #111; box-shadow: none; }
+.da-tier { position: relative; overflow: hidden; border-top: 3px solid var(--r, #9aa3ad); background: linear-gradient(180deg, color-mix(in srgb, var(--r, #9aa3ad) 16%, rgba(10,12,14,.85)), rgba(10,12,14,.86) 55%); }
+.da-tier .tn { display: flex; justify-content: space-between; align-items: center; font: 900 11px var(--font); letter-spacing: .16em; color: var(--r, #9aa3ad); margin-bottom: 2px; }
+.da-tier .tn kbd { font: 900 10px var(--font); letter-spacing: .05em; color: #111; background: var(--r, #ccc); padding: 1px 5px; border-radius: 3px; }
+.da-tier.eq { box-shadow: 0 0 0 1px #7dff9a inset, 0 0 18px rgba(125,255,154,.18); }
+.da-tier.lock { opacity: .5; filter: saturate(.5); }
+.da-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: -2px 0 8px; }
+.da-chips i { font: 800 10.5px var(--font); font-style: normal; letter-spacing: .05em; padding: 2px 6px; border-radius: 3px; background: rgba(125,255,154,.14); color: #7dff9a; }
+.da-chips i.dn { background: rgba(255,106,74,.14); color: #ff8a6a; }
+.da-tier:not(.lock):hover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.08) 50%, transparent 70%); animation: da-shine .8s ease-out; pointer-events: none; }
+@keyframes da-shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 `;
