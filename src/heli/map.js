@@ -102,14 +102,16 @@ export class Ground {
   }
   water(x, z, rx, rz, depth, fade = 30) { (this.wet = this.wet || []).push([x, z, rx, rz, depth, fade]); }
   stampWater() {
-    const S = this.size, D = this.data, k = this.span / S;
-    for (const [x, z, rx, rz, depth, fade] of this.wet || []) {
+    // where we dug rivers and bays: the real depth, read off the finished land
+    const S = this.size, D = this.data, k = this.span / S, T = this.T;
+    for (const [x, z, rx, rz] of this.wet || []) {
       const i0 = Math.max(0, Math.floor(this.tx(x - rx))), i1 = Math.min(S - 1, Math.ceil(this.tx(x + rx)));
       const j0 = Math.max(0, Math.floor(this.tx(z - rz))), j1 = Math.min(S - 1, Math.ceil(this.tx(z + rz)));
       for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-        const px = this.x0 + (i + 0.5) * k, pz = this.z0 + (j + 0.5) * k, d = Math.min(rx - Math.abs(px - x), rz - Math.abs(pz - z));
-        const v = Math.round(Math.min(1, depth * smooth(0, fade, d) / 32) * 255), o = (j * S + i) * 4;
-        D[o + 3] = Math.max(D[o + 3], v); D[o + 1] = 0; D[o + 2] = 0;
+        const o = (j * S + i) * 4;
+        const h = T.heightAt(this.x0 + (i + 0.5) * k, this.z0 + (j + 0.5) * k);
+        if (h >= WATER) continue;
+        D[o + 3] = Math.max(D[o + 3], Math.round(Math.min(1, (WATER - h) / 32) * 255)); D[o + 1] = 0; D[o + 2] = 0;
       }
     }
   }
@@ -164,15 +166,57 @@ export function buildWorld(seed = 1337) {
   const cx = -350 + (R() - 0.5) * 240, cz = 120 + (R() - 0.5) * 240, cityY = 8;
   const RIV = { e: [cx + IW + 240, 228], w: [cx - IW - 254, 242] };       // centre x, half width (the inner edge is the seawall)
   T.rect(cx, cz, IW + 40, IL + 40, cityY, 220);
-  T.rect(RIV.e[0], cz - 230, RIV.e[1], IL + 330, WATER - 10, 10);
-  T.rect(RIV.w[0], cz - 230, RIV.w[1], IL + 330, WATER - 10, 10);
-  T.rect(cx - 10, cz - IL - 252, IW + 506, 240, WATER - 10, 10);
-  for (const [x, rx] of [RIV.e, RIV.w]) ground.water(x, cz - 230, rx, IL + 330, 10);
-  ground.water(cx - 10, cz - IL - 252, IW + 506, 240, 10);
+  // the rivers: the inner bank is the island's seawall, the outer bank wanders in and out, and past the south end of
+  // the island they swing away from each other and wind off across the country like proper rivers (no square moat)
+  const BZ = [cz - IL + 420, cz + 260];                                  // where the two bridges cross
+  const wob = (a, b) => T.noise(a, b, 3) - 0.5;
+  const rivers = [];
+  for (const [sx, base] of [[1, 228], [-1, 242]]) {
+    const wall = cx + sx * (IW + 12), pts = [];
+    for (let z = cz - IL - 320; z <= cz + IL + 40; z += 60) {
+      const calm = Math.min(...BZ.map((b) => Math.min(1, Math.abs(z - b) / 160)));
+      const hw = base - 12 + wob(sx * 13.7 + z / 300, 4.1) * 110 * calm;
+      pts.push([wall + sx * hw, z, hw]);
+    }
+    // swing away from the island, then meander, getting narrower, until the hills at the edge of the world
+    let [x, z, hw] = pts[pts.length - 1], a = Math.atan2(1, sx * 0.25);
+    const aim = Math.atan2(1, sx * 1.1);
+    for (let k = 0; k < 70; k++) {
+      a += (aim - a) * 0.1 + wob(k * 0.29 + sx * 40, 7.7) * 0.85;
+      hw = Math.max(42, hw * 0.93);
+      x += Math.cos(a) * 70; z += Math.sin(a) * 70;
+      if (Math.abs(x) > TH - 260 || Math.abs(z) > TH - 260) break;
+      pts.push([x, z, hw]);
+    }
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, az, ra] = pts[i], [bx, bz, rb] = pts[i + 1];
+      T.channel(ax, az, bx, bz, ra, rb, WATER - 11, WATER - 1.2, 34);
+      ground.water((ax + bx) / 2, (az + bz) / 2, Math.abs(bx - ax) / 2 + Math.max(ra, rb) + 10, Math.abs(bz - az) / 2 + Math.max(ra, rb) + 10, 10);
+    }
+    rivers.push(pts);
+  }
+  // the harbour at the north end: a ragged bay made of overlapping round bites
+  const bay = [];
+  for (let k = 0; k < 11; k++) {
+    const x = cx - 1000 + k * 200 + (R() - 0.5) * 70, z = cz - IL - 300 - Math.abs(k - 5) * 22 + (R() - 0.5) * 120, r = 190 + R() * 140;
+    bay.push([x, z, r]);
+    T.disc(x, z, r, WATER - 12, 70);
+    ground.water(x, z, r + 30, r + 30, 12);
+  }
+  for (let k = 0; k < 14; k++) {
+    // little coves round the rim so the shore isn't a row of circles
+    const [bx, bz, br] = bay[Math.floor(R() * bay.length)], a = -Math.PI * R(), r = 50 + R() * 90;
+    const x = bx + Math.cos(a) * br * 0.95, z = bz + Math.sin(a) * br * 0.95;
+    if (Math.abs(x - cx) < IW + 80 && z > cz - IL - 120) continue;
+    T.disc(x, z, r, WATER - 6, 40);
+    ground.water(x, z, r + 30, r + 30, 6);
+  }
+  // put the island's straight seawall sides back (the rivers' banks blend into them), and dry ground for the borough
+  T.rect(cx, cz - 26, IW + 12, IL + 14, cityY, 5);
   const boro = { x: RIV.e[0] + RIV.e[1] + 360, z: cz - 360, rx: 300, rz: 380 };
-  T.rect(boro.x, boro.z, boro.rx + 30, boro.rz + 30, cityY, 50);
+  T.rect(boro.x, boro.z, boro.rx + 30, boro.rz + 30, cityY, 160);
   const westEnd = { x: RIV.w[0] - RIV.w[1] - 200, z: cz + 260 };
-  T.rect(westEnd.x, westEnd.z, 170, 50, cityY, 60);
+  T.rect(westEnd.x, westEnd.z, 170, 50, cityY, 90);
   spots.push({ x: cx, z: cz, r: IL + 120, kind: 'city', y: cityY });
   spots.push({ x: boro.x, z: boro.z, r: 470, kind: 'borough', y: cityY });
   spots.push({ x: westEnd.x, z: westEnd.z, r: 120, kind: 'bridgehead', y: cityY });
@@ -181,13 +225,13 @@ export function buildWorld(seed = 1337) {
   for (let n = 0; n < 2; n++) {
     let b = null;
     for (let tries = 0; tries < 6 && !b; tries++) {
-      b = best(50, () => { const a = (n * Math.PI) + (R() - 0.5) * 2.2, d = 1500 + R() * 1000; return [cx + Math.cos(a) * d, cz + Math.sin(a) * d, 170]; });
-      if (b && (!free(b[0], b[1], 170, 400) || b[2] > 40)) b = null;
+      b = best(50, () => { const a = (n * Math.PI) + (R() - 0.5) * 2.2, d = 1500 + R() * 1000; return [cx + Math.cos(a) * d, cz + Math.sin(a) * d, 250]; });
+      if (b && (!free(b[0], b[1], 250, 400) || b[2] > 50)) b = null;
     }
     if (!b) continue;
     const y = flatTarget(b[0], b[1]);
-    T.flatten(b[0], b[1], 160, y, 110);
-    spots.push({ x: b[0], z: b[1], r: 170, kind: 'small', y });
+    T.flatten(b[0], b[1], 275, y, 150);
+    spots.push({ x: b[0], z: b[1], r: 260, kind: 'small', y });
   }
   // towns and villages
   const place = (count, r, gap, kind) => {
@@ -228,9 +272,9 @@ export function buildWorld(seed = 1337) {
       const want = Math.atan2(ez - z, ex - x), h0 = T.natural(x, z);
       let bc = Infinity, bh = want;
       for (let k = -5; k <= 5; k++) {
-        const a = want + k * 0.13, nx = x + Math.cos(a) * 55, nz = z + Math.sin(a) * 55, h = T.natural(nx, nz);
+        const a = want + k * 0.13, nx = x + Math.cos(a) * 55, nz = z + Math.sin(a) * 55, h = Math.min(T.natural(nx, nz), T.heightAt(nx, nz));
         const turn = Math.abs(((a - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-        const c = Math.abs(h - h0) * 2.2 + Math.abs(k) * 1.2 + turn * 8 + (h < WATER + 1 ? 30 : 0) + (h > 120 ? 40 : 0) + (inSpot(nx, nz) && inSpot(nx, nz) !== B && inSpot(nx, nz) !== A ? 50 : 0);
+        const c = Math.abs(h - h0) * 2.2 + Math.abs(k) * 1.2 + turn * 8 + (h < WATER + 1 ? 140 : 0) + (h > 120 ? 40 : 0) + (inSpot(nx, nz) && inSpot(nx, nz) !== B && inSpot(nx, nz) !== A ? 50 : 0);
         if (c < bc) { bc = c; bh = a; }
       }
       heading = bh; x += Math.cos(bh) * 55; z += Math.sin(bh) * 55;
@@ -242,14 +286,33 @@ export function buildWorld(seed = 1337) {
     // heights: follow the land but never steeper than about 1 in 9; held up out of the water (a causeway)
     const hs = pts.map(([px, pz], i) => (i === 0 ? A.y : i === pts.length - 1 ? B.y : Math.max(WATER + 1.6, T.natural(px, pz))));
     for (let it = 0; it < 3; it++) for (let i = 1; i < hs.length - 1; i++) hs[i] = Math.max(WATER + 1.6, (hs[i - 1] + hs[i] * 2 + hs[i + 1]) / 4);
+    // over water the road goes on a bridge (a deck on piers), not a dam across the river
+    const DECK = WATER + 6.5;
+    const wetPt = pts.map(([px, pz], i) => i > 0 && i < pts.length - 1 && Math.min(T.heightAt(px, pz), T.natural(px, pz)) < WATER + 0.6);
+    const wetSeg = (i) => { const [ax, az] = pts[i], [bx, bz] = pts[i + 1]; for (let f = 0.1; f < 1; f += 0.2) if (Math.min(T.heightAt(ax + (bx - ax) * f, az + (bz - az) * f), T.natural(ax + (bx - ax) * f, az + (bz - az) * f)) < WATER + 0.3) return true; return false; };
+    const bridgeSeg = pts.slice(0, -1).map((_, i) => wetSeg(i));
+    for (let i = 0; i < pts.length; i++) if (wetPt[i] || bridgeSeg[i] || (i > 0 && bridgeSeg[i - 1])) hs[i] = DECK;
     for (let i = 0; i < pts.length - 1; i++) {
       const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
-      T.road(ax, az, hs[i], bx, bz, hs[i + 1], 5.5, 15);
       roads.push([ax, az, bx, bz, hs[i], hs[i + 1]]);
+      if (bridgeSeg[i]) { roadBridge(ax, az, bx, bz, DECK); continue; }
+      T.road(ax, az, hs[i], bx, bz, hs[i + 1], 5.5, 15);
       ground.road(ax, az, bx, bz);
     }
     return { pts, hs };
   };
+  // a plain road bridge: concrete deck with railings and a pier every 30 m
+  function roadBridge(ax, az, bx, bz, Y) {
+    const L = Math.hypot(bx - ax, bz - az), yaw = Math.atan2(bx - ax, bz - az), mx = (ax + bx) / 2, mz = (az + bz) / 2;
+    const ux = (bx - ax) / L, uz = (bz - az) / L;
+    rot(mx, Y - 1.3, mz, [0, yaw, 0], 12.5, 1.3, L + 1.5, { color: [0.24, 0.24, 0.25], tex: 7 });
+    rot(mx, Y - 2.4, mz, [0, yaw, 0], 9, 1.1, L + 1.5, { color: [0.55, 0.54, 0.5], tex: 3, solid: false });
+    for (const side of [-1, 1]) rot(mx + uz * side * 6.1, Y, mz - ux * side * 6.1, [0, yaw, 0], 0.4, 1.1, L + 1.5, { color: [0.62, 0.61, 0.57], tex: 3 });
+    for (let t = 15; t < L; t += 30) {
+      const px = ax + ux * t, pz = az + uz * t, gy = Math.min(T.heightAt(px, pz), WATER - 1);
+      at(px, gy - 2, pz, 3.2, Y - 2.4 - gy + 2, 3.2, { color: [0.5, 0.49, 0.46], tex: 3, shape: 'cylY' });
+    }
+  }
   const routes = edges.map(([a, b]) => route(nodes[a], nodes[b]));
 
   // water: one big sheet at sea level shows wherever the land dips below it
@@ -392,30 +455,50 @@ export function buildWorld(seed = 1337) {
   };
 
   // the small cities: a looser grid of towers
+  // a small city: a proper street grid (avenues one way, streets the other, painted by the street shader), blocks with
+  // pavements, the tallest buildings in the middle; the grid stops in a rough circle so it doesn't look stamped out
   const city = (cx, cz, CR, Y, tallMul) => {
-    const lines = [];
-    { let p = -CR + 6, n = 0; while (p < CR) { lines.push(p); p += (n % 4 === 3 ? 26 : 14) / 2 + 36 + (n % 4 === 2 ? 26 : 14) / 2; n++; } }
-    const sw = (k) => (k % 4 === 3 ? 26 : 14);
-    add([cx - CR, Y - 1, cz - CR], [cx + CR, Y + 0.02, cz + CR], { color: [0.17, 0.17, 0.18], tex: 7, noShadow: true });
-    ground.town(cx, cz, CR, 40);
-    for (let i = 0; i < lines.length - 1; i++) for (let j = 0; j < lines.length - 1; j++) {
-      const x0 = cx + lines[i] + sw(i) / 2, x1 = cx + lines[i + 1] - sw(i + 1) / 2, z0 = cz + lines[j] + sw(j) / 2, z1 = cz + lines[j + 1] - sw(j + 1) / 2;
-      if (x1 - x0 < 10 || z1 - z0 < 10) continue;
-      const bx = (x0 + x1) / 2, bz = (z0 + z1) / 2, W = x1 - x0, D = z1 - z0, dc = Math.hypot(bx - cx, bz - cz) / CR;
-      if (dc > 0.98) continue;
-      add([x0, Y, z0], [x1, Y + 0.18, z1], { color: [0.5, 0.49, 0.46], tex: 4 });
+    const gi = 2 + Math.min(1, smallN++), AV = 18, ST = 12, BW = 52, BD = 40, PX = BW + AV, PZ = BD + ST;
+    const x0 = cx - Math.round(CR / PX) * PX - AV / 2, z0 = cz - Math.round(CR / PZ) * PZ - ST / 2;
+    grids.a[gi] = [x0, z0, PX, PZ]; grids.b[gi] = [AV, ST, 0, 0];
+    const keep = [];
+    for (let x = x0 + AV; x + BW < cx + CR + PX; x += PX) for (let z = z0 + ST; z + BD < cz + CR + PZ; z += PZ) {
+      const bx = x + BW / 2, bz = z + BD / 2, dc = Math.hypot(bx - cx, (bz - cz) * 1.1) / CR + (T.noise(bx / 90, bz / 90, 2) - 0.5) * 0.35;
+      if (dc < 1) keep.push([x, z, bx, bz, dc]);
+    }
+    // street tarmac under each block and its half of the streets round it, then town ground fading out
+    for (const [x, z] of keep) add([x - AV - 0.5, Y - 1, z - ST - 0.5], [x + BW + AV + 0.5, Y + 0.02, z + BD + ST + 0.5], { color: [1, 1, 1], tex: 64 + gi, noShadow: true });
+    ground.town(cx, cz, CR * 0.95, 60);
+    for (const [x, z, bx, bz, dc] of keep) {
+      const x1 = x + BW, z1 = z + BD;
+      add([x, Y, z], [x1, Y + 0.18, z1], { color: [0.52, 0.51, 0.48], tex: 4 });
       const base = Y + 0.18, r = R();
-      if (r < 0.1 && dc > 0.2) { for (let t = 0; t < 5; t++) tree(x0 + 3 + R() * (W - 6), z0 + 3 + R() * (D - 6), 0.9); open.push([bx, bz, base]); continue; }
-      const tall = 1 - dc, h = 12 + R() * 14 + tall * tall * (40 + R() * 60) * tallMul;
-      const parts = R() < 0.55 ? [[x0, z0, bx - 1.5, z1], [bx + 1.5, z0, x1, z1]] : [[x0, z0, x1, z1]];
-      for (const [a0, b0, a1, b1] of parts) tower(a0 + 0.5, b0 + 0.5, a1 - 0.5, b1 - 0.5, base, h * (0.8 + R() * 0.4), { style: h > 45 ? pick(['glass', 'office', 'deco']) : pick(['brick', 'office', 'brick']), neon: R() < 0.25 });
-      if (R() < 0.5) car(x0 - sw(i) / 2 + (R() < 0.5 ? -3 : 3), Y, bz + (R() - 0.5) * D * 0.7, (R() - 0.5) * 0.6, R() < 0.18);
+      if (r < 0.09 && dc > 0.25) { for (let t = 0; t < 6; t++) tree(x + 4 + R() * (BW - 8), z + 4 + R() * (BD - 8), 0.9); open.push([bx, bz, base]); continue; }
+      if (r < 0.15 && dc > 0.5) {
+        // a car park
+        for (let c = 0; c < 10; c++) car(x + 5 + (c % 5) * 10, base, z + (c < 5 ? 8 : BD - 8), (c < 5 ? 0 : Math.PI) + (R() - 0.5) * 0.2, R() < 0.12);
+        open.push([bx, bz, base]); continue;
+      }
+      const tall = Math.max(0, 1 - dc), h = 10 + R() * 12 + tall * tall * (40 + R() * 70) * tallMul;
+      // split the block into 1-3 buildings along its length
+      const n = h > 45 ? 1 : 1 + Math.floor(R() * 3);
+      let a = x + 0.6;
+      for (let q = 0; q < n; q++) {
+        const b = q === n - 1 ? x1 - 0.6 : a + (BW - 1.2) / n * (0.8 + R() * 0.4);
+        const hh = n === 1 ? h : h * (0.75 + R() * 0.5);
+        tower(a, z + 0.6, b - 0.8, z1 - 0.6, base, hh, { style: hh > 45 ? pick(['glass', 'office', 'deco']) : pick(['brick', 'office', 'brick', 'brown']), neon: R() < 0.2 });
+        a = b;
+      }
+      for (let t = x + 5; t < x1; t += 12) { tree(t, z - 2.2, 0.6); tree(t, z1 + 2.2, 0.6); }
+      if (R() < 0.6) car(x - AV / 2 + (R() < 0.5 ? -3 : 3), Y, bz + (R() - 0.5) * BD * 0.7, (R() < 0.5 ? 0 : Math.PI) + (R() - 0.5) * 0.3, R() < 0.15);
+      if (R() < 0.4) car(bx + (R() - 0.5) * BW * 0.7, Y, z - ST / 2 + (R() < 0.5 ? -2.5 : 2.5), Math.PI / 2 + (R() - 0.5) * 0.3, R() < 0.15);
     }
   };
 
   // ---- THE CITY: a Manhattan grid. Avenues (20 m) run the length of the island, streets (12 m) cross it.
   // Downtown and Midtown are forests of skyscrapers (up to 300 m), the park is in the middle, walk-ups everywhere else.
-  const bridges = [], grids = { a: [[0, 0, 1, 1], [0, 0, 1, 1]], b: [[0, 0, 0, 0], [0, 0, 0, 0]] };
+  const bridges = [], grids = { a: [[0, 0, 1, 1], [0, 0, 1, 1], [0, 0, 1, 1], [0, 0, 1, 1]], b: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
+  let smallN = 0, cityPark = null;
   function metropolis() {
     const Y = cityY, AV = 20, BW = 86, ST = 12, BD = 46, P = BD + ST;
     const nx = 6, nz = Math.floor((2 * IL - ST) / P);
@@ -446,7 +529,7 @@ export function buildWorld(seed = 1337) {
     at(cx, WATER - 12, cz - IL - 9.2, 2 * IW + 21, Y + 12.2, 2.4, { color: SW, tex: 3 });
     at(cx, Y + 0.2, cz - IL - 7.9, 2 * IW + 16, 1.1, 0.12, { color: [0.12, 0.13, 0.14], mat: 'metal', solid: false, noShadow: true });
     // the bridges come in here (keep these blocks clear)
-    const bz = [cz - IL + 420, cz + 260];
+    const bz = BZ;
     let spire = null;
     const spireJ = Math.round((zMid - 120 - (cz - IL + ST)) / P), spireI = 3;
     for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
@@ -495,6 +578,7 @@ export function buildWorld(seed = 1337) {
     for (let j = 0; j < nz; j += 2) { const sz = cz - IL + ST / 2 + j * P; jam(cx - IW + R() * 400, sz - 2, cx - IW + R() * 600, sz + 2, Y, 2 + Math.floor(R() * 3), Math.PI / 2); }
     // the park: lawns, lots of trees, a lake and a reservoir (dug into the ground: the sea level water shows through)
     const px0 = cx - IW + AV + (BW + AV), px1 = cx - IW + AV + 4 * (BW + AV) + BW;
+    cityPark = [px0, park[0], px1, park[1]];
     ground.rect((px0 + px1) / 2, (park[0] + park[1]) / 2, (px1 - px0) / 2 - 4, (park[1] - park[0]) / 2 - 4, 4);
     // (undo the town ground in the park so the grass shows)
     { const S = ground.size, D = ground.data, k = ground.span / S;
@@ -595,13 +679,16 @@ export function buildWorld(seed = 1337) {
   // the borough over the east river: brownstones in long rows, trees on the streets, a few taller buildings
   function borough() {
     const Y = cityY, { x: bx0, z: bz0, rx, rz } = boro;
-    add([bx0 - rx, Y - 1, bz0 - rz], [bx0 + rx, Y + 0.02, bz0 + rz], { color: [1, 1, 1], tex: 64, noShadow: true });
-    ground.rect(bx0, bz0, rx, rz, 30);
     const BW = 70, BD = 40, AV = 16, ST = 12;
+    // the tarmac stops one avenue / street past the last row of blocks (no empty strips round the edge)
+    const nx = Math.floor((2 * rx - AV - BW) / (BW + AV)) + 1, nzb = Math.floor((2 * rz - ST - BD) / (BD + ST)) + 1;
+    const xe = bx0 - rx + nx * (BW + AV) + AV, ze = bz0 - rz + nzb * (BD + ST) + ST;
+    add([bx0 - rx, Y - 1, bz0 - rz], [xe, Y + 0.02, ze], { color: [1, 1, 1], tex: 64, noShadow: true });
+    ground.rect((bx0 - rx + xe) / 2, (bz0 - rz + ze) / 2, (xe - bx0 + rx) / 2, (ze - bz0 + rz) / 2, 30);
     grids.a[1] = [bx0 - rx, bz0 - rz, BW + AV, BD + ST]; grids.b[1] = [AV, ST, 0, 0];
     for (let x0 = bx0 - rx + AV; x0 + BW < bx0 + rx; x0 += BW + AV) for (let z0 = bz0 - rz + ST; z0 + BD < bz0 + rz; z0 += BD + ST) {
       const x1 = x0 + BW, z1 = z0 + BD;
-      if (bridges.some((b) => Math.abs((z0 + z1) / 2 - b.z) < 40 && Math.min(x1, b.xb + b.dir * 175) > Math.max(x0, b.xb - b.dir * 5) - 0 && Math.max(x0, x1) > Math.min(b.xb, b.xb + b.dir * 175) && Math.min(x0, x1) < Math.max(b.xb, b.xb + b.dir * 175))) { open.push([(x0 + x1) / 2, (z0 + z1) / 2, Y]); continue; }
+      if (bridges.some((b) => Math.abs((z0 + z1) / 2 - b.z) < 40 && Math.min(x1, b.xb + b.dir * 175) > Math.max(x0, b.xb - b.dir * 5) - 0 && Math.max(x0, x1) > Math.min(b.xb, b.xb + b.dir * 175) && Math.min(x0, x1) < Math.max(b.xb, b.xb + b.dir * 175))) { add([x0, Y, z0], [x1, Y + 0.2, z1], { color: [0.5, 0.49, 0.46], tex: 4 }); open.push([(x0 + x1) / 2, (z0 + z1) / 2, Y + 0.2]); continue; }
       add([x0, Y, z0], [x1, Y + 0.2, z1], { color: [0.52, 0.51, 0.48], tex: 4 });
       const base = Y + 0.2;
       if (R() < 0.08) { for (let t = 0; t < 7; t++) tree(x0 + 4 + R() * (BW - 8), z0 + 4 + R() * (BD - 8), 1); open.push([(x0 + x1) / 2, (z0 + z1) / 2, base]); continue; }
@@ -628,7 +715,7 @@ export function buildWorld(seed = 1337) {
     if (s.kind === 'city') { spire = metropolis(); cities.push(s); continue; }
     if (s.kind === 'borough') { borough(); cities.push(s); continue; }
     if (s.kind === 'bridgehead') { ground.town(s.x, s.z, s.r * 0.7, 20); continue; }
-    if (s.kind === 'small') { city(s.x, s.z, 150, s.y, 0.35); cities.push(s); continue; }
+    if (s.kind === 'small') { city(s.x, s.z, 230, s.y, 0.45); s.name = (TOWN_NAMES.splice(Math.floor(R() * TOWN_NAMES.length), 1)[0] || 'CITY') + ' CITY'; cities.push(s); continue; }
     const t = s, y = t.y;
     towns.push({ x: t.x, z: t.z, y, r: t.r, kind: t.kind, name: TOWN_NAMES.splice(Math.floor(R() * TOWN_NAMES.length), 1)[0] || 'NOWHERE' });
     ground.town(t.x, t.z, t.r * 0.75, t.r * 0.4);
@@ -729,17 +816,24 @@ export function buildWorld(seed = 1337) {
   // ---- the upgrade hangar scene (off the map)
   const [hx, , hz] = HANGAR;
   add([hx - 40, -1, hz - 40], [hx + 40, 0.1, hz + 40], { color: [0.36, 0.36, 0.38], tex: 3 });
-  add([hx - 20, 0.1, hz - 20], [hx + 20, 0.12, hz + 20], { color: [0.22, 0.24, 0.26], noShadow: true, solid: false });
-  add([hx - 21, 0.1, hz + 18], [hx + 21, 18, hz + 20], { color: [0.4, 0.42, 0.44], tex: 5, mat: 'metal' });
-  add([hx - 21, 0.1, hz - 22], [hx - 19, 18, hz + 20], { color: [0.4, 0.42, 0.44], tex: 5, mat: 'metal' });
-  add([hx + 19, 0.1, hz - 22], [hx + 21, 18, hz + 20], { color: [0.4, 0.42, 0.44], tex: 5, mat: 'metal' });
+  add([hx - 20, 0.1, hz - 20], [hx + 20, 0.12, hz + 20], { color: [0.4, 0.42, 0.44], noShadow: true, solid: false, tex: 3 });
+  add([hx - 21, 0.1, hz + 18], [hx + 21, 18, hz + 20], { color: [0.62, 0.64, 0.66], tex: 5, mat: 'metal' });
+  add([hx - 21, 0.1, hz - 22], [hx - 19, 18, hz + 20], { color: [0.62, 0.64, 0.66], tex: 5, mat: 'metal' });
+  add([hx + 19, 0.1, hz - 22], [hx + 21, 18, hz + 20], { color: [0.62, 0.64, 0.66], tex: 5, mat: 'metal' });
+  // a painted landing circle under the helicopter, and light strips down the walls
+  for (let k = 0; k < 40; k++) { const a = (k / 40) * Math.PI * 2; at(hx + Math.cos(a) * 7.5, 0.12, hz + Math.sin(a) * 7.5, 1.1, 0.015, 0.35, { color: [0.95, 0.78, 0.15], noShadow: true, solid: false }); }
+  at(hx - 1.6, 0.12, hz, 0.5, 0.015, 4, { color: [0.92, 0.92, 0.9], noShadow: true, solid: false });
+  at(hx + 1.6, 0.12, hz, 0.5, 0.015, 4, { color: [0.92, 0.92, 0.9], noShadow: true, solid: false });
+  at(hx, 0.12, hz, 2.7, 0.015, 0.5, { color: [0.92, 0.92, 0.9], noShadow: true, solid: false });
+  for (const x of [-18.9, 18.9]) for (const z of [-12, 0, 12]) at(hx + x, 3, hz + z, 0.15, 9, 0.5, { color: [1, 0.96, 0.88], emissive: 1, noShadow: true, solid: false });
+  for (const x of [-14, -4, 6, 16]) at(hx + x, 4, hz + 17.9, 0.5, 9, 0.15, { color: [1, 0.96, 0.88], emissive: 1, noShadow: true, solid: false });
   for (const z of [-16, -6, 4, 14]) add([hx - 21, 17, hz + z - 0.4], [hx + 21, 18, hz + z + 0.4], { color: [0.3, 0.31, 0.33], mat: 'metal' });
   for (const x of [-12, 0, 12]) add([hx + x - 0.4, 16.6, hz - 20], [hx + x + 0.4, 17, hz + 18], { color: [1, 0.96, 0.85], emissive: 1, noShadow: true, solid: false });
   for (let s = 0; s < 4; s++) at(hx - 16 + s * 2.4, 0.1, hz + 16, 2, 1.2, 1.6, { color: [0.55, 0.42, 0.22], tex: 12 });
   at(hx + 15, 0.1, hz + 14, 3, 1.1, 1.2, { color: [0.75, 0.15, 0.1], mat: 'paint', shape: 0.08 });
   for (let s = -9; s <= 9; s++) for (const zz of [-19.6, 19.6]) at(hx + s * 2, 0.12, hz + zz, 1, 0.02, 0.4, { color: s % 2 ? [0.95, 0.75, 0.1] : [0.08, 0.08, 0.08], noShadow: true, solid: false });
 
-  return { world, terrain: T, ground, roofs, burning, open, loot, roads, towns, cities, city: { x: cx, z: cz, r: CITY_R, y: cityY, iw: IW, il: IL }, boro, bridges, grids, spire, fobs: spire ? [spire] : [] };
+  return { world, terrain: T, ground, roofs, burning, open, loot, roads, towns, cities, city: { x: cx, z: cz, r: CITY_R, y: cityY, iw: IW, il: IL, park: cityPark }, boro, bridges, grids, spire, fobs: spire ? [spire] : [] };
 }
 
 // THE SPIRE: a tower 170 m tall with a landing bay cut into one side 70 m up, the pad sticking out over the street.

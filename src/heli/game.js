@@ -16,6 +16,7 @@ import { buildWorld, HANGAR, WORLD, LOOT_TYPES } from './map.js';
 import { WATER } from './terrain.js';
 import { Forest } from './trees.js';
 import { Horde, TYPES } from './horde.js';
+import { hullGeometries } from './hulls.js';
 import { mountAt, AIRFRAMES, Chopper, chopperParts, qrot, qmat } from './chopper.js';
 import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, loadSave, saveSave, statsFor, bars } from './data.js';
 import { Director, crateParts } from './events.js';
@@ -38,11 +39,11 @@ const FRIEND_COLS = [[1, 0.8, 0.1], [0.3, 0.9, 1]];
 
 // upgrade tiers get rarer colours as they go up: grey, green, blue, purple, orange
 const RARITY = ['#9aa3ad', '#6fe08a', '#4fb4ff', '#b77bff', '#ff9a2e'];
-const SLOT_KEYS = { speaker: 'V', light: 'L', drops: 'B', flares: 'X', beacon: 'N', winch: 'J', bombs: 'SPACE', rockets: 'R-CLICK', engine: 'SHIFT' };
+const SLOT_KEYS = { speaker: 'V', light: 'L', drops: 'B', flares: 'X', beacon: 'N', nvg: 'Z', bombs: 'SPACE', rockets: 'R-CLICK', engine: 'SHIFT' };
 // little "+60% HEALTH" chips: what changes if you fit this tier
 function tierChips(a, b) {
   const out = [], pct = (x, y) => Math.round((y / x - 1) * 100);
-  const fp = (s) => s.gun.rate * s.gun.dmg * (s.gun.splash ? 2.2 : 1) * (s.gun.rail ? 1.6 : s.gun.laser ? 2 : 1) + s.rockets * s.rocketDmg / 12 + s.gunners * 150 * (s.doorMini ? 2 : 1) + s.bombs * (s.nuke ? 900 : 60) + (s.tail || 0) * 120 + (s.turret || 0) * 140;
+  const fp = (s) => s.gun.rate * s.gun.dmg * (s.gun.splash ? 2.2 : 1) * (s.gun.barrels === 2 && s.gun.cannon ? 1.15 : 1) + s.rockets * s.rocketDmg / 12 + s.gunners * 150 * (s.doorMini ? 2 : 1) + s.bombs * (s.thermo ? 500 : 60) + (s.tail || 0) * 120 + (s.turret || 0) * 140;
   const add = (v, txt) => { if (v) out.push(`<i class="${v > 0 ? 'up' : 'dn'}">${v > 0 ? '+' : ''}${txt}</i>`); };
   const h = pct(a.hp, b.hp); add(h, `${h}% HEALTH`);
   const f = pct(fp(a) || 1, fp(b) || 1); if (Math.abs(f) >= 3) add(f, `${f}% FIREPOWER`);
@@ -58,6 +59,7 @@ function tierChips(a, b) {
 export class HeliGame {
   constructor({ renderer, sounds, canvas, onExit, isDev }) {
     this.r = renderer; this.snd = sounds; this.canvas = canvas; this.onExit = onExit; this.isDev = isDev || (() => false);
+    this.r.registerShapes(hullGeometries());
     this.active = false; this.mode = 'off';
     this.save = loadSave();
     this.keys = new Set(); this.hitKeys = new Set(); this.btn = new Set(); this.clk = new Set();
@@ -81,7 +83,7 @@ export class HeliGame {
     const G = this.map.ground;
     this.r.setGround(G.data, G.size, G.x0, G.z0, G.span);
     this.r.setRoads([], WATER);
-    { const g = this.map.grids; this.r.setCityGrids([...g.a[0], ...g.a[1]], [...g.b[0], ...g.b[1]]); }
+    { const g = this.map.grids; this.r.setCityGrids(g.a.flat(), g.b.flat()); }
     this.forest = new Forest(this.map);
     this.map.world.trees = this.forest;
     this.mapImg = null;
@@ -96,6 +98,7 @@ export class HeliGame {
     this.live = this.world.boxes.filter((b) => !b.batched && !b.hidden);
     const lo = this.r.meshesLo;
     this.zBatches = { box: this.r.makeBatch(this.r.cube), sphere: this.r.makeBatch(lo.sphere), cyl: this.r.makeBatch(lo.cyl), cylY: this.r.makeBatch(lo.cylY) };
+    this.r.registerShapes(hullGeometries());
     this.smokeBatch = this.r.makeBatch(lo.sphere);
     this.smokeData = new Float32Array(32 * 1200);
     this.smokes = [];
@@ -153,9 +156,12 @@ export class HeliGame {
     const mix3 = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
     const tint = mix3([0.5, 0.62, 1.0], mix3([1, 1, 1], [1.0, 0.6, 0.34], gold), dk);
     this.night = 1 - dk;
-    r.setDay(dk + (1 - dk) * 0.1, 1 - dk, 0.2 + 0.8 * dk, tint, 1);
-    const sky = mix3([0.012, 0.02, 0.05], mix3(SKY, [0.3, 0.28, 0.45], gold), dk);
-    const fog = mix3([0.03, 0.04, 0.075], mix3(FOG, [0.92, 0.6, 0.42], gold), dk);
+    // night vision: when it's dark, everything comes up bright and green
+    const nv = this.S && this.S.nvg && this.nvgOn !== false && this.mode !== 'hangar' ? clamp((1 - dk) * 1.6, 0, 1) : 0;
+    this.nvNow = nv;
+    r.setDay(dk + (1 - dk) * 0.1, (1 - dk) * (1 - 0.75 * nv), 0.2 + 0.8 * dk + nv * 0.75, mix3(tint, [0.42, 1.15, 0.45], nv), 1);
+    const sky = mix3(mix3([0.012, 0.02, 0.05], mix3(SKY, [0.3, 0.28, 0.45], gold), dk), [0.07, 0.2, 0.08], nv);
+    const fog = mix3(mix3([0.03, 0.04, 0.075], mix3(FOG, [0.92, 0.6, 0.42], gold), dk), [0.12, 0.3, 0.13], nv);
     gl.useProgram(r.prog);
     r.fogColor = fog; gl.uniform3fv(r.u.uFogColor, fog); gl.uniform3fv(r.u.uSkyTop, sky);
     r.sunDir = el > -0.02 ? sun : sun.map((v) => -v); gl.uniform3fv(r.u.uSunDir, r.sunDir);
@@ -453,8 +459,8 @@ export class HeliGame {
     const h = this.$('help');
     const mode = this.save.flight;
     h.innerHTML = mode === 'easy'
-      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>X</kbd> FLASH · <kbd>N</kbd> BEACON · <kbd>J</kbd> MAGNET · <kbd>L</kbd> LIGHT · <kbd>B</kbd> SUPPLIES · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
-      : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>X</kbd> FLASH · <kbd>N</kbd> BEACON · <kbd>J</kbd> MAGNET · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
+      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>X</kbd> FLASH · <kbd>N</kbd> BEACON · <kbd>Z</kbd> NIGHT VISION · <kbd>L</kbd> LIGHT · <kbd>B</kbd> SUPPLIES · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
+      : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>X</kbd> FLASH · <kbd>N</kbd> BEACON · <kbd>Z</kbd> NIGHT VISION · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
     this.helpT = on ? 22 : 0;
   }
 
@@ -494,7 +500,7 @@ export class HeliGame {
       const easy = this.save.flight === 'easy';
       for (const ev of H.events) {
         if (ev.type === 'impact') { this.hurt(ev.speed * (ev.hard ? 14 : 9) * (easy ? 0.5 : 1), ev.point); this.fx.sparks(ev.point, 12, [1, 0.8, 0.4], 7, 0.5, 0.05, 2); this.snd.meleeWall?.('smash'); this.shake = Math.max(this.shake, 0.5); }
-        else if (ev.type === 'rotor' && S.shredder) { this.fx.sparks(ev.point, 4, [1, 0.85, 0.5], 9, 0.3, 0.04, 1); }
+        else if (ev.type === 'rotor' && S.toughBlades) { this.rotorHitT = (this.rotorHitT || 0) - dt; this.fx.sparks(ev.point, 4, [1, 0.85, 0.5], 9, 0.3, 0.04, 1); if (this.rotorHitT <= 0) { this.rotorHitT = 0.3; this.hurt(easy ? 1.5 : 3, ev.point); } }
         else if (ev.type === 'rotor') { this.rotorHitT = (this.rotorHitT || 0) - dt; if (this.rotorHitT <= 0) { this.rotorHitT = 0.15; this.hurt(easy ? 7 : 14, ev.point); this.fx.sparks(ev.point, 10, [1, 0.85, 0.5], 9, 0.4, 0.04, 1); this.snd.click?.(3600, 0.4, 3); this.shake = Math.max(this.shake, 0.4); } }
       }
       H.events.length = 0;
@@ -629,8 +635,8 @@ export class HeliGame {
       this.sirenT = (this.sirenT || 0) - dt;
       if (this.sirenT <= 0) { this.sirenT = 0.55; this.snd.tone?.(this.sirenHi ? 980 : 720, this.sirenHi ? 720 : 980, 0.5, 0.12, 'square'); this.sirenHi = !this.sirenHi; }
       if (this.siren <= 0) this.lure = null;
-      // SONIC CANNON: a blast every second knocks down everything close under you, and shakes them off the skids
-      if (S.sonic && !H.dead) {
+      // LRAD: a blast every second knocks down everything close under you, and shakes them off the skids
+      if (S.lrad && !H.dead) {
         this.sonicT = (this.sonicT || 0) - dt;
         if (this.sonicT <= 0) {
           this.sonicT = 1;
@@ -647,26 +653,12 @@ export class HeliGame {
     this.shieldT += dt; this.shieldHit = Math.max(0, this.shieldHit - dt * 2.5);
     if (S.shield && this.shieldT > 3 && this.shield < S.shield) this.shield = Math.min(S.shield, this.shield + S.shieldRegen * dt);
     if (S.flares && this.flaresLeft < S.flares) { this.flareRegen += dt; if (this.flareRegen > 15) { this.flareRegen = 0; this.flaresLeft++; } }
-    if (S.recycle && this.fuel > 0) this.fuelUp(0.28 * dt);
     if (this.mag.length) {
       this.mag = this.mag.filter((z) => z.alive);
       this.mag.forEach((z, i) => {
         const p = H.toWorld([2.15 + (i - 1) * 0.5, -5.2 - (i % 2) * 0.6, (i - 1) * 0.4]);
         z.x = p[0]; z.y = p[1] - z.s * 1.6; z.z = p[2]; z.ph += dt * 10; z.st = 'mag';
       });
-    }
-    if (S.shredder && H.rpm > 0.6 && !H.dead) {
-      const hub = H.toWorld([0, 2.3, 0.3]), up = H.up, Rr = 7.3;
-      for (const z of this.horde.list) {
-        if (!z.alive || z.type === 'titan') continue;
-        const v = [z.x - hub[0], z.y + z.s * 1.8 - hub[1], z.z - hub[2]];
-        const h = v[0] * up[0] + v[1] * up[1] + v[2] * up[2];
-        if (h < -3.2 || h > 1.2) continue;                  // the blades (and their wash) reach a head's height under them
-        const rr = Math.hypot(v[0] - up[0] * h, v[1] - up[1] * h, v[2] - up[2] * h);
-        if (rr > Rr) continue;
-        const k = this.horde.damage(z, 999, [v[0] * 3, 6, v[2] * 3], 'rotor');
-        if (k) { this.hitMark(true); this.fx.sparks([z.x, z.y + z.s, z.z], 8, [0.5, 0.05, 0.04], 6, 0.6, 0.1, 2); this.snd.meleeWall?.('smash'); }
-      }
     }
     for (let i = this.beams.length - 1; i >= 0; i--) { this.beams[i].t -= dt; if (this.beams[i].t <= 0) this.beams.splice(i, 1); }
     for (let i = this.splats.length - 1; i >= 0; i--) { this.splats[i].t += dt; if (this.splats[i].t > 30) this.splats.splice(i, 1); }
@@ -719,24 +711,7 @@ export class HeliGame {
       }
     }
   }
-  toggleMagnet() {
-    const H = this.heli, S = this.S;
-    if (!S.magnet) { this.feed(S.winch ? 'YOUR WINCH HAS NO MAGNET · UPGRADE IT' : 'NO MAGNET FITTED · BUY A WINCH + MAGNET', 'y'); return; }
-    if (this.mag.length) {
-      const h = this.agl;
-      for (const z of this.mag) { z.st = 'fall'; z.vel = [H.vel[0], H.vel[1] - 2, H.vel[2]]; }
-      this.feed(h > 15 ? `DROPPED ${this.mag.length} FROM ${Math.round(h)}M!` : 'DROPPED · GO HIGHER TO SPLAT THEM', 'y');
-      this.mag = []; this.snd.grappleRelease?.();
-      return;
-    }
-    const got = this.horde.list.filter((z) => z.alive && z.type !== 'titan' && z.st !== 'mag' && z.st !== 'grab' && Math.hypot(z.x - H.pos[0], z.z - H.pos[2]) < 12 && H.pos[1] - z.y > 3 && H.pos[1] - z.y < 30)
-      .sort((a, b) => Math.hypot(a.x - H.pos[0], a.z - H.pos[2]) - Math.hypot(b.x - H.pos[0], b.z - H.pos[2])).slice(0, 3);
-    if (!got.length) { this.feed('NOTHING UNDER THE MAGNET · FLY LOW OVER ZOMBIES', 'y'); return; }
-    for (const z of got) { z.st = 'mag'; z.keep = true; }
-    this.mag = got;
-    this.feed(`MAGNET GOT ${got.length} · FLY UP AND PRESS J TO DROP THEM`, 'g');
-    this.snd.grab?.();
-  }
+
   splat(p, killed) { if (killed && this.splats) { if (this.splats.length > 140) this.splats.shift(); this.splats.push({ x: p[0], y: this.groundAt(p[0], p[2]) + 0.05, z: p[2], r: 0.8 + Math.random() * 1.2, t: 0 }); } }
 
   bore() {
@@ -802,7 +777,7 @@ export class HeliGame {
     if (this.hit('KeyV')) this.sirenOn();
     if (this.hit('KeyX')) this.fireFlares();
     if (this.hit('KeyN')) this.dropBeacon();
-    if (this.hit('KeyJ')) this.toggleMagnet();
+    if (this.hit('KeyZ') && S.nvg) { this.nvgOn = this.nvgOn === false; this.applyDay(); this.feed(this.nvgOn === false ? 'NIGHT VISION OFF' : 'NIGHT VISION ON', 'y'); }
     if (this.hit('KeyL') && this.S.light) { this.lightMode = this.lightMode === 'on' ? 'off' : this.lightMode === 'off' ? 'auto' : 'on'; this.feed(`SEARCHLIGHT: ${this.lightMode.toUpperCase()}`, 'y'); }
     if (this.hit('KeyB')) this.dropSupplies();
   }
@@ -893,7 +868,7 @@ export class HeliGame {
   fireGun() {
     const H = this.heli, G = this.S.gun;
     let { d } = this.bore();
-    const x = G.barrels === 2 ? (this.gunSide = -(this.gunSide || 1)) * 0.42 : 0;
+    const x = G.barrels === 2 ? (this.gunSide = -(this.gunSide || 1)) * (G.cannon ? 0.52 : 0.42) : 0;
     const o = H.toWorld(mountAt(this.save.heli, 'gun', [x, -1.05, -5.1]));
     // a little aim help: on EASY, bullets bend towards a zombie just off the crosshair
     if (this.save.flight === 'easy') {
@@ -1006,24 +981,25 @@ export class HeliGame {
   }
 
   // MINI NUKE: a flash, a shock ring, a mushroom cloud, and nothing left standing nearby
-  nuke(p) {
+  // THERMOBARIC: a fuel-air bomb. A cloud of fuel, then one huge fireball and a pressure wave.
+  thermobaric(p) {
     const H = this.heli;
-    this.blastAll(p, 36, 5000, 40, 'nuke');
-    for (let i = 0; i < 4; i++) this.boom([p[0] + (Math.random() - 0.5) * 20, p[1] + Math.random() * 6, p[2] + (Math.random() - 0.5) * 20], 3);
-    this.blasts.push({ pos: [p[0], p[1] + 6, p[2]], t: 0, size: 7, col: [1, 1, 0.9] });
-    this.blasts.push({ pos: [p[0], p[1] + 0.5, p[2]], t: 0, size: 5, ring: true });
-    for (let i = 0; i < 70; i++) {
-      const h = i / 70, cap = h > 0.65, a = Math.random() * 6.28, r = cap ? 8 + Math.random() * 14 : 3 + Math.random() * 3;
-      this.smokes.push({ pos: [p[0] + Math.cos(a) * r, p[1] + h * 55, p[2] + Math.sin(a) * r], t: 0, life: 9 + Math.random() * 4, size: cap ? 9 + Math.random() * 6 : 5, drift: [(Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5], fire: h < 0.5 ? 0.6 : 0.2 });
+    this.blastAll(p, 26, 2600, 30, 'bomb');
+    for (let i = 0; i < 6; i++) this.boom([p[0] + (Math.random() - 0.5) * 26, p[1] + Math.random() * 4, p[2] + (Math.random() - 0.5) * 26], 2.2);
+    this.blasts.push({ pos: [p[0], p[1] + 4, p[2]], t: 0, size: 5.5, col: [1, 0.7, 0.3] });
+    this.blasts.push({ pos: [p[0], p[1] + 0.5, p[2]], t: 0, size: 6, ring: true });
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * 6.28, r = Math.random() * 18;
+      this.smokes.push({ pos: [p[0] + Math.cos(a) * r, p[1] + 2 + Math.random() * 14, p[2] + Math.sin(a) * r], t: 0, life: 6 + Math.random() * 4, size: 5 + Math.random() * 5, drift: [(Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2], fire: 0.5 });
     }
-    this.fires.push({ pos: p, r: 26, t: 12, tick: 0, big: true });
+    this.fires.push({ pos: p, r: 18, t: 8, tick: 0, big: true });
     const d = Math.hypot(p[0] - H.pos[0], p[1] - H.pos[1], p[2] - H.pos[2]);
-    if (d < 45) { this.hurt(260 * (1 - d / 45), H.pos); this.feed('TOO CLOSE TO THE NUKE!', 'r'); }
-    this.shake = 1; this.dmgT = 0;
-    this.whiteT = 1;
-    this.banner('NUKE!', 'EVERYTHING NEARBY IS GONE', 'good', 2.4);
-    this.snd.boom?.(1.5); setTimeout(() => this.snd.boom?.(1.2), 250);
+    if (d < 35) { this.hurt(180 * (1 - d / 35), H.pos); this.feed('TOO CLOSE TO THE BLAST!', 'r'); }
+    this.shake = 0.9; this.whiteT = 0.5;
+    this.banner('THERMOBARIC', 'THE WHOLE CROWD\'S GONE', 'good', 2);
+    this.snd.boom?.(1.4); setTimeout(() => this.snd.boom?.(0.9), 180);
   }
+
 
   // SWARM: little missiles that each pick a different zombie near where you're aiming
   fireSwarm(n) {
@@ -1129,7 +1105,7 @@ export class HeliGame {
     if (s.kind === 'rocket') { this.blastAll(p, S.rocketR, S.rocketDmg, 16, 'rocket'); this.boom(p, s.mini ? 0.8 : 1.2); return; }
     if (s.kind === 'flare') return;
     if (s.kind === 'beacon') { this.beacons.push({ pos: [p[0], h.z ? this.groundAt(p[0], p[2]) : p[1], p[2]], t: 25, boom: S.beaconBoom }); this.fx.dust(p, 4); this.feed('BEACON DOWN · THEY\'RE ALL GOING TO IT', 'y'); return; }
-    if (s.kind === 'bomb' && S.nuke) { this.nuke(p); return; }
+    if (s.kind === 'bomb' && S.thermo) { this.thermobaric(p); return; }
     if (s.kind === 'bomb' && S.napalm) { this.blastAll(p, 12, 380, 14, 'bomb'); this.boom(p, 2.2); this.fires.push({ pos: p, r: 17, t: 14, tick: 0, big: true }); return; }
     if (s.kind === 'bomb') { this.blastAll(p, 10, 420, 18, 'bomb'); this.boom(p, 2.2); this.fires.push({ pos: p, r: 9, t: 8, tick: 0 }); return; }
     if (s.kind === 'bomblet') { this.blastAll(p, 7, 320, 15, 'bomb'); this.boom(p, 1.3); this.fires.push({ pos: p, r: 5, t: 5, tick: 0 }); }
@@ -1318,7 +1294,7 @@ export class HeliGame {
       return ok && spd < (S.winch ? 8 : 6) && H.pos[0] > b.min[0] - 4 && H.pos[0] < b.max[0] + 4 && H.pos[2] > b.min[2] - 4 && H.pos[2] < b.max[2] + 4 && h > -2 && h < up;
     };
     this.atFob = this.fobs.find((f) => near(f.pad, 6)) || null;
-    this.atRoof = this.director.list.find((e) => e.kind === 'rescue' && e.roof.active && e.roof.count > 0 && near(e.roof.pick || e.roof.box, S.winch ? 32 : 12)) || null;
+    this.atRoof = this.director.list.find((e) => e.kind === 'rescue' && e.roof.active && e.roof.count > 0 && near(e.roof.pick || e.roof.box, S.hoist ? 52 : S.winch ? 32 : 12)) || null;
     this.nearCrate = ok && spd < 6 ? this.director.list.find((e) => e.kind === 'crate' && e.landed && !e.carried && Math.hypot(e.x - H.pos[0], e.z - H.pos[2]) < (S.winch ? 30 : 20) && H.pos[1] - e.y < (S.winch ? 40 : 14)) || null : null;
     this.settled = settled;
     const team = this.save.team, aboard = team.filter((m) => m.aboard && !m.raid && m.hp > 0);
@@ -1387,7 +1363,7 @@ export class HeliGame {
       if (seatsFree <= 0) { this.boarding = false; this.feed('CABIN FULL · FLY BACK TO THE SPIRE', 'y'); }
       else if (r.count <= 0) this.boarding = false;
       else if (this.boardT <= 0) {
-        this.boardT = 0.3;
+        this.boardT = S.hoist ? 0.1 : 0.3;
         r.count--; this.riders++;
         const ang = (r.start - r.count) * 2.1 + r.wave;
         this.runners.push({ from: [r.x + Math.cos(ang) * 2.4, r.top, r.z + Math.sin(ang) * 2.4], to: H.toWorld([1.3, -1.5, 0.7]), t: 0 });
@@ -2120,7 +2096,7 @@ export class HeliGame {
       rockets: this.rockets, rocketMax: S.rockets, bombs: this.bombs, bombMax: S.bombs, boost: H.boost, doorAim: this.doorAim, doorFlash: this.doorFlash, flash: this.flashT,
       shieldK: S.shield ? this.shield / S.shield : 0, shieldHit: this.shieldHit, flares: S.flares ? this.flaresLeft / S.flares : 0,
       tailAim: this.tailAI?.aim, tailFlash: this.tailFlash, magnetOn: this.mag.length > 0,
-      siren: this.siren > 0, beacons: S.beacons ? this.beaconsLeft / S.beacons : 0, lightOn: this.lightOn, tYaw: this.tYaw || 0, zap: this.zap || 0,
+      siren: this.siren > 0, nvgOn: S.nvg && this.nvgOn !== false && (this.nvNow || 0) > 0.05, beacons: S.beacons ? this.beaconsLeft / S.beacons : 0, lightOn: this.lightOn, tYaw: this.tYaw || 0, zap: this.zap || 0,
       cable: this.boarding && this.atRoof && S.winch ? Math.max(0.8, H.pos[1] - 1 - this.atRoof.roof.top) : this.mag.length ? 4.6 : 0.8,
       charge: S.gun.rail ? clamp(1 - this.gunT, 0, 1) : 1,
       doorFriend: [0, 1].map((sd) => { const f = fr.find((q) => q.seat === sd); if (f) return { col: f.col }; const rf = s.team.filter((m) => m.aboard && !m.raid && m.hp > 0 && m.role === 'rifleman'); return sd >= (S.gunners || 0) && rf.length > sd - (S.gunners || 0) ? { col: ROLES.rifleman.col } : null; }),
@@ -2288,36 +2264,72 @@ export class HeliGame {
   // the map picture: the land coloured by height, water, roads, the city and the towns. Made once per world.
   mapImage() {
     if (this.mapImg && this.mapImg.seed === this.map.seed) return this.mapImg;
-    const G = this.map.ground, C = G.hC, W = 512, cv = document.createElement('canvas'); cv.width = W; cv.height = W;
-    const c = cv.getContext('2d'), img = c.createImageData(W, W), Hs = G.heights, sc = G.span / W;
-    const hAt = (i, j) => Hs[Math.min(C, Math.max(0, j)) * (C + 1) + Math.min(C, Math.max(0, i))];
+    // a proper map: shaded hills, snow on the peaks, woods, water by depth (the rivers and bay we dug included), the
+    // towns in grey with their streets, roads in cream with dark edges, bridges, names
+    const G = this.map.ground, C = G.hC, W = 1024, cv = document.createElement('canvas'); cv.width = W; cv.height = W;
+    const c = cv.getContext('2d'), img = c.createImageData(W, W), Hs = G.heights, D = G.data, GS = G.size;
+    const hAt = (u, v) => { u = clamp(u, 0, C - 1.001); v = clamp(v, 0, C - 1.001); const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, o = j * (C + 1) + i; return (Hs[o] * (1 - fu) + Hs[o + 1] * fu) * (1 - fv) + (Hs[o + C + 1] * (1 - fu) + Hs[o + C + 2] * fu) * fv; };
+    const k = C / W, gk = GS / W;
     for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) {
-      const h = hAt(i, j), sh = clamp((hAt(i - 1, j - 1) - hAt(i + 1, j + 1)) * 0.05, -0.35, 0.35);
-      const gd = G.data[((Math.floor(j / W * G.size)) * G.size + Math.floor(i / W * G.size)) * 4 + 2] / 255;
+      const u = i * k, v = j * k, h = hAt(u, v);
+      const go = (Math.floor(j * gk) * GS + Math.floor(i * gk)) * 4, town = D[go + 1] / 255, wood = D[go + 2] / 255, wet = D[go + 3] / 255;
+      // light from the north-west, two scales so both the big hills and the small bumps show
+      const sh = clamp((hAt(u - 1, v - 1) - hAt(u + 1, v + 1)) * 0.035 + (hAt(u - 3, v - 3) - hAt(u + 3, v + 3)) * 0.01, -0.45, 0.45);
       let col;
-      if (h < WATER + 0.2) { const d = clamp(-h / 12, 0, 1); col = [70 - d * 30, 110 - d * 40, 130 - d * 30]; }
-      else {
-        const k = clamp((h - WATER) / 200, 0, 1);
-        col = [96 + k * 80, 116 + k * 50, 66 + k * 70];
-        col = col.map((v, n) => v * (1 - gd * 0.45) + [40, 70, 36][n] * gd * 0.45);
-        if (h > 215) col = col.map((v) => v + (230 - v) * clamp((h - 215) / 30, 0, 1));
-        col = col.map((v) => v * (1 + sh));
+      if (wet > 0.01 || h < WATER - 0.5) {
+        const d = clamp(Math.max(wet * 32, WATER - h) / 14, 0, 1);
+        col = [88 - d * 46, 138 - d * 52, 160 - d * 34];
+      } else {
+        const e = clamp((h - WATER) / 180, 0, 1);
+        col = [124 + e * 50 - e * e * 40, 146 + e * 10 - e * e * 20, 84 + e * 40];
+        col = col.map((x, n) => x * (1 - wood * 0.55) + [44, 74, 40][n] * wood * 0.55);
+        if (h > 175) col = col.map((x) => x + (238 - x) * clamp((h - 175) / 40, 0, 1));
+        col = col.map((x) => x * (1 + sh));
+        if (town > 0.05) col = col.map((x, n) => x * (1 - town * 0.85) + [168, 162, 152][n] * town * 0.85);
+        if (h < WATER + 1.5) col = col.map((x, n) => x * 0.6 + [190, 180, 140][n] * 0.4);                 // beaches
       }
       const o = (j * W + i) * 4; img.data[o] = col[0]; img.data[o + 1] = col[1]; img.data[o + 2] = col[2]; img.data[o + 3] = 255;
     }
     c.putImageData(img, 0, 0);
-    const X = (v) => (v + G.span / 2) / sc;
-    c.strokeStyle = 'rgba(232,214,170,.85)'; c.lineWidth = 1.6; c.lineCap = 'round';
-    for (const r of this.map.roads) { c.beginPath(); c.moveTo(X(r[0]), X(r[1])); c.lineTo(X(r[2]), X(r[3])); c.stroke(); }
-    c.fillStyle = 'rgba(60,60,66,.9)';
+    const sc = G.span / W, X = (x) => (x + G.span / 2) / sc;
+    // street grids in the cities
+    const grid = (x0, z0, x1, z1, gx, gz, pX, pZ, col) => {
+      c.save(); c.beginPath(); c.rect(X(x0), X(z0), (x1 - x0) / sc, (z1 - z0) / sc); c.clip();
+      c.fillStyle = 'rgb(150,144,136)'; c.fillRect(X(x0), X(z0), (x1 - x0) / sc, (z1 - z0) / sc);
+      c.fillStyle = col;
+      for (let x = gx; x < x1; x += pX) if (x > x0 - pX) c.fillRect(X(x), X(z0), Math.max(0.7, 14 / sc), (z1 - z0) / sc);
+      for (let z = gz; z < z1; z += pZ) if (z > z0 - pZ) c.fillRect(X(x0), X(z), (x1 - x0) / sc, Math.max(0.6, 10 / sc));
+      c.restore();
+    };
+    const CI = this.map.city, B = this.map.boro, g = this.map.grids;
+    grid(CI.x - CI.iw, CI.z - CI.il, CI.x + CI.iw, CI.z + CI.il, g.a[0][0], g.a[0][1], g.a[0][2], g.a[0][3] * 3, 'rgb(96,92,90)');
+    grid(B.x - B.rx, B.z - B.rz, B.x + B.rx, B.z + B.rz, g.a[1][0], g.a[1][1], g.a[1][2], g.a[1][3], 'rgb(96,92,90)');
     for (const s of this.map.cities) {
-      if (s.kind === 'city') { const C = this.map.city; c.fillRect(X(C.x - C.iw), X(C.z - C.il), (2 * C.iw) / sc, (2 * C.il) / sc); continue; }
-      if (s.kind === 'borough') { const B = this.map.boro; c.fillRect(X(B.x - B.rx), X(B.z - B.rz), (2 * B.rx) / sc, (2 * B.rz) / sc); continue; }
-      c.fillRect(X(s.x - 150), X(s.z - 150), 300 / sc, 300 / sc);
+      if (s.kind !== 'small') continue;
+      const gi = this.map.cities.filter((q) => q.kind === 'small').indexOf(s) + 2, G2 = g.a[gi];
+      if (!G2 || G2[2] < 2) continue;
+      c.save(); c.beginPath(); c.arc(X(s.x), X(s.z), 235 / sc, 0, 6.3); c.clip();
+      c.fillStyle = 'rgba(96,92,90,.8)';
+      for (let x = G2[0]; x < s.x + 300; x += G2[2]) if (x > s.x - 320) c.fillRect(X(x), X(s.z - 300), Math.max(0.7, 18 / sc), 600 / sc);
+      for (let z = G2[1]; z < s.z + 300; z += G2[3]) if (z > s.z - 320) c.fillRect(X(s.x - 300), X(z), 600 / sc, Math.max(0.6, 12 / sc));
+      c.restore();
     }
-    c.strokeStyle = 'rgba(200,200,200,.9)'; c.lineWidth = 2.4;
+    // the park
+    if (CI.park) { c.fillStyle = 'rgb(96,140,74)'; c.fillRect(X(CI.park[0]), X(CI.park[1]), (CI.park[2] - CI.park[0]) / sc, (CI.park[3] - CI.park[1]) / sc); }
+    // roads: a dark casing then cream
+    for (const [w, st] of [[3.2, 'rgba(60,50,40,.55)'], [1.7, 'rgb(240,226,186)']]) {
+      c.strokeStyle = st; c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round';
+      c.beginPath();
+      for (const r of this.map.roads) { c.moveTo(X(r[0]), X(r[1])); c.lineTo(X(r[2]), X(r[3])); }
+      c.stroke();
+    }
+    c.strokeStyle = 'rgb(225,225,220)'; c.lineWidth = 3;
     for (const b of this.map.bridges || []) { c.beginPath(); c.moveTo(X(b.xa), X(b.z)); c.lineTo(X(b.xb), X(b.z)); c.stroke(); }
-    for (const t of this.map.towns) { c.fillStyle = 'rgba(70,64,58,.9)'; const r = t.kind === 'town' ? 6 : 4; c.fillRect(X(t.x) - r, X(t.z) - r, r * 2, r * 2); }
+    for (const t of this.map.towns) {
+      const r = t.kind === 'town' ? 5 : 3.2;
+      c.fillStyle = 'rgb(120,104,92)'; c.strokeStyle = 'rgba(40,30,24,.7)'; c.lineWidth = 1;
+      c.beginPath(); c.arc(X(t.x), X(t.z), r, 0, 6.3); c.fill(); c.stroke();
+    }
     this.mapImg = cv; cv.seed = this.map.seed;
     return cv;
   }
@@ -2332,8 +2344,14 @@ export class HeliGame {
     c.drawImage(img, (ox + G.span / 2) * isc, (oz + G.span / 2) * isc, span * isc, span * isc, 0, 0, W, W);
     if (!big) { c.fillStyle = 'rgba(255,90,58,.85)'; for (const z of zombies) if (z.alive) c.fillRect(X(z.x) - 0.8, Z(z.z) - 0.8, 1.6, 1.6); }
     if (big) {
-      c.font = 'bold 11px sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(255,255,255,.85)';
-      for (const s of this.map.cities) c.fillText(s.kind === 'city' ? 'THE CITY' : s.kind === 'borough' ? 'THE BOROUGH' : 'SMALL CITY', X(s.x), Z(s.z) - (s.kind === 'city' ? 0 : s.kind === 'borough' ? 0 : 26));
+      c.textAlign = 'center'; c.lineJoin = 'round';
+      const label = (t, x, y, size, col) => { c.font = `800 ${size}px 'Barlow Condensed', sans-serif`; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.65)'; c.strokeText(t, x, y); c.fillStyle = col; c.fillText(t, x, y); };
+      for (const s of this.map.cities) label(s.kind === 'city' ? 'THE CITY' : s.kind === 'borough' ? 'THE BOROUGH' : s.name || 'CITY', X(s.x), Z(s.z) + (s.kind === 'small' ? 4 : 0), s.kind === 'city' ? 16 : 13, '#fff');
+      for (const t of this.map.towns) label(t.name, X(t.x), Z(t.z) - 7, t.kind === 'town' ? 11 : 9.5, t.kind === 'town' ? '#ffe9b0' : 'rgba(255,255,255,.8)');
+      // north arrow and a 1 km bar
+      c.save(); c.translate(W - 30, 34); c.fillStyle = 'rgba(0,0,0,.45)'; c.beginPath(); c.arc(0, 0, 18, 0, 6.3); c.fill();
+      c.fillStyle = '#fff'; c.beginPath(); c.moveTo(0, -13); c.lineTo(6, 6); c.lineTo(0, 2); c.lineTo(-6, 6); c.closePath(); c.fill(); label('N', 0, 16, 10, '#fff'); c.restore();
+      const km = 1000 * sc; c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(14, W - 30, km + 12, 18); c.fillStyle = '#fff'; c.fillRect(20, W - 18, km, 3); label('1 KM', 20 + km / 2, W - 21, 10, '#fff');
     }
     for (const mk of list) {
       if (!mk) continue;
@@ -2427,7 +2445,7 @@ export class HeliGame {
     const nearLoot = loots.filter((m) => m.d < (m.text === 'RAIDED' ? 160 : 420)).sort((a, b) => a.d - b.d).slice(0, 8);
     this.markers([...list.filter((m) => !m.fob || Math.hypot(m.p[0] - H.pos[0], m.p[2] - H.pos[2]) < 900), ...nearLoot], H.pos, extra);
     this.eventsList(list.filter((m) => !m.fob), H.pos);
-    const zr = Math.max([150, 450, 600][S.flir || 0], S.radio === 2 ? 700 : 0);
+    const zr = [150, 450, 600][S.flir || 0];
     this.minimap(H.pos, H.heading, [...list, ...loots.filter((m) => m.text !== 'RAIDED')], this.horde.list.filter((z) => Math.abs(z.x - H.pos[0]) < zr && Math.abs(z.z - H.pos[2]) < zr));
     this.$('boss').classList.add('hidden');
     this.raidPanel();
@@ -2628,7 +2646,7 @@ export class HeliGame {
       for (let k = 0; k < 16; k++) D[o + k] = m[k];
       D[o + 16] = sz; D[o + 17] = sz * 0.8; D[o + 18] = sz; D[o + 19] = 0;
       D[o + 20] = col[0]; D[o + 21] = col[1]; D[o + 22] = col[2]; D[o + 23] = a;
-      D[o + 24] = 0; D[o + 25] = 0; D[o + 26] = col[3] || 0; D[o + 27] = 0; D[o + 28] = 0; D[o + 29] = 1; D[o + 30] = 0; D[o + 31] = 0;
+      D[o + 24] = 70; D[o + 25] = 0; D[o + 26] = col[3] || 0; D[o + 27] = 0; D[o + 28] = 0; D[o + 29] = 1; D[o + 30] = 0; D[o + 31] = 0;
       n++;
     };
     const t = this.t, wind = [0.8, 0.6];
@@ -2646,12 +2664,6 @@ export class HeliGame {
     for (const sm of this.smokes) {
       const k = sm.t / sm.life, f = sm.fire || 0;
       put(sm.pos[0] + sm.drift[0] * sm.t, sm.pos[1] + sm.t * 2.2, sm.pos[2] + sm.drift[1] * sm.t, sm.size * (1 + k * 2.2), f ? [0.16 + f * (1 - k), 0.12 + f * 0.4 * (1 - k), 0.1, f * (1 - k)] : [0.16, 0.15, 0.14], 0.45 * (1 - k) * Math.min(1, sm.t * 6));
-    }
-    // big soft clouds, lit pink and gold by the low sun
-    for (let i = 0; i < 34; i++) {
-      const cx = ((i * 271.3) % 1700) - 850 + t * 2.5, cz = ((i * 613.7) % 1700) - 850;
-      const x = ((cx + 850) % 1700 + 1700) % 1700 - 850;
-      for (let j = 0; j < 4; j++) put(x + (j - 1.5) * 34, 245 + (i % 5) * 9 + (j % 2) * 8, cz + ((j * 37) % 30) - 15, 55 + ((i + j) % 4) * 14, [0.95, 0.72, 0.62], 0.22);
     }
     // splats where zombies fell
     for (const sp of this.splats || []) {

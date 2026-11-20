@@ -9,42 +9,41 @@ export const SLOTS = [
     { n: 'ROTARY MINIGUN', cost: 350, d: 'Six spinning barrels. Way faster fire.' },
     { n: 'TWIN MINIGUNS', cost: 900, d: 'Two miniguns side by side. Shreds crowds.' },
     { n: 'AUTOCANNON', cost: 1900, d: '30 mm explosive shells. Blows piles apart.' },
-    { n: 'RAILGUN', cost: 3800, d: 'A blue beam that goes straight through every zombie in a line. Slow to charge, kills anything.' },
-    { n: 'LASER', cost: 6500, d: 'Hold to burn a red laser through crowds. Never really overheats.' },
+    { n: 'TWIN 30MM', cost: 3800, d: 'Two 30 mm chain guns side by side. Twice the explosive shells.' },
   ] },
   { id: 'rockets', name: 'ROCKETS', icon: '➶', tiers: [
     { n: 'NONE', cost: 0, d: 'No rocket pods fitted.' },
     { n: 'ROCKET PODS', cost: 250, d: 'Two pods on the stub wings. 8 rockets.' },
     { n: 'QUAD PODS', cost: 800, d: 'Four pods. 16 rockets.' },
     { n: 'HELLFIRE RAILS', cost: 1700, d: 'Guided missiles: they fly to the biggest crowd near your crosshair.' },
-    { n: 'SWARM PODS', cost: 3400, d: 'Each click fires 6 mini missiles that all pick their own zombie. 36 of them.' },
+    { n: 'APKWS PODS', cost: 3400, d: 'Laser-guided rockets: each click fires 6 and every one finds its own zombie. 36 of them.' },
   ] },
   { id: 'bombs', name: 'BOMB BAY', icon: '●', tiers: [
     { n: 'NONE', cost: 0, d: 'No bombs.' },
     { n: 'FIRE BOMBS', cost: 450, d: 'Drop with SPACE. The street burns for a while.' },
     { n: 'CLUSTER BOMBS', cost: 1100, d: 'Each bomb splits into six. Clears a street.' },
     { n: 'NAPALM', cost: 2200, d: 'Barrels of napalm. A huge sea of fire.' },
-    { n: 'MINI NUKE', cost: 7000, d: 'Two per refill. A mushroom cloud that wipes out a whole block. Fly away fast!' },
+    { n: 'THERMOBARIC', cost: 6000, d: 'Two huge fuel-air bombs per refill. One fireball flattens a whole crowd. Don\'t drop it from low down.' },
   ] },
   { id: 'armor', name: 'ARMOUR', icon: '▣', tiers: [
     { n: 'STOCK HULL', cost: 0, d: 'Thin metal. Be careful.' },
     { n: 'BOLT-ON PLATES', cost: 300, d: 'Steel plates on the sides and nose. +60% health.' },
     { n: 'HEAVY ARMOUR', cost: 900, d: 'Thick plates and a cage over the glass. +130% health.' },
     { n: 'FORTRESS', cost: 2000, d: 'Armour everywhere plus a nose ram. +220% health. Heavy!' },
-    { n: 'TITANIUM', cost: 4500, d: 'Black and gold titanium plates. +300% health and much lighter than Fortress.' },
+    { n: 'CERAMIC COMPOSITE', cost: 4500, d: 'Ceramic armour tiles over everything. +300% health and lighter than steel.' },
   ] },
   { id: 'engine', name: 'ENGINE', icon: '✦', tiers: [
     { n: 'STOCK TURBINE', cost: 0, d: 'Gets you up there.' },
     { n: 'TURBO', cost: 300, d: 'Bigger exhausts. More lift and top speed.' },
     { n: 'TWIN TURBO', cost: 900, d: 'Two turbines. A lot more of everything.' },
-    { n: 'AFTERBURNER', cost: 1900, d: 'Hold SHIFT for a burst of speed.' },
-    { n: 'JET TURBINES', cost: 4200, d: 'Two jet engines on the sides. Way faster, and a massive afterburner.' },
+    { n: 'EMERGENCY POWER', cost: 1900, d: 'Hold SHIFT to overboost the engines for a burst of speed.' },
+    { n: 'UPRATED ENGINES', cost: 4200, d: 'Two big new turboshafts: much faster, much more lift, and a longer boost.' },
   ] },
   { id: 'rotor', name: 'ROTOR', icon: '✳', tiers: [
     { n: '4 BLADES', cost: 0, d: 'The standard rotor.' },
     { n: '5 BLADES', cost: 500, d: 'Longer blades. Better lift and quicker turns.' },
     { n: 'COAXIAL', cost: 1400, d: 'Two rotors stacked up. Turns on the spot.' },
-    { n: 'SHREDDER', cost: 3200, d: 'Armoured blades with saw teeth: walls barely hurt them, and they chop up zombies on the roofs you skim.' },
+    { n: 'COMPOSITE BLADES', cost: 3200, d: 'Wide blades with swept tips: more lift, quicker turns, and clipping a wall barely hurts.' },
   ] },
   { id: 'door', name: 'DOOR GUNS', icon: '⌖', tiers: [
     { n: 'NONE', cost: 0, d: 'Empty doors.' },
@@ -56,7 +55,7 @@ export const SLOTS = [
     { n: 'STANDARD TANK', cost: 0, d: 'About 5 minutes of flying.' },
     { n: 'SIDE TANKS', cost: 350, d: 'Tanks strapped to the sides. About 8 minutes.' },
     { n: 'FERRY TANKS', cost: 1000, d: 'Big drop tanks on the wings. About 12 minutes.' },
-    { n: 'FUEL RECYCLER', cost: 2800, d: 'Ferry tanks plus a glowing recycler on the roof: the tank slowly refills while you fly.' },
+    { n: 'AUX CABIN TANK', cost: 2400, d: 'Ferry tanks plus a big tank inside the cabin. About 20 minutes.' },
   ] },
   { id: 'cabin', name: 'CABIN', icon: '♟', tiers: [
     { n: '4 SEATS', cost: 0, d: 'Carry 4 people (your team and survivors).' },
@@ -68,7 +67,7 @@ export const SLOTS = [
     { n: 'NONE', cost: 0, d: 'People climb a rope ladder: you have to hover low.' },
     { n: 'RESCUE WINCH', cost: 600, d: 'A winch arm on the door: pick people up from 30 m up, out of reach of the piles.' },
     { n: 'CARGO HOOK', cost: 1300, d: 'Also hooks crates from high up, and lowers your team onto roofs without landing.' },
-    { n: 'ZOMBIE MAGNET', cost: 2600, d: 'Press J low over zombies: a big magnet grabs 3 of them. Fly up, press J again and drop them. SPLAT.' },
+    { n: 'RESCUE HOIST', cost: 2200, d: 'A fast powered hoist: pick people up from 50 m above a roof, three times quicker.' },
   ] },
   { id: 'flir', name: 'THERMAL CAMERA', icon: '◉', tiers: [
     { n: 'NONE', cost: 0, d: 'Just your eyes.' },
@@ -78,7 +77,7 @@ export const SLOTS = [
   { id: 'speaker', name: 'LOUDSPEAKER', icon: '♫', tiers: [
     { n: 'NONE', cost: 0, d: 'No speakers.' },
     { n: 'LOUDSPEAKER', cost: 450, d: 'Press V: a siren that drags every zombie nearby to where you are. Lead them away from your team!' },
-    { n: 'SONIC CANNON', cost: 1600, d: 'Huge horns. The siren also blasts zombies close under you: they drop and stagger about.' },
+    { n: 'LRAD', cost: 1600, d: 'A long range acoustic device: the siren also knocks down zombies close under you and shakes them off the skids.' },
   ] },
   { id: 'skids', name: 'SKIDS', icon: '⊥', tiers: [
     { n: 'PLAIN SKIDS', cost: 0, d: 'Easy to grab.' },
@@ -98,7 +97,7 @@ export const SLOTS = [
   { id: 'medbay', name: 'MEDICAL BAY', icon: '✚', tiers: [
     { n: 'NONE', cost: 0, d: 'A first aid kit somewhere.' },
     { n: 'MEDICAL BAY', cost: 600, d: 'Stretchers and a medic station: your team heals fast on board and gets +30 health on raids.' },
-    { n: 'FIELD HOSPITAL', cost: 1800, d: 'A full trauma bay: heals 3x faster, +60 health on raids, and a bitten team member is saved once a raid.' },
+    { n: 'TRAUMA BAY', cost: 1800, d: 'A full trauma bay: heals 3x faster, +60 health on raids, and a bitten team member is saved once a raid.' },
   ] },
   { id: 'drops', name: 'SUPPLY CHUTES', icon: '☂', tiers: [
     { n: 'NONE', cost: 0, d: 'Your team only has what they took in.' },
@@ -108,22 +107,31 @@ export const SLOTS = [
   { id: 'radio', name: 'RADIO', icon: '📡', tiers: [
     { n: 'HANDHELD', cost: 0, d: 'You only hear calls for help close by.' },
     { n: 'LONG RANGE RADIO', cost: 400, d: 'A big aerial on the tail: hear SOS calls from twice as far, and see hordes coming on the map.' },
-    { n: 'DRONE UPLINK', cost: 1500, d: 'A satellite dome and a spotter drone: calls from the whole map, and the minimap shows every zombie near you.' },
+    { n: 'SATCOM', cost: 1500, d: 'A satellite dome on the tail: hear SOS calls from anywhere on the map.' },
   ] },
   { id: 'tail', name: 'TAIL GUN', icon: '⟲', tiers: [
     { n: 'NONE', cost: 0, d: 'Nothing covering your back.' },
     { n: 'TAIL GUN', cost: 900, d: 'A turret under the tail boom that shoots zombies behind you by itself.' },
     { n: 'TWIN TAIL GUN', cost: 2000, d: 'Two barrels, twice the bullets.' },
   ] },
-  { id: 'flares', name: 'FLASH PODS', icon: '✺', tiers: [
+  { id: 'flares', name: 'FLASHBANGS', icon: '✺', tiers: [
     { n: 'NONE', cost: 0, d: 'Nothing to shake them off with.' },
-    { n: 'FLASH PODS', cost: 700, d: 'Press X: blinding flashes. Zombies within 25 m are stunned and anything on the skids lets go. 4 shots.' },
-    { n: 'MEGA FLASH', cost: 1900, d: '8 shots, 50 m wide, and they stay stunned for longer.' },
+    { n: 'FLASHBANGS', cost: 700, d: 'Press X: a ring of flashbangs. Zombies within 25 m are stunned and anything on the skids lets go. 4 per refill.' },
+    { n: 'HEAVY FLASHBANGS', cost: 1900, d: '8 per refill, 50 m wide, and they stay stunned for longer.' },
   ] },
   { id: 'beacon', name: 'NOISE BEACONS', icon: '◬', tiers: [
     { n: 'NONE', cost: 0, d: 'No beacons.' },
     { n: 'NOISE BEACONS', cost: 600, d: 'Press N: drop a screaming beacon. Every zombie around walks to it for 25 seconds. 3 per refill.' },
     { n: 'BOOM BEACONS', cost: 1700, d: '5 of them, and they blow up when they stop, right in the middle of the crowd.' },
+  ] },
+  { id: 'nvg', name: 'NIGHT VISION', icon: '◐', tiers: [
+    { n: 'NONE', cost: 0, d: 'At night you only see what\'s lit.' },
+    { n: 'NIGHT VISION', cost: 900, d: 'Goggles for the crew and an infrared lamp on the nose: at night everything shows up bright and green. Z switches it on and off.' },
+  ] },
+  { id: 'racks', name: 'WEAPON RACKS', icon: '☰', tiers: [
+    { n: 'NONE', cost: 0, d: 'Standard load.' },
+    { n: 'EXTRA RACKS', cost: 900, d: 'Bigger ammo racks: +50% rockets and 2 more bombs.' },
+    { n: 'FULL LOADOUT', cost: 2000, d: 'Every rack full: double rockets and 4 more bombs.' },
   ] },
 ];
 export const SLOT = Object.fromEntries(SLOTS.map((s) => [s.id, s]));
@@ -137,7 +145,7 @@ export const HELIS = {
   reaper: { n: 'REAPER', cost: 4500, d: 'A gunship. Its chin gun hits 30% harder, its four pylons carry 50% more rockets, and it\'s armoured like a tank. Two seats only.', seats: [2],
     hp: 1.75, mass: 1.2, lift: 1.28, speed: 1.14, agility: 1.08, fuel: 1, gunMul: 1.3, rocketMul: 1.5, cap: { cabin: 0, door: 0, winch: 0, medbay: 0 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
-    hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, tail: 0 } },
+    hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, tail: 0, racks: 0 } },
 };
 export const HELI_IDS = Object.keys(HELIS);
 // the upgrades that actually fit this helicopter
@@ -182,7 +190,7 @@ export function saveSave(s) { try { localStorage.setItem(KEY, JSON.stringify(s))
 export function statsFor(eq0, kind = 'warhorse') {
   const HK = HELIS[kind] || HELIS.warhorse, eq = capEq(eq0, kind);
   const v = (k, max) => Math.min(eq[k] || 0, max);
-  const g = v('gun', 5), ar = v('armor', 4), en = v('engine', 4), ro = v('rotor', 3), rk = v('rockets', 4), bo = v('bombs', 4), fl = v('flares', 2), bc = v('beacon', 2);
+  const g = v('gun', 4), ar = v('armor', 4), en = v('engine', 4), ro = v('rotor', 3), rk = v('rockets', 4), bo = v('bombs', 4), fl = v('flares', 2), bc = v('beacon', 2);
   const S = {
     kind,
     hp: Math.round(500 * [1, 1.6, 2.3, 3.2, 4][ar]),
@@ -190,25 +198,24 @@ export function statsFor(eq0, kind = 'warhorse') {
     lift: [1, 1.14, 1.28, 1.36, 1.5][en] * [1, 1.07, 1.12, 1.15][ro],
     speed: [1, 1.1, 1.2, 1.26, 1.45][en],
     agility: [1, 1.15, 1.35, 1.3][ro],
-    boost: en >= 3, boostMul: en === 4 ? 1.7 : 1,
-    shredder: ro === 3,
+    boost: en >= 3, boostMul: en === 4 ? 1.35 : 1,
+    toughBlades: ro === 3,
     gun: [
       { rate: 9, dmg: 22, spread: 0.010, heat: 0.035, cool: 0.45, barrels: 1 },
       { rate: 24, dmg: 16, spread: 0.016, heat: 0.016, cool: 0.4, barrels: 1, spin: true },
       { rate: 44, dmg: 16, spread: 0.018, heat: 0.011, cool: 0.4, barrels: 2, spin: true },
       { rate: 5, dmg: 90, spread: 0.006, heat: 0.05, cool: 0.5, barrels: 1, cannon: true, splash: 3.5 },
-      { rate: 1.6, dmg: 480, spread: 0, heat: 0.16, cool: 0.5, barrels: 1, rail: true },
-      { rate: 30, dmg: 26, spread: 0, heat: 0.006, cool: 0.5, barrels: 1, laser: true },
+      { rate: 9, dmg: 90, spread: 0.008, heat: 0.03, cool: 0.5, barrels: 2, cannon: true, splash: 3.5 },
     ][g],
-    rockets: [0, 8, 16, 12, 36][rk], rocketDmg: [0, 260, 340, 420, 170][rk], rocketR: [0, 6.5, 8, 8.5, 5][rk], homing: rk === 3, swarm: rk === 4,
-    bombs: [0, 4, 4, 4, 2][bo], cluster: bo === 2, napalm: bo === 3, nuke: bo === 4,
+    rockets: Math.round([0, 8, 16, 12, 36][rk] * [1, 1.5, 2][v('racks', 2)]), rocketDmg: [0, 260, 340, 420, 170][rk], rocketR: [0, 6.5, 8, 8.5, 5][rk], homing: rk === 3, swarm: rk === 4,
+    bombs: bo ? [0, 4, 4, 4, 2][bo] + [0, 2, 4][v('racks', 2)] / (bo === 4 ? 2 : 1) : 0, cluster: bo === 2, napalm: bo === 3, thermo: bo === 4,
     gunners: Math.min(2, v('door', 3)), doorMini: v('door', 3) === 3,
     seats: [4, 8, 12, 16][v('cabin', 3)],
-    fuel: [100, 160, 240, 240][v('fuel', 3)], recycle: v('fuel', 3) === 3,
-    winch: v('winch', 3), hook: v('winch', 3) >= 2, magnet: v('winch', 3) === 3,
-    flir: v('flir', 2), speaker: v('speaker', 2), sonic: v('speaker', 2) === 2, skidGuard: v('skids', 2) >= 1, zap: v('skids', 2) === 2,
+    fuel: [100, 160, 240, 330][v('fuel', 3)],
+    winch: v('winch', 3), hook: v('winch', 3) >= 2, hoist: v('winch', 3) === 3,
+    flir: v('flir', 2), speaker: v('speaker', 2), lrad: v('speaker', 2) === 2, skidGuard: v('skids', 2) >= 1, zap: v('skids', 2) === 2,
     light: v('light', 2), turret: v('turret', 2), medbay: v('medbay', 2), drops: v('drops', 2), radio: v('radio', 2),
-    tail: v('tail', 2), flares: [0, 4, 8][fl], megaFlare: fl === 2, beacons: [0, 3, 5][bc], beaconBoom: bc === 2,
+    nvg: v('nvg', 1), racks: v('racks', 2), tail: v('tail', 2), flares: [0, 4, 8][fl], megaFlare: fl === 2, beacons: [0, 3, 5][bc], beaconBoom: bc === 2,
     crewMax: [2, 3, 4, 4][v('cabin', 3)],
   };
   // the airframe

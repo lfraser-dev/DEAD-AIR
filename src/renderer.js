@@ -62,7 +62,7 @@ uniform vec4 uHaze;         // density, height falloff, clouds on, far distance 
 uniform vec4 uDay;          // DEAD AIR time of day: sun strength, night (0..1), ambient, on
 uniform vec3 uSunTint;
 uniform vec4 uSpotA, uSpotB; // searchlight: position + on, direction + cos(cone)
-uniform vec4 uCityA[2], uCityB[2]; // street grids: x0, z0, pitch x, pitch z / avenue width, street width, 0, 0
+uniform vec4 uCityA[4], uCityB[4]; // street grids: x0, z0, pitch x, pitch z / avenue width, street width, 0, 0
 // per-draw values arrive from the vertex shader (uniforms for single draws, instance data for batches)
 flat in vec3 fColor, fScale, fMat;   // fMat: x = metalness, y = roughness (< 0: automatic from colour), z = AO
 flat in vec4 fP;                     // grid / material, edges, emissive, alpha
@@ -295,11 +295,11 @@ void main() {
       // asphalt / rubber
       base *= 0.85 + 0.25 * noise(vWorld * 6.0) + 0.1 * blot;
       tRough = 0.95; tMetal = 0.0;
-    } else if (k == 63 || k == 64) {
+    } else if (k == 63 || k == 64 || k == 66 || k == 67) {
       // CITY STREETS: knows the street grid (uCityA/B: 63 = the island, 64 = the borough), so it paints avenues with
       // a double yellow line, lane dashes and a parking lane, side streets with a dashed centre line, zebra crossings
       // and stop lines at every junction, manholes, patches, cracks and the dark tyre tracks down each lane
-      int gi = k == 63 ? 0 : 1;
+      int gi = k == 63 ? 0 : k == 64 ? 1 : k == 66 ? 2 : 3;
       vec4 A = uCityA[gi], Bc = uCityB[gi];
       vec2 q = vWorld.xz;
       float lx = mod(q.x - A.x, A.z), lz = mod(q.y - A.y, A.w);
@@ -310,7 +310,7 @@ void main() {
       // asphalt: tone, patches, cracks, tyre tracks
       float n1 = noise(vec3(q * 0.08, 1.0)), n2 = noise(vec3(q * 0.6, 2.0)), n3 = noise(vec3(q * 3.1, 3.0));
       vec3 asp = vec3(0.17, 0.17, 0.18) * (0.85 + 0.25 * n1 + 0.1 * n2 * near);
-      asp = mix(asp, vec3(0.11, 0.11, 0.12), smoothstep(0.62, 0.66, noise(vec3(floor(q / 2.5) * 0.37, 4.0))) * 0.8);          // patched squares
+      asp = mix(asp, vec3(0.13, 0.13, 0.14), smoothstep(0.62, 0.66, noise(vec3(floor(q / 2.5) * 0.37, 4.0))) * 0.6 * (1.0 - smoothstep(0.2, 0.9, fw)));          // patched squares
       float crack = (1.0 - smoothstep(0.0, 0.02, abs(noise(vec3(q * 0.35, 5.0)) - 0.5))) * smoothstep(0.55, 0.7, n1) * near;
       asp = mix(asp, vec3(0.07), crack * 0.8);
       float lane = inA ? abs(mod(abs(ax), 3.5) - 1.75) : abs(abs(sz) - 3.0);
@@ -583,14 +583,16 @@ void main() {
       // bark
       float br = noise(vec3(vWorld.x * 7.0, vWorld.y * 0.9, vWorld.z * 7.0));
       base *= 0.65 + 0.55 * br; tRough = 0.97; tMetal = 0.0;
-    } else if (k == 65) {
+    } else if (k == 70) {
+      tRough = 1.0; tMetal = 0.0;
+    } else if (k == 65 || k == 68) {
       // aircraft skin: riveted panels, slight tone changes panel to panel, oil and soot streaks running back and down,
       // and paint worn to bare metal on the edges. All in the part's own space so it moves with the helicopter.
       vec3 lp = vLocal * uScale, ln = abs(vLocalN);
       vec2 q = ln.x > 0.5 ? lp.zy : (ln.y > 0.5 ? lp.xz : lp.xy);
-      vec2 cell = q / vec2(0.92, 0.58) + 0.37;
+      vec2 cell = q / vec2(1.3, 0.85) + 0.37;
       vec2 f = abs(fract(cell) - 0.5), fw = fwidth(cell);
-      vec2 wl = vec2(0.012) / vec2(0.92, 0.58);
+      vec2 wl = vec2(0.01) / vec2(1.3, 0.85);
       vec2 l2 = 1.0 - smoothstep(0.5 - wl - fw * 1.2, 0.5 - wl * 0.2, f);
       float line = max(1.0 - l2.x, 1.0 - l2.y);
       line = max(line, 0.0) * (1.0 - smoothstep(0.25, 0.6, max(fw.x, fw.y)));
@@ -600,18 +602,18 @@ void main() {
       vec2 near = smoothstep(0.5 - wl * 4.0, 0.5 - wl * 2.4, f) * (1.0 - smoothstep(0.5 - wl * 2.0, 0.5 - wl * 1.2, f));
       float riv = (1.0 - smoothstep(0.16, 0.26, rd)) * max(near.x, near.y) * (1.0 - smoothstep(0.2, 0.5, fwidth(rq.x)));
       float tone = hash(vec3(floor(cell), 3.0));
-      base *= 0.93 + 0.12 * tone;
-      base *= 1.0 - 0.34 * line;
-      base *= 1.0 + 0.22 * riv;
+      base *= 0.97 + 0.05 * tone;
+      base *= 1.0 - 0.2 * line;
+      base *= 1.0 + 0.12 * riv;
       // streaks: thin, running along the length, heavier low down and towards the back
       float st = noise(vec3(q.x * 0.6, q.y * 9.0, lp.z * 0.2)) * noise(vec3(q.x * 2.3, q.y * 3.1, 2.0));
       float low = smoothstep(0.25, -0.5, vLocal.y);
-      base *= 1.0 - 0.32 * smoothstep(0.18, 0.5, st) * (0.35 + 0.65 * low);
+      base *= 1.0 - 0.2 * smoothstep(0.18, 0.5, st) * (0.35 + 0.65 * low);
       // chipped paint on the edges: bare grey metal shows through
       vec3 dE = uScale * 0.5 - abs(lp) + ln * 1000.0;
       float ed = min(dE.x, min(dE.y, dE.z));
       float chip = (1.0 - smoothstep(0.02, 0.07, ed)) * step(0.55, noise(lp * 14.0));
-      base = mix(base, vec3(0.46, 0.47, 0.48), chip * 0.55);
+      if (k == 65) base = mix(base, vec3(0.46, 0.47, 0.48), chip * 0.55);
     } else if (k == 9) {
       // LED screen: tiny pixels, gently scrolling bands
       vec2 c = p / 0.12;
@@ -1004,7 +1006,13 @@ void main() {
     fogCol = uFogColor + vec3(0.32, 0.2, 0.06) * pow(max(dot(vd, L), 0.0), 6.0) * (uDay.w > 0.5 ? uDay.x : 1.0);
   }
   display = mix(display, fogCol, f);
-  outColor = vec4(display, uAlpha);
+  float aOut = uAlpha;
+  if (int(uGrid + 0.5) == 70) {
+    // soft puffs (smoke): see-through at the rim, a little lumpy
+    float facing = abs(dot(n, V));
+    aOut *= smoothstep(0.05, 0.75, facing) * (0.75 + 0.5 * noise(vLocal * 3.0 + vec3(uTime * 0.05)));
+  }
+  outColor = vec4(display, aOut);
 }`;
 
 const SHADOW_VERT = `#version 300 es
@@ -1277,6 +1285,9 @@ export class Renderer {
     gl.uniformMatrix4fv(this.u.uLightVP, false, this.lightVP);
     this.drawCalls = 0;
   }
+
+  // extra named shapes (helicopter bodies...): drawn with shape: name, at scale 1 (the geometry is in metres)
+  registerShapes(G) { for (const [k, g] of Object.entries(G)) { if (this.meshes[k]) continue; this.meshes[k] = this.meshesLo[k] = this.makeMesh(g); } }
 
   makeMesh({ verts, indices }) {
     const gl = this.gl;

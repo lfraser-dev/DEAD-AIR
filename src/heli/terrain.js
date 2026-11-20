@@ -138,6 +138,21 @@ export class Terrain {
         const d = Math.max(Math.abs(px - op.x), Math.abs(pz - op.z)) * 0.8 + Math.hypot(px - op.x, pz - op.z) * 0.2;
         w = d <= op.r ? 1 : d >= op.r + op.blend ? 0 : 1 - (d - op.r) / op.blend;
         target = op.h;
+      } else if (op.k === 'disc') {
+        // a round patch (lakes, bays)
+        const d = Math.hypot(px - op.x, pz - op.z);
+        w = d <= op.r ? 1 : d >= op.r + op.blend ? 0 : 1 - (d - op.r) / op.blend;
+        target = op.h;
+        if (target > H[k * N + i]) continue;                              // only ever digs
+      } else if (op.k === 'chan') {
+        // a river channel: a segment whose width goes from ra to rb, dug down to h (deepest in the middle)
+        const dx = op.bx - op.ax, dz = op.bz - op.az, L2 = dx * dx + dz * dz || 1;
+        const t = Math.max(0, Math.min(1, ((px - op.ax) * dx + (pz - op.az) * dz) / L2));
+        const d = Math.hypot(px - op.ax - dx * t, pz - op.az - dz * t), half = op.ra + (op.rb - op.ra) * t;
+        if (d > half + op.blend) continue;
+        w = d <= half ? 1 : 1 - (d - half) / op.blend;
+        target = op.h + (op.shelf - op.h) * Math.min(1, Math.max(0, (d - half * 0.55) / (half * 0.45 + 1)));
+        if (target > H[k * N + i]) continue;                              // only ever digs
       } else {
         const dx = op.bx - op.ax, dz = op.bz - op.az, L2 = dx * dx + dz * dz || 1;
         const t = Math.max(0, Math.min(1, ((px - op.ax) * dx + (pz - op.az) * dz) / L2));
@@ -154,6 +169,11 @@ export class Terrain {
   }
   rect(x, z, rx, rz, h, blend = 30) { const m = blend + 4; this.addOp({ k: 'rect', x, z, rx, rz, h, blend, x0: x - rx - m, x1: x + rx + m, z0: z - rz - m, z1: z + rz + m }); }
   flatten(x, z, r, h, blend = 40) { const m = r + blend + 4; this.addOp({ k: 'flat', x, z, r, h, blend, x0: x - m, x1: x + m, z0: z - m, z1: z + m }); }
+  disc(x, z, r, h, blend = 40) { const m = r + blend + 4; this.addOp({ k: 'disc', x, z, r, h, blend, x0: x - m, x1: x + m, z0: z - m, z1: z + m }); }
+  channel(ax, az, bx, bz, ra, rb, h, shelf, blend = 30) {
+    const m = Math.max(ra, rb) + blend + 4;
+    this.addOp({ k: 'chan', ax, az, bx, bz, ra, rb, h, shelf, blend, x0: Math.min(ax, bx) - m, x1: Math.max(ax, bx) + m, z0: Math.min(az, bz) - m, z1: Math.max(az, bz) + m });
+  }
   road(ax, az, ah, bx, bz, bh, half = 6, blend = 16) {
     const m = half + blend + 4;
     this.addOp({ k: 'road', ax, az, ah, bx, bz, bh, half, blend, x0: Math.min(ax, bx) - m, x1: Math.max(ax, bx) + m, z0: Math.min(az, bz) - m, z1: Math.max(az, bz) + m });
