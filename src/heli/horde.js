@@ -20,7 +20,19 @@ export const TYPES = {
   runner: { hp: 35, spd: [6.0, 7.4], s: 0.97, scrap: 3 },
   crawler: { hp: 30, spd: [0.8, 1.1], s: 1, scrap: 2 },
   screamer: { hp: 60, spd: [2.4, 2.9], s: 1.02, scrap: 8 },
+  brute: { hp: 320, spd: [1.3, 1.9], s: 1.32, scrap: 18 },        // huge, tough, can't be knocked over; three of them on the skids is a lot
+  bloater: { hp: 50, spd: [0.9, 1.4], s: 1.06, scrap: 7 },        // swollen up: bursts when it dies and takes the ones round it too
+  riot: { hp: 110, spd: [1.7, 2.5], s: 1.0, scrap: 8 },           // riot police: helmet and vest shrug off bullets (explosives work)
 };
+// what turns up: mostly walkers, more runners at night and later on, the odd special
+const SMALL_ARMS = new Set(['gun', 'door', 'turret', 'team', 'tail', 'drone']);
+export function pickType(night = 0, t = 0, city = false) {
+  const r = Math.random() * 100;
+  const tab = [['runner', 9 + night * 14 + Math.min(8, t / 300)], ['crawler', 7], ['screamer', t > 60 ? 3 : 1], ['brute', t > 45 ? 2.2 : 0.4], ['bloater', 4], ['riot', city ? 6 : 2]];
+  let a = 0;
+  for (const [k, w] of tab) { a += w; if (r < a) return k; }
+  return 'walker';
+}
 const SKINS = [[0.48, 0.5, 0.42], [0.55, 0.52, 0.45], [0.42, 0.44, 0.38], [0.6, 0.55, 0.48], [0.38, 0.33, 0.28]];
 const SHIRT = [[0.3, 0.12, 0.1], [0.15, 0.2, 0.32], [0.38, 0.36, 0.3], [0.2, 0.25, 0.18], [0.45, 0.42, 0.38], [0.12, 0.12, 0.13], [0.42, 0.28, 0.12], [0.55, 0.55, 0.6], [0.6, 0.25, 0.35]];
 const PANTS = [[0.15, 0.17, 0.24], [0.22, 0.2, 0.16], [0.12, 0.12, 0.12], [0.3, 0.28, 0.22], [0.35, 0.33, 0.3]];
@@ -97,6 +109,9 @@ export class Horde {
       torn: r() < 0.5, hunch: r() * 0.25, tilt: 0, roll: 0,
     };
     if (type === 'screamer') { zb.skin = [0.62, 0.58, 0.55]; zb.shirt = [0.75, 0.73, 0.7]; }
+    if (type === 'brute') { zb.skin = [0.46, 0.5, 0.43]; zb.shirt = [0.3, 0.27, 0.24]; zb.pants = [0.22, 0.24, 0.28]; zb.torn = true; }
+    if (type === 'bloater') { zb.skin = [0.58, 0.62, 0.36]; zb.shirt = [0.55, 0.5, 0.4]; }
+    if (type === 'riot') { zb.shirt = [0.08, 0.1, 0.16]; zb.pants = [0.07, 0.09, 0.14]; zb.torn = false; }
     this.list.push(zb);
     return zb;
   }
@@ -421,6 +436,7 @@ export class Horde {
 
   damage(z, dmg, push, cause) {
     if (!z.alive) return false;
+    if (z.type === 'riot' && SMALL_ARMS.has(cause)) dmg *= 0.4;
     z.hp -= dmg; z.hitT = 0.1;
     if (z.hp <= 0) { this.kill(z, push, cause); return true; }
     return false;
@@ -452,7 +468,7 @@ export class Horde {
       const k = 1 - clamp(d / (r + 0.01), 0, 0.85), dl = d || 1;
       const push = [(dx / dl) * force * k, force * 0.7 * k + 3, (dz / dl) * force * k];
       if (this.damage(z, dmg * k, push, cause)) n++;
-      else if (z.st !== 'grab') { this.leavePile(z); z.st = 'fall'; z.vel = push; }
+      else if (z.st !== 'grab' && z.type !== 'brute') { this.leavePile(z); z.st = 'fall'; z.vel = push; }
     }
     return n;
   }
@@ -504,11 +520,25 @@ export class Horde {
       P(sd * 0.13, 0.85 - 0.425 * Math.cos(a), -0.425 * Math.sin(a), a, 0.22, 0.88, 0.22, z.pants, 0, 'cylY');
       P(sd * 0.13, 0.85 - 0.85 * Math.cos(a) + 0.05, -0.85 * Math.sin(a) - 0.06, 0, 0.22, 0.1, 0.34, [0.12, 0.1, 0.09]);
     }
-    const tw = run ? 0.44 : 0.48, td = 0.28, tl = Math.sin(lean);
+    const fat = z.type === 'brute' ? 1.4 : z.type === 'bloater' ? 1.2 : 1;
+    const tw = (run ? 0.44 : 0.48) * fat, td = 0.28 * fat, tl = Math.sin(lean);
     P(0, 1.18, -0.33 * tl, lean, tw, 0.66, td, z.shirt);
     P(0, 1.48, -0.5 * tl, lean, tw * 1.05, 0.16, td * 1.1, z.shirt.map((v) => v * 0.8));
     P(0, 0.88, -0.2 * tl, lean, tw * 0.92, 0.12, td * 0.95, z.pants.map((v) => v * 0.8));
-    if (z.torn) P(0.08, 1.12, -0.33 * tl - 0.15, lean, 0.2, 0.25, 0.02, [0.35, 0.08, 0.06]);
+    if (z.torn) P(0.08, 1.12, -0.33 * tl - 0.15 * fat, lean, 0.2, 0.25, 0.02, [0.35, 0.08, 0.06]);
+    if (z.type === 'bloater') {
+      // the swollen belly, with glowing boils
+      P(0, 1.1, -0.33 * tl - 0.14, lean, 0.74, 0.78, 0.7, z.skin, 0, 'sphere');
+      P(0.18, 1.2, -0.33 * tl - 0.47, lean, 0.12, 0.12, 0.08, [0.85, 0.9, 0.3], 0.5, 'sphere');
+      P(-0.2, 0.98, -0.33 * tl - 0.45, lean, 0.1, 0.1, 0.07, [0.85, 0.9, 0.3], 0.5, 'sphere');
+    }
+    if (z.type === 'riot') {
+      // vest, helmet with a visor
+      P(0, 1.22, -0.33 * tl, lean, tw * 1.12, 0.52, td * 1.3, [0.05, 0.05, 0.06]);
+      P(0, 1.3, -0.33 * tl - td * 0.66, lean, tw * 0.7, 0.07, 0.02, [0.9, 0.9, 0.85]);
+      P(0, 1.73, -0.62 * tl - 0.05, lean * 0.6 + 0.2, 0.38, 0.32, 0.38, [0.07, 0.09, 0.15], 0, 'sphere');
+      P(0, 1.67, -0.62 * tl - 0.22, lean * 0.6 + 0.2, 0.3, 0.16, 0.03, [0.25, 0.3, 0.35]);
+    }
     P(0, 1.67, -0.62 * tl - 0.05, lean * 0.6 + 0.2, 0.3, 0.34, 0.3, z.skin, 0, 'sphere');
     P(0, 1.6, -0.62 * tl - 0.2, lean * 0.6 + 0.2, z.type === 'screamer' && z.screamed ? 0.2 : 0.16, z.type === 'screamer' && z.screamed ? 0.14 : 0.06, 0.06, [0.2, 0.05, 0.04]);
     for (const dx of [-0.065, 0.065]) P(dx, 1.7, -0.62 * tl - 0.19, lean * 0.6, 0.06, 0.05, 0.04, [0.85, 0.82, 0.55], 0.25);

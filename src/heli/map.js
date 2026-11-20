@@ -34,6 +34,7 @@ export const LOOT_TYPES = {
   flats: { n: 'APARTMENTS', col: [0.8, 0.8, 0.8], loot: { survivor: 4, scrap: 3, medkit: 1 } },
   hospital: { n: 'HOSPITAL', col: [1, 1, 1], loot: { medkit: 6, survivor: 3, scrap: 2 } },
   gunshop: { n: 'GUN SHOP', col: [0.9, 0.2, 0.2], loot: { weapon: 5, ammo: 5 } },
+  school: { n: 'SCHOOL', col: [1, 0.9, 0.4], loot: { survivor: 5, medkit: 1, scrap: 1 }, only: true },
 };
 
 // the ground map: what's where on the land, as a texture for the terrain shader (and for placing trees).
@@ -165,14 +166,17 @@ export function buildWorld(seed = 1337) {
   const CITY_R = 330, IW = 330, IL = 1000;
   const cx = -350 + (R() - 0.5) * 240, cz = 120 + (R() - 0.5) * 240, cityY = 8;
   const RIV = { e: [cx + IW + 240, 228], w: [cx - IW - 254, 242] };       // centre x, half width (the inner edge is the seawall)
+  // lowlands round the city (the mountains back off), then the island itself and the docks past its top end
+  T.rect(cx, cz + 150, IW + 320, IL + 420, cityY + 5, 650);
   T.rect(cx, cz, IW + 40, IL + 40, cityY, 220);
+  T.rect(cx, cz + IL + 185, IW + 20, 165, cityY, 240);                // the docks and yards past the top of the island
   // the rivers: the inner bank is the island's seawall, the outer bank wanders in and out, and past the south end of
   // the island they swing away from each other and wind off across the country like proper rivers (no square moat)
   const BZ = [cz - IL + 420, cz + 260];                                  // where the two bridges cross
   const wob = (a, b) => T.noise(a, b, 3) - 0.5;
   const rivers = [];
   for (const [sx, base] of [[1, 228], [-1, 242]]) {
-    const wall = cx + sx * (IW + 12), pts = [];
+    const wall = cx + sx * (IW + 6), pts = [];
     for (let z = cz - IL - 320; z <= cz + IL + 40; z += 60) {
       const calm = Math.min(...BZ.map((b) => Math.min(1, Math.abs(z - b) / 160)));
       const hw = base - 12 + wob(sx * 13.7 + z / 300, 4.1) * 110 * calm;
@@ -212,12 +216,13 @@ export function buildWorld(seed = 1337) {
     ground.water(x, z, r + 30, r + 30, 6);
   }
   // put the island's straight seawall sides back (the rivers' banks blend into them), and dry ground for the borough
-  T.rect(cx, cz - 26, IW + 12, IL + 14, cityY, 5);
+  T.rect(cx, cz - 3, IW + 6, IL + 3, cityY, 1);
   const boro = { x: RIV.e[0] + RIV.e[1] + 360, z: cz - 360, rx: 300, rz: 380 };
   T.rect(boro.x, boro.z, boro.rx + 30, boro.rz + 30, cityY, 160);
   const westEnd = { x: RIV.w[0] - RIV.w[1] - 200, z: cz + 260 };
   T.rect(westEnd.x, westEnd.z, 170, 50, cityY, 90);
   spots.push({ x: cx, z: cz, r: IL + 120, kind: 'city', y: cityY });
+  spots.push({ x: cx, z: cz + IL + 185, r: 240, kind: 'port', y: cityY });
   spots.push({ x: boro.x, z: boro.z, r: 470, kind: 'borough', y: cityY });
   spots.push({ x: westEnd.x, z: westEnd.z, r: 120, kind: 'bridgehead', y: cityY });
   spots.push({ x: cx, z: cz + IL + 120, r: 60, kind: 'bridgehead', y: cityY });
@@ -413,7 +418,7 @@ export function buildWorld(seed = 1337) {
     }
     const rec = { box: topBox, top, x: cx0, z: cz0, sx: w, sz: d, h: top - base, base, door: [(x0 + x1) / 2, base, fz + fs * 0.5], stair: [hx, top, hz] };
     if (top - base > 7 && w >= 12 && d >= 12) roofs.push(rec);
-    const types = Object.keys(LOOT_TYPES);
+    const types = Object.keys(LOOT_TYPES).filter((k) => !LOOT_TYPES[k].only);
     if (o.kind || (top - base < 70 && R() < (o.lootChance ?? 0.14))) {
       const type = o.kind || (top - base > 40 ? (R() < 0.5 ? 'hospital' : 'flats') : types[Math.floor(R() * types.length)]);
       rec.loot = type; rec.floors = Math.max(1, Math.round((top - base) / 3.6));
@@ -597,9 +602,113 @@ export function buildWorld(seed = 1337) {
     bridges.push(bridge(cx - IW - 4, RIV.w[0] - RIV.w[1] - 120, bz[1], Y, -1));
     { const x0 = RIV.w[0] - RIV.w[1] - 270; ground.road(x0 + 10, bz[1], x0 - 90, bz[1]); T.road(x0 + 10, bz[1], Y, x0 - 90, bz[1], Y, 7, 18); }
     // piers and the odd ship on the rivers
-    for (let k = 0; k < 8; k++) { const sx = k % 2 ? 1 : -1, z = cz - IL + 150 + k * 230; if (bz.some((b) => Math.abs(b - z) < 60)) continue; at(cx + sx * (IW + 30), WATER - 3, z, 50, 4.5, 14, { color: [0.4, 0.38, 0.35], tex: 12 }); }
+    waterfront(Y, bz);
+    port(Y);
     for (let k = 0; k < 3; k++) { const sx = k % 2 ? 1 : -1, x = sx > 0 ? RIV.e[0] : RIV.w[0], z = cz - IL - 100 + k * 600; ship(x + (R() - 0.5) * 60, z, R() < 0.5); }
     return spire;
+  }
+  // ---- the island's edge: a granite cap and a slimy waterline on the seawall, bollards, ladders, trees on the
+  // promenade, and proper piers sticking out into the rivers (sheds, a park, boats tied up alongside)
+  function waterfront(Y, bz) {
+    for (const sx of [-1, 1]) {
+      at(cx + sx * (IW + 9.2), Y + 0.15, cz - 6, 2.8, 0.35, 2 * IL + 14, { color: [0.68, 0.66, 0.62], tex: 3 });
+      at(cx + sx * (IW + 10.45), WATER - 1.4, cz - 6, 0.14, 2.2, 2 * IL + 14, { color: [0.14, 0.17, 0.11], solid: false, noShadow: true });
+      for (let z = cz - IL + 12; z < cz + IL - 4; z += 15) {
+        if (bz.some((b) => Math.abs(b - z) < 18)) continue;
+        const k = Math.round((z - cz) / 15);
+        if (k % 2 === 0) at(cx + sx * (IW + 9.4), Y + 0.5, z, 0.45, 0.7, 0.45, { color: [0.14, 0.14, 0.15], shape: 'cylY', mat: 'metal' });
+        if (k % 4 === 1) at(cx + sx * (IW + 10.55), WATER - 1, z, 0.12, Y - WATER + 1.4, 0.7, { color: [0.16, 0.17, 0.18], mat: 'metal', solid: false });
+        if (k % 2 === 1) tree(cx + sx * (IW + 4), z, 0.75);
+      }
+    }
+    // the piers
+    for (let k = 0; k < 16; k++) {
+      const sx = k % 2 ? 1 : -1, z = cz - IL + 110 + Math.floor(k / 2) * 255 + (k % 2) * 120;
+      if (z > cz + IL - 210 || bz.some((b) => Math.abs(b - z) < 95)) continue;
+      const L = 70 + R() * 45, W = 16 + R() * 10, x0 = cx + sx * (IW + 10.4), xm = x0 + sx * L / 2;
+      at(xm, Y - 1.4, z, L, 1.6, W, { color: [0.55, 0.53, 0.5], tex: 3 });
+      for (let t = 8; t < L; t += 11) for (const sd of [-1, 1]) at(x0 + sx * t, WATER - 6, z + sd * (W / 2 - 1), 0.9, Y - 1.4 - WATER + 6, 0.9, { color: [0.22, 0.2, 0.17], shape: 'cylY' });
+      for (const sd of [-1, 1]) at(xm, Y + 0.2, z + sd * (W / 2 - 0.15), L, 1.0, 0.1, { color: [0.12, 0.13, 0.14], mat: 'metal', solid: false, noShadow: true });
+      const kind = R();
+      if (kind < 0.5) {
+        // a pier shed: a long tin warehouse with a pitched roof and big doors at the river end
+        const sl = L - 12, sw = W - 4, sh = 7 + R() * 3, col = pick([[0.55, 0.6, 0.62], [0.62, 0.5, 0.4], [0.5, 0.55, 0.45], [0.7, 0.68, 0.6]]);
+        const shed = at(xm + sx * 3, Y + 0.2, z, sl, sh, sw, { color: col, tex: 5, mat: 'metal' });
+        const half = sw / 2 + 0.4, rise = 2.4, sln = Math.hypot(half, rise), ang = Math.atan2(rise, half);
+        for (const sd of [-1, 1]) rot(xm + sx * 3, Y + 0.2 + sh + rise / 2 - 0.12, z + sd * half / 2, [sd * ang, 0, 0], sl + 0.8, 0.22, sln, { color: col.map((v) => v * 0.7), tex: 5, shape: 0.03, solid: false });
+        at(x0 + sx * (L - 3.2), Y + 0.2, z, 0.3, sh * 0.72, sw * 0.5, { color: [0.12, 0.12, 0.13], solid: false });
+        roofs.push({ box: shed, top: Y + 0.2 + sh, x: xm + sx * 3, z, sx: sl, sz: sw, h: sh, base: Y + 0.2 });
+      } else if (kind < 0.78) {
+        // a park on the pier: lawn, trees, benches
+        at(xm, Y + 0.2, z, L - 6, 0.12, W - 4, { color: [0.2, 0.29, 0.13], tex: 61, solid: false, noShadow: true });
+        for (let t = 0; t < 8; t++) tree(x0 + sx * (6 + R() * (L - 12)), z + (R() - 0.5) * (W - 6), 0.8);
+        open.push([xm, z, Y + 0.2]);
+      } else {
+        for (let t = 0; t < 5; t++) car(x0 + sx * (8 + t * 9), Y + 0.2, z + (R() - 0.5) * 4, Math.PI / 2, R() < 0.1);
+        open.push([xm + sx * 15, z, Y + 0.2]);
+      }
+      // a boat tied up alongside
+      if (R() < 0.6) boat(xm + sx * (R() - 0.5) * L * 0.5, z + (R() < 0.5 ? -1 : 1) * (W / 2 + 4));
+    }
+  }
+  function boat(x, z) {
+    const col = pick([[0.85, 0.85, 0.82], [0.2, 0.3, 0.45], [0.6, 0.15, 0.12]]), L = 12 + R() * 8;
+    at(x, WATER - 1, z, L, 2.4, 4, { color: col, shape: 0.5, mat: 'paint' });
+    at(x - L * 0.1, WATER + 1.4, z, L * 0.4, 1.8, 3, { color: [0.9, 0.9, 0.88], tex: 6 });
+    at(x - L * 0.1, WATER + 3.2, z, L * 0.3, 0.15, 2.6, { color: [0.2, 0.2, 0.22] });
+  }
+  // ---- the docks past the top of the island: container cranes on the river, stacks of containers, warehouses with
+  // saw-tooth roofs, oil tanks and a rail yard, so the city doesn't just stop at a field
+  function port(Y) {
+    const z0 = cz + IL + 30, z1 = cz + IL + 330, xw = cx - IW + 12, xe = cx + IW - 12;
+    ground.rect(cx, (z0 + z1) / 2, IW - 10, (z1 - z0) / 2, 25);
+    const TAR = { color: [0.3, 0.3, 0.31], tex: 7, noShadow: true };
+    add([xw - 10, Y - 1, z0 - 20], [cx - 14, Y + 0.03, z1], TAR);
+    add([cx + 10, Y - 1, z0 - 20], [xe + 10, Y + 0.03, z1], TAR);
+    const CON = [[0.75, 0.2, 0.15], [0.15, 0.35, 0.6], [0.2, 0.5, 0.3], [0.85, 0.6, 0.15], [0.55, 0.55, 0.55], [0.85, 0.85, 0.82], [0.4, 0.2, 0.35]];
+    // the container yard (west), rows of stacks one to four high
+    for (let z = z0 + 6; z < z0 + 170; z += 9) for (let x = xw + 8; x < cx - 30; x += 15) {
+      if (R() < 0.18) continue;
+      const n = 1 + Math.floor(R() * 4);
+      for (let k = 0; k < n; k++) at(x, Y + k * 2.6, z, 12.2, 2.6, 2.5, { color: pick(CON), tex: 14 });
+    }
+    // the rail yard (west, further up): tracks and lines of box cars
+    for (let r = 0; r < 5; r++) {
+      const z = z0 + 195 + r * 9;
+      for (const d of [-0.75, 0.75]) at((xw + cx - 20) / 2, Y + 0.03, z + d, cx - 20 - xw, 0.12, 0.1, { color: [0.35, 0.33, 0.3], mat: 'metal', solid: false, noShadow: true });
+      let x = xw + 5 + R() * 20;
+      while (x < cx - 40) { if (R() < 0.7) { at(x + 7, Y + 0.6, z, 14, 3.6, 3, { color: pick(CON).map((v) => v * 0.8), tex: 14 }); } x += 16; }
+    }
+    // warehouses (east): long sheds with saw-tooth roofs and loading doors
+    for (let z = z0 + 6; z < z0 + 230;) {
+      const d = 28 + R() * 20, w = Math.min(xe - cx - 26, 60 + R() * 40), x = cx + 18 + R() * 6, h = 9 + R() * 5;
+      const col = pick([[0.62, 0.6, 0.55], [0.5, 0.52, 0.55], [0.6, 0.45, 0.35], [0.45, 0.5, 0.45]]);
+      const b = add([x, Y, z], [x + w, Y + h, z + d], { color: col, tex: 5, mat: 'metal' });
+      for (let t = 0; t < w - 4; t += 8) rot(x + t + 4, Y + h + 1.2, z + d / 2, [0, 0, -0.5], 8.8, 0.25, d, { color: col.map((v) => v * 0.75), tex: 5, solid: false });
+      for (let t = 6; t < w - 6; t += 12) at(x + t, Y, z - 0.15, 5, 5, 0.3, { color: [0.2, 0.2, 0.22], solid: false });
+      roofs.push({ box: b, top: Y + h, x: x + w / 2, z: z + d / 2, sx: w, sz: d, h, base: Y });
+      z += d + 14;
+    }
+    // oil tanks
+    for (let k = 0; k < 4; k++) {
+      const x = cx + 35 + (k % 2) * 34, z = z0 + 255 + Math.floor(k / 2) * 32;
+      at(x, Y, z, 24, 13, 24, { color: [0.86, 0.85, 0.82], shape: 'cylY', mat: 'paint' });
+      at(x, Y + 13, z, 24.4, 0.6, 24.4, { color: [0.6, 0.6, 0.6], shape: 'cylY', mat: 'metal' });
+    }
+    // container cranes on both river edges, their booms out over the water
+    for (const sx of [-1, 1]) for (const z of [cz + IL - 90, cz + IL - 170]) {
+      const x = cx + sx * (IW + 4.5), col = sx > 0 ? [0.85, 0.32, 0.12] : [0.2, 0.42, 0.7];
+      for (const lx of [-5.5, 5.5]) for (const lz of [-9, 9]) at(x + lx, Y, z + lz, 1.4, 38, 1.4, { color: col, mat: 'paint' });
+      for (const lz of [-9, 9]) at(x + sx * 14, Y + 34, z + lz, 50 + 16, 2.2, 1.4, { color: col, mat: 'paint', solid: false });
+      at(x - sx * 2, Y + 36, z, 10, 5, 8, { color: col.map((v) => v * 0.8), mat: 'paint' });
+      for (const lx of [-5.5, 5.5]) at(x + lx, Y + 18, z, 1, 1.2, 18, { color: col, mat: 'paint', solid: false });
+      seg([x - sx * 6, Y + 38, z], [x + sx * 4, Y + 52, z], 0.5, 0.5, { color: col });
+      seg([x + sx * 4, Y + 52, z], [x + sx * 44, Y + 36.5, z], 0.25, 0.25, { color: [0.3, 0.3, 0.3] });
+      at(x + sx * 25, Y + 6, z, 12.2, 2.6, 2.5, { color: pick(CON), tex: 14, solid: false });
+      seg([x + sx * 25, Y + 8.6, z], [x + sx * 25, Y + 34, z], 0.06, 0.06, { color: [0.1, 0.1, 0.1] });
+    }
+    for (let k = 0; k < 6; k++) jam(xw + 20 + R() * 100, z0 + 175, xw + 60 + R() * 120, z0 + 185, Y, 2, Math.PI / 2 + (R() - 0.5));
+    open.push([cx - 80, z0 + 150, Y], [cx + 60, z0 + 300, Y]);
   }
   function ship(x, z, fire) {
     const L = 90, W = 16, col = pick([[0.6, 0.15, 0.12], [0.15, 0.2, 0.3], [0.2, 0.22, 0.24]]);
@@ -691,7 +800,27 @@ export function buildWorld(seed = 1337) {
       if (bridges.some((b) => Math.abs((z0 + z1) / 2 - b.z) < 40 && Math.min(x1, b.xb + b.dir * 175) > Math.max(x0, b.xb - b.dir * 5) - 0 && Math.max(x0, x1) > Math.min(b.xb, b.xb + b.dir * 175) && Math.min(x0, x1) < Math.max(b.xb, b.xb + b.dir * 175))) { add([x0, Y, z0], [x1, Y + 0.2, z1], { color: [0.5, 0.49, 0.46], tex: 4 }); open.push([(x0 + x1) / 2, (z0 + z1) / 2, Y + 0.2]); continue; }
       add([x0, Y, z0], [x1, Y + 0.2, z1], { color: [0.52, 0.51, 0.48], tex: 4 });
       const base = Y + 0.2;
-      if (R() < 0.08) { for (let t = 0; t < 7; t++) tree(x0 + 4 + R() * (BW - 8), z0 + 4 + R() * (BD - 8), 1); open.push([(x0 + x1) / 2, (z0 + z1) / 2, base]); continue; }
+      const roll = R();
+      if (roll < 0.08) { for (let t = 0; t < 7; t++) tree(x0 + 4 + R() * (BW - 8), z0 + 4 + R() * (BD - 8), 1); open.push([(x0 + x1) / 2, (z0 + z1) / 2, base]); continue; }
+      if (roll < 0.13) {
+        // a school: a brick block along one side and a playing field with a running track
+        tower(x0 + 1, z0 + 1, x1 - 1, z0 + 15, base, 12 + R() * 4, { style: 'brick', kind: R() < 0.5 ? 'school' : undefined, lootChance: 0.2 });
+        at((x0 + x1) / 2, base, (z0 + z1) / 2 + 7, BW - 6, 0.06, BD - 20, { color: [0.62, 0.3, 0.22], solid: false, noShadow: true });
+        at((x0 + x1) / 2, base + 0.02, (z0 + z1) / 2 + 7, BW - 14, 0.06, BD - 26, { color: [0.3, 0.5, 0.22], tex: 61, solid: false, noShadow: true });
+        for (const sd of [-1, 1]) at((x0 + x1) / 2 + sd * (BW / 2 - 10), base, (z0 + z1) / 2 + 7, 0.15, 2.4, 3, { color: [0.95, 0.95, 0.95], solid: false });
+        open.push([(x0 + x1) / 2, (z0 + z1) / 2 + 7, base]); continue;
+      }
+      if (roll < 0.16) {
+        // a church: nave, a tall square tower and a spire
+        const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, col = [0.58, 0.55, 0.5];
+        at(mx + 6, base, mz, 34, 14, 16, { color: col, tex: 17 });
+        const half = 8.4, rise = 5, sl = Math.hypot(half, rise), ang = Math.atan2(rise, half);
+        for (const sd of [-1, 1]) rot(mx + 6, base + 14 + rise / 2 - 0.2, mz + sd * half / 2, [sd * ang, 0, 0], 35, 0.3, sl, { color: [0.3, 0.3, 0.33], shape: 0.04, solid: false });
+        at(mx - 15, base, mz, 9, 30, 9, { color: col, tex: 17 });
+        at(mx - 15, base + 30, mz, 7, 16, 7, { color: [0.3, 0.32, 0.34], shape: { taper: [1, 1] } });
+        for (let t = 0; t < 4; t++) tree(x0 + 4 + R() * 10, z0 + 4 + R() * (BD - 8), 0.8);
+        continue;
+      }
       if (R() < 0.12) { tower(x0 + 1, z0 + 1, x1 - 1, z1 - 1, base, 30 + R() * 50, { style: pick(['office', 'brick', 'deco']), lootChance: 0.2 }); continue; }
       for (const side of [0, 1]) {
         let x = x0 + 0.5;
@@ -707,6 +836,23 @@ export function buildWorld(seed = 1337) {
       }
     }
     for (let k = 0; k < 40; k++) car(bx0 - rx + R() * 2 * rx, Y, bz0 - rz + ST / 2 + Math.floor(R() * 10) * (BD + ST), Math.PI / 2 + (R() - 0.5) * 0.4, R() < 0.1);
+    // a riverside park along the bank, between the river and the first street
+    for (let k = 0; k < 70; k++) {
+      const x = bx0 - rx - 4 - R() * 55, z = bz0 - rz + R() * 2 * rz, h = T.heightAt(x, z);
+      if (h < WATER + 1.5 || ground.at(x, z).road < 8 || bridges.some((b) => Math.abs(z - b.z) < 22)) continue;
+      tree(x, z, 0.8 + R() * 0.4);
+    }
+    // the suburbs: streets of houses with gardens round the far sides, so it fades out into the country
+    for (const [ax, az, bx, bz2, nx, nz] of [[xe + 24, bz0 - rz, xe + 24, ze, 1, 0], [bx0 - rx + 40, ze + 24, xe, ze + 24, 0, 1], [bx0 - rx + 40, bz0 - rz - 24, xe, bz0 - rz - 24, 0, -1]]) {
+      const L = Math.hypot(bx - ax, bz2 - az), ux = (bx - ax) / L, uz = (bz2 - az) / L;
+      for (let row = 0; row < 3; row++) for (let t = 6; t < L - 6; t += 13 + R() * 4) {
+        const x = ax + ux * t + nx * row * 22, z = az + uz * t + nz * row * 22, y = T.heightAt(x, z);
+        if (Math.abs(y - Y) > 5 || ground.at(x, z).road < 9 || T.slopeAt(x, z) > 0.25 || y < WATER + 2) continue;
+        if (R() < 0.15) { tree(x, z, 1); continue; }
+        house(x, y, z, 0);
+      }
+      ground.road(ax + nx * 11, az + nz * 11, bx + nx * 11, bz2 + nz * 11);
+    }
   }
 
   let spire = null;
@@ -714,6 +860,7 @@ export function buildWorld(seed = 1337) {
   for (const s of spots) {
     if (s.kind === 'city') { spire = metropolis(); cities.push(s); continue; }
     if (s.kind === 'borough') { borough(); cities.push(s); continue; }
+    if (s.kind === 'port') continue;
     if (s.kind === 'bridgehead') { ground.town(s.x, s.z, s.r * 0.7, 20); continue; }
     if (s.kind === 'small') { city(s.x, s.z, 230, s.y, 0.45); s.name = (TOWN_NAMES.splice(Math.floor(R() * TOWN_NAMES.length), 1)[0] || 'CITY') + ' CITY'; cities.push(s); continue; }
     const t = s, y = t.y;

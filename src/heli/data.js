@@ -50,6 +50,7 @@ export const SLOTS = [
     { n: 'DOOR GUNNER', cost: 500, d: 'A gunner in the right door shoots zombies he can see.' },
     { n: 'TWIN GUNNERS', cost: 1200, d: 'Gunners in both doors.' },
     { n: 'DOOR MINIGUNS', cost: 2300, d: 'Both gunners get spinning miniguns.' },
+    { n: 'MK19 GRENADES', cost: 3400, d: 'Both doors get Mk 19 grenade launchers: a steady stream of 40 mm grenades into the crowds.' },
   ] },
   { id: 'fuel', name: 'FUEL TANKS', icon: '⛽', tiers: [
     { n: 'STANDARD TANK', cost: 0, d: 'About 5 minutes of flying.' },
@@ -82,17 +83,11 @@ export const SLOTS = [
   { id: 'skids', name: 'SKIDS', icon: '⊥', tiers: [
     { n: 'PLAIN SKIDS', cost: 0, d: 'Easy to grab.' },
     { n: 'ANTI-CLIMB SKIDS', cost: 400, d: 'Spikes and greased bars: zombies can barely hang on.' },
-    { n: 'ELECTRIC SKIDS', cost: 1100, d: 'Every few seconds the skids zap: anything hanging on gets thrown off.' },
   ] },
   { id: 'light', name: 'SEARCHLIGHT', icon: '☀', tiers: [
     { n: 'NONE', cost: 0, d: 'Nights are dark. Really dark.' },
     { n: 'SEARCHLIGHT', cost: 350, d: 'A big light under the nose that points where you fly. Comes on at night (L to switch).' },
-    { n: 'SUN GUN', cost: 1100, d: 'Twin lights, much brighter: zombies caught in the beam stagger and stop.' },
-  ] },
-  { id: 'turret', name: 'BELLY TURRET', icon: '⊛', tiers: [
-    { n: 'NONE', cost: 0, d: 'Nothing underneath.' },
-    { n: 'BELLY TURRET', cost: 800, d: 'A remote gun under the belly: it shoots anything climbing up at you, or hanging off the skids, by itself.' },
-    { n: 'TWIN BELLY GUNS', cost: 1700, d: 'Two of them, faster. Piles never get close.' },
+    { n: 'NIGHTSUN', cost: 1100, d: 'The police searchlight: twin lamps, much brighter. Zombies caught in the beam stagger and stop.' },
   ] },
   { id: 'medbay', name: 'MEDICAL BAY', icon: '✚', tiers: [
     { n: 'NONE', cost: 0, d: 'A first aid kit somewhere.' },
@@ -109,11 +104,6 @@ export const SLOTS = [
     { n: 'LONG RANGE RADIO', cost: 400, d: 'A big aerial on the tail: hear SOS calls from twice as far, and see hordes coming on the map.' },
     { n: 'SATCOM', cost: 1500, d: 'A satellite dome on the tail: hear SOS calls from anywhere on the map.' },
   ] },
-  { id: 'tail', name: 'TAIL GUN', icon: '⟲', tiers: [
-    { n: 'NONE', cost: 0, d: 'Nothing covering your back.' },
-    { n: 'TAIL GUN', cost: 900, d: 'A turret under the tail boom that shoots zombies behind you by itself.' },
-    { n: 'TWIN TAIL GUN', cost: 2000, d: 'Two barrels, twice the bullets.' },
-  ] },
   { id: 'flares', name: 'FLASHBANGS', icon: '✺', tiers: [
     { n: 'NONE', cost: 0, d: 'Nothing to shake them off with.' },
     { n: 'FLASHBANGS', cost: 700, d: 'Press X: a ring of flashbangs. Zombies within 25 m are stunned and anything on the skids lets go. 4 per refill.' },
@@ -127,6 +117,26 @@ export const SLOTS = [
   { id: 'nvg', name: 'NIGHT VISION', icon: '◐', tiers: [
     { n: 'NONE', cost: 0, d: 'At night you only see what\'s lit.' },
     { n: 'NIGHT VISION', cost: 900, d: 'Goggles for the crew and an infrared lamp on the nose: at night everything shows up bright and green. Z switches it on and off.' },
+  ] },
+  { id: 'drone', name: 'DRONES', icon: '✣', tiers: [
+    { n: 'NONE', cost: 0, d: 'Just you.' },
+    { n: 'SPOTTER DRONE', cost: 1200, d: 'A little quadcopter flies alongside: the minimap shows every zombie within 650 m, and the big ones stand out.' },
+    { n: 'ARMED DRONE', cost: 2600, d: 'The drone carries a gun: it picks off anything climbing at you or hanging off the skids.' },
+    { n: 'DRONE PAIR', cost: 4400, d: 'Two armed drones, one each side.' },
+  ] },
+  { id: 'ammo', name: 'AMMO', icon: '⁍', tiers: [
+    { n: 'BALL', cost: 0, d: 'Ordinary rounds for the nose gun and the door guns.' },
+    { n: 'ARMOUR-PIERCING', cost: 900, d: 'Goes straight through riot armour, and on into the one standing behind.' },
+    { n: 'INCENDIARY', cost: 1900, d: 'Sets them on fire: they keep burning for a few seconds after you hit them.' },
+  ] },
+  { id: 'repair', name: 'REPAIRS', icon: '⚒', tiers: [
+    { n: 'NONE', cost: 0, d: 'Repairs only at a base.' },
+    { n: 'FIELD REPAIR KIT', cost: 800, d: 'Land anywhere and the crew patch the helicopter up (slowly).' },
+    { n: 'CREW CHIEF', cost: 2100, d: 'A crew chief on board: fixes things in flight too, and much faster on the ground.' },
+  ] },
+  { id: 'suppress', name: 'FIRE SUPPRESSION', icon: '❄', tiers: [
+    { n: 'NONE', cost: 0, d: 'When it\'s going down, it\'s going down.' },
+    { n: 'ENGINE EXTINGUISHERS', cost: 1500, d: 'Once a sortie, a hit that would have brought you down puts the fire out instead: you keep flying on 20% health.' },
   ] },
   { id: 'racks', name: 'WEAPON RACKS', icon: '☰', tiers: [
     { n: 'NONE', cost: 0, d: 'Standard load.' },
@@ -144,6 +154,10 @@ export const HELIS = {
     hp: 0.6, mass: 0.72, lift: 1.06, speed: 1.3, agility: 1.65, fuel: 0.85, cap: { gun: 2, rockets: 2, bombs: 1, armor: 1, cabin: 1, fuel: 1, winch: 1, turret: 0, medbay: 0, drops: 1, tail: 1, engine: 3, speaker: 1 } },
   reaper: { n: 'REAPER', cost: 4500, d: 'A gunship. Its chin gun hits 30% harder, its four pylons carry 50% more rockets, and it\'s armoured like a tank. Two seats only.', seats: [2],
     hp: 1.75, mass: 1.2, lift: 1.28, speed: 1.14, agility: 1.08, fuel: 1, gunMul: 1.3, rocketMul: 1.5, cap: { cabin: 0, door: 0, winch: 0, medbay: 0 } },
+  viper: { n: 'VIPER', cost: 3000, d: 'A slim two-seat attack helicopter: the fastest thing in the sky, a chin gun 15% harder and 25% more rockets. Not much armour, no cabin.', seats: [2],
+    hp: 0.9, mass: 0.85, lift: 1.12, speed: 1.4, agility: 1.4, fuel: 0.95, gunMul: 1.15, rocketMul: 1.25, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, drops: 1 } },
+  kestrel: { n: 'KESTREL', cost: 6500, d: 'A big three-engine utility helicopter: 12 to 24 seats, a quick cruise, tough as anything, and room for nearly every upgrade.', seats: [12, 16, 20, 24],
+    hp: 1.45, mass: 1.35, lift: 1.42, speed: 1.08, agility: 0.8, fuel: 1.5, cap: { gun: 3 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
     hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, tail: 0, racks: 0 } },
 };
@@ -169,11 +183,45 @@ export const PAINTS = [
   { id: 'dev', n: 'DEV: ROOT', body: [0.04, 0.05, 0.06], trim: [0.1, 1, 0.45], cost: 0, glow: [0.1, 1, 0.45], stripe: [0.1, 1, 0.45], dev: true },
 ];
 export const PAINT = Object.fromEntries(PAINTS.map((p) => [p.id, p]));
+// camouflage patterns over the paint (k = the pattern number in the shader), nose art and tail markings
+export const CAMOS = [
+  { id: 'none', n: 'NO CAMO', cost: 0, d: 'Just the paint.' },
+  { id: 'woodland', n: 'WOODLAND', cost: 300, k: 1, d: 'Blotches of dark green, brown and black.' },
+  { id: 'desert', n: 'DESERT', cost: 300, k: 2, d: 'Big soft patches of sand and earth.' },
+  { id: 'urban', n: 'URBAN', cost: 300, k: 3, d: 'Greys, for the city.' },
+  { id: 'tiger', n: 'TIGER STRIPES', cost: 700, k: 4, d: 'Black stripes the whole way down.' },
+  { id: 'splinter', n: 'SPLINTER', cost: 900, k: 5, d: 'Hard-edged shards of light and dark.' },
+  { id: 'digital', n: 'DIGITAL', cost: 1200, k: 6, d: 'Tiny pixels, like modern uniforms.' },
+];
+export const CAMO = Object.fromEntries(CAMOS.map((p) => [p.id, p]));
+export const NOSEART = [
+  { id: 'none', n: 'NONE', cost: 0, d: 'A plain nose.' },
+  { id: 'shark', n: 'SHARK MOUTH', cost: 600, d: 'Red mouth, white teeth, an eye. The classic.' },
+  { id: 'flames', n: 'FLAMES', cost: 900, d: 'Hot-rod flames licking back from the nose.' },
+  { id: 'skull', n: 'SKULL & BONES', cost: 900, d: 'A skull and crossbones on both sides.' },
+  { id: 'checks', n: 'CHEQUERED NOSE', cost: 500, d: 'Black and white checks, like the old fighter squadrons.' },
+];
+export const TAILART = [
+  { id: 'none', n: 'PLAIN TAIL', cost: 0, d: 'Nothing on the tail.' },
+  { id: 'stripes', n: 'INVASION STRIPES', cost: 400, d: 'Black and white bands round the tail boom.' },
+  { id: 'bands', n: 'RESCUE BANDS', cost: 400, d: 'Dayglo orange bands, so your team can spot you.' },
+  { id: 'number', n: 'TAIL NUMBER', cost: 200, d: 'Your number on both sides. Click it again for a new one.' },
+];
 
 const KEY = 'semifinals.deadair';
 export function loadSave() {
-  const s = { scrap: 0, own: {}, eq: {}, paints: ['olive', 'night'], paint: 'olive', flight: 'easy', invert: false, sens: 1, best: 0, runs: 0, titans: 0, rescued: 0, crew: [], pool: [], events: 0, name: '' };
+  const s = { scrap: 0, own: {}, eq: {}, paints: ['olive', 'night'], paint: 'olive', camos: ['none'], camo: 'none', noses: ['none'], nose: 'none', tails: ['none'], tailArt: 'none', num: 10 + Math.floor(Math.random() * 90), flight: 'easy', invert: false, sens: 1, best: 0, runs: 0, titans: 0, rescued: 0, crew: [], pool: [], events: 0, name: '' };
   try { Object.assign(s, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* ignore */ }
+  // the belly turret, the tail gun and electric skids are gone: give back everything that was spent on them
+  if (!s.refund2) {
+    const spent = { turret: [0, 800, 2500], tail: [0, 900, 2900] };
+    let back = 0;
+    for (const k of Object.keys(spent)) back += spent[k][Math.min(2, (s.own && s.own[k]) || 0)];
+    if (s.own && (s.own.skids || 0) >= 2) back += 1100;
+    s.refund2 = true;
+    if (back > 0) { s.scrap = (s.scrap || 0) + back; s.refundMsg = back; }
+    s.refundPending = true;
+  }
   for (const sl of SLOTS) {
     const top = sl.tiers.length - 1;
     s.own[sl.id] = Math.min(top, s.own[sl.id] ?? 0); s.eq[sl.id] = Math.min(s.own[sl.id], s.eq[sl.id] ?? 0);
@@ -182,6 +230,7 @@ export function loadSave() {
   s.team = s.team || []; s.stash = s.stash || { medkit: 2, pistol: 0, smg: 0, shotgun: 0, rifle: 0, vest: 0, heavy: 0, pack: 0, grenade: 0 };
   if (s.seed == null) s.seed = 0;
   s.helis = s.helis || ['warhorse']; if (!HELIS[s.heli] || !s.helis.includes(s.heli)) s.heli = 'warhorse';
+  if (s.refundPending) { delete s.refundPending; saveSave(s); }
   return s;
 }
 export function saveSave(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore */ } }
@@ -194,7 +243,7 @@ export function statsFor(eq0, kind = 'warhorse') {
   const S = {
     kind,
     hp: Math.round(500 * [1, 1.6, 2.3, 3.2, 4][ar]),
-    mass: [1, 1.06, 1.14, 1.26, 1.1][ar] + rk * 0.02 + bo * 0.02 + v('cabin', 3) * 0.03 + v('fuel', 3) * 0.03 + v('winch', 3) * 0.02 + v('tail', 2) * 0.02,
+    mass: [1, 1.06, 1.14, 1.26, 1.1][ar] + rk * 0.02 + bo * 0.02 + v('cabin', 3) * 0.03 + v('fuel', 3) * 0.03 + v('winch', 3) * 0.02 + v('drone', 3) * 0.01,
     lift: [1, 1.14, 1.28, 1.36, 1.5][en] * [1, 1.07, 1.12, 1.15][ro],
     speed: [1, 1.1, 1.2, 1.26, 1.45][en],
     agility: [1, 1.15, 1.35, 1.3][ro],
@@ -209,13 +258,13 @@ export function statsFor(eq0, kind = 'warhorse') {
     ][g],
     rockets: Math.round([0, 8, 16, 12, 36][rk] * [1, 1.5, 2][v('racks', 2)]), rocketDmg: [0, 260, 340, 420, 170][rk], rocketR: [0, 6.5, 8, 8.5, 5][rk], homing: rk === 3, swarm: rk === 4,
     bombs: bo ? [0, 4, 4, 4, 2][bo] + [0, 2, 4][v('racks', 2)] / (bo === 4 ? 2 : 1) : 0, cluster: bo === 2, napalm: bo === 3, thermo: bo === 4,
-    gunners: Math.min(2, v('door', 3)), doorMini: v('door', 3) === 3,
+    gunners: Math.min(2, v('door', 4)), doorMini: v('door', 4) === 3, doorGL: v('door', 4) === 4,
     seats: [4, 8, 12, 16][v('cabin', 3)],
     fuel: [100, 160, 240, 330][v('fuel', 3)],
     winch: v('winch', 3), hook: v('winch', 3) >= 2, hoist: v('winch', 3) === 3,
-    flir: v('flir', 2), speaker: v('speaker', 2), lrad: v('speaker', 2) === 2, skidGuard: v('skids', 2) >= 1, zap: v('skids', 2) === 2,
-    light: v('light', 2), turret: v('turret', 2), medbay: v('medbay', 2), drops: v('drops', 2), radio: v('radio', 2),
-    nvg: v('nvg', 1), racks: v('racks', 2), tail: v('tail', 2), flares: [0, 4, 8][fl], megaFlare: fl === 2, beacons: [0, 3, 5][bc], beaconBoom: bc === 2,
+    flir: v('flir', 2), speaker: v('speaker', 2), lrad: v('speaker', 2) === 2, skidGuard: v('skids', 1) >= 1, zap: false,
+    light: v('light', 2), medbay: v('medbay', 2), drops: v('drops', 2), radio: v('radio', 2),
+    nvg: v('nvg', 1), racks: v('racks', 2), drones: v('drone', 3), ammo: v('ammo', 2), repair: v('repair', 2), suppress: v('suppress', 1), flares: [0, 4, 8][fl], megaFlare: fl === 2, beacons: [0, 3, 5][bc], beaconBoom: bc === 2,
     crewMax: [2, 3, 4, 4][v('cabin', 3)],
   };
   // the airframe

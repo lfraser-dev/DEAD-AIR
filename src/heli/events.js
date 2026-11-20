@@ -4,11 +4,16 @@
 //   CRATE    a supply drop parachuting in. Land next to it (or hook it) and press E; carry it back to the Spire.
 //   BRIDGE   a crowd stuck in the traffic jam on one of the big bridges, and the dead walking in from both ends along
 //            the deck. Land on the bridge next to them and press E (it takes a few trips).
+//   CRASH    a helicopter came down on a roof: the crew are alive, the wreck's burning, everything heard it.
+//   OUTBREAK a town square full of them. Clear it (kill nine in ten) before the clock runs out or it spreads.
+//   CONVOY   survivors' trucks driving down a road to safety. They only move while you're overhead: clear the
+//            road ahead and keep the dead off them.
 //   HORDE    a migrating horde: hundreds of them, walking across the country towards a town. Thin them out with
 //            bombs and rockets before they get there. Far away it's just a number on the map; get close and there they are.
 // A scenario's zombies only turn up when you're near it, so nothing goes wrong far away while you're busy.
 import { WATER } from './terrain.js';
 import { WORLD } from './map.js';
+import { pickType } from './horde.js';
 
 const NEAR = 320;
 const dist2 = (a, x, z) => Math.hypot(a.x - x, a.z - z);
@@ -31,7 +36,7 @@ class Ev {
     zb.ev = this.id;
     return zb;
   }
-  mix(g) { const r = Math.random(), t = g.time; return t > 60 && r < 0.2 ? 'runner' : r > 0.9 ? 'crawler' : t > 90 && r > 0.86 && r <= 0.9 ? 'screamer' : 'walker'; }
+  mix(g) { return pickType(g.night || 0, g.time, true); }
   parts() {}
 }
 
@@ -40,6 +45,8 @@ export class Rescue extends Ev {
     super('rescue', 'RESCUE', roof.x, roof.z);
     this.roof = { ...roof, kind: 'roof', active: true, count: 2 + Math.floor(Math.random() * 4), wave: Math.random() * 6 };
     this.roof.start = this.roof.count;
+    // where they stand: off to one side, clear of the stair hut and the plant room in the middle of the roof
+    this.roof.sx0 = roof.bridge ? roof.x : roof.x - (roof.sx || 12) * 0.3; this.roof.sz0 = roof.bridge ? roof.z : roof.z + (roof.sz || 12) * 0.3;
     this.spawnT = 0; this.spawned = 0;
   }
   update(dt, g) {
@@ -57,11 +64,12 @@ export class Rescue extends Ev {
   }
   parts(P, t, person) {
     const r = this.roof;
-    for (let i = 0; i < r.count; i++) { const a = (r.start - r.count + i) * 2.1 + r.wave; person(r.x + Math.cos(a) * 2.4, r.top, r.z + Math.sin(a) * 2.4, -a, true, i); }
-    P([r.x + 3, r.top + 0.3, r.z + 3], [0, 0, 0], [0.5, 0.5, 0.5], [0.4, 1, 0.4], { em: 1, shape: 'sphere' });
-    P([r.x + 3, r.top + 45, r.z + 3], [0, 0, 0], [1.8, 90, 1.8], [0.3, 1, 0.35], { em: 1, shape: 'cylY', alpha: 0.16 });
+    const sx = r.sx0 ?? r.x, sz = r.sz0 ?? r.z;
+    for (let i = 0; i < r.count; i++) { const a = (r.start - r.count + i) * 2.1 + r.wave; person(sx + Math.cos(a) * 1.8, r.top, sz + Math.sin(a) * 1.8, -a, true, i); }
+    P([sx + 2.2, r.top + 0.3, sz - 2.2], [0, 0, 0], [0.5, 0.5, 0.5], [0.4, 1, 0.4], { em: 1, shape: 'sphere' });
+    P([sx + 2.2, r.top + 45, sz - 2.2], [0, 0, 0], [1.8, 90, 1.8], [0.3, 1, 0.35], { em: 1, shape: 'cylY', alpha: 0.16 });
   }
-  net() { const r = this.roof; return { k: 'rescue', x: r.x, y: r.top, z: r.z, n: r.count, s: r.start, w: r.wave }; }
+  net() { const r = this.roof; return { k: 'rescue', x: r.sx0 ?? r.x, y: r.top, z: r.sz0 ?? r.z, n: r.count, s: r.start, w: r.wave }; }
 }
 
 // survivors on a bridge deck; the dead come along the deck from both ends
@@ -132,7 +140,7 @@ export class HordeEv extends Ev {
     for (let i = 0; i < 6; i++) {
       const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * R, x = this.x + Math.cos(a) * r, z = this.z + Math.sin(a) * r;
       if (g.horde.blockedAt(x, z)) continue;
-      const zb = g.horde.spawn(Math.random() < 0.12 ? 'runner' : Math.random() < 0.05 ? 'screamer' : 'walker', x, z, { tgt: this.tgt });
+      const zb = g.horde.spawn(pickType(g.night || 0, g.time, false), x, z, { tgt: this.tgt });
       zb.ev = this.id; zb.keep = true;
       return zb;
     }
@@ -192,10 +200,164 @@ export function crateParts(P, x, y, z, landed, carried, t, heli) {
   if (landed && !carried) P([x, y + 2.2, z], [0, 0, 0], [0.25, 0.25, 0.25], [1, 0.6, 0.2], { em: (t * 2) % 1 < 0.5 ? 1 : 0.2, shape: 'sphere' });
 }
 
+// a helicopter down on a roof: the crew are on the roof by the burning wreck
+export class CrashSite extends Rescue {
+  constructor(roof) {
+    super(roof);
+    this.name = 'CRASH SITE'; this.crash = true;
+    this.roof.count = this.roof.start = 2 + Math.floor(Math.random() * 3);
+    this.roof.eaten = 0;
+    this.wx = roof.x + (roof.sx || 16) * 0.27; this.wz = roof.z - (roof.sz || 16) * 0.27;
+    this.yaw = Math.random() * 6.28; this.smokeT = 0; this.paid = false;
+  }
+  update(dt, g) {
+    const r = this.roof;
+    if (r.count <= 0 && !this.paid) {
+      this.paid = true;
+      const saved = r.start - (r.eaten || 0);
+      if (saved > 0) { const b = 150 + saved * 90; g.addScrap(b); g.save.events = (g.save.events || 0) + 1; g.banner('CREW RECOVERED', `THE BLACK BOX TOO · +⚙${b}`, 'g', 3); }
+    }
+    super.update(dt, g);
+    if (!this.near(g)) return;
+    // the wreck smokes
+    this.smokeT -= dt;
+    if (this.smokeT <= 0 && g.smokes) {
+      this.smokeT = 0.35;
+      g.smokes.push({ pos: [this.wx + (Math.random() - 0.5) * 2, r.top + 1.5, this.wz + (Math.random() - 0.5) * 2], t: 0, life: 7 + Math.random() * 3, size: 2.5 + Math.random() * 2, drift: [0.6, 0.3], fire: Math.random() < 0.3 ? 0.6 : 0 });
+    }
+  }
+  marker(g) { const m = super.marker(g); return { ...m, col: '#ffb03a', text: 'CRASH SITE', icon: this.roof.count }; }
+  parts(P, t, person) {
+    super.parts(P, t, person);
+    wreckParts(P, this.wx, this.roof.top, this.wz, this.yaw, t);
+  }
+  net() { return { ...super.net(), k: 'crash', wx: this.wx, wz: this.wz, yw: this.yaw }; }
+}
+export function wreckParts(P, x, y, z, yaw, t) {
+  const c = Math.cos(yaw), s = Math.sin(yaw), W = (lx, ly, lz) => [x + lx * c + lz * s, y + ly, z - lx * s + lz * c];
+  const BURNT = [0.13, 0.12, 0.11];
+  P(W(0, 1.35, 0), [0.15, yaw, 1.35], [1, 1, 1], BURNT, { shape: 'h_hornet', mat: 'metal', tex: 68 });
+  P(W(0.2, 0.25, 3.6), [0.3, yaw + 0.5, 0.2], [0.26, 0.28, 2.4], BURNT, { shape: 'cyl', mat: 'metal' });
+  for (let k = 0; k < 3; k++) P(W(-1.5 + k * 1.4, 0.12, -1 + k * 0.9), [0.05 * k, yaw + k * 1.9, 0.1], [0.4, 0.06, 3 + k], [0.08, 0.08, 0.08], { mat: 'metal' });
+  P(W(0, 0.6, 0.4), [0, 0, 0], [1.6, 1.0, 1.6], [1, 0.45, 0.1], { em: 0.7 + 0.3 * Math.sin(t * 13), shape: 'sphere', alpha: 0.55 });
+  P(W(-1.4, 0.05, 1.2), [0, 0, 0], [2.4, 0.04, 2.0], [0.04, 0.04, 0.04], { alpha: 0.7 });
+}
+
+// an outbreak: a town square packed with them. Clear it before the clock runs out.
+export class Outbreak extends Ev {
+  constructor(town) {
+    super('outbreak', 'OUTBREAK', town.x, town.z);
+    this.town = town; this.start = 120 + Math.floor(Math.random() * 90); this.left = this.start; this.real = false; this.time = 210; this.y = town.y || 10;
+    this.tgt = { kind: 'chase', sticky: true, r: 26, alive: true, x: town.x, z: town.z, field: `ob${this.id}` };
+  }
+  update(dt, g) {
+    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]);
+    if (!this.real) { if (d < 650) { this.real = true; this.unspawned = this.left; g.feed(`OUTBREAK IN ${this.town.name}: CLEAR IT!`, 'r'); } return; }
+    const mine = g.horde.list.filter((z) => z.ev === this.id && z.alive);
+    if (this.unspawned > 0) for (let k = 0; k < 30 && this.unspawned > 0; k++) {
+      const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * 45, x = this.x + Math.cos(a) * r, z = this.z + Math.sin(a) * r;
+      if (g.horde.blockedAt(x, z)) continue;
+      const zb = g.horde.spawn(this.mix(g), x, z, { tgt: this.tgt }); zb.ev = this.id; zb.keep = true; this.unspawned--;
+    }
+    this.left = mine.length + (this.unspawned || 0);
+    if (d > 950) { this.real = false; for (const z of mine) z.alive = false; return; }   // you left: they stay put, the clock stops
+    this.time -= dt;
+    if (this.left <= Math.ceil(this.start * 0.1)) {
+      this.done = true;
+      const b = 400 + Math.round(this.start * 1.5);
+      g.addScrap(b); g.save.events = (g.save.events || 0) + 1;
+      g.banner('OUTBREAK CLEARED', `${this.town.name} · +⚙${b}`, 'g', 3);
+      for (const z of mine) { z.keep = false; z.ev = null; z.tgt = null; }
+    } else if (this.time <= 0) {
+      this.done = true;
+      g.banner('IT SPREAD', `THE OUTBREAK IN ${this.town.name} GOT AWAY`, 'r', 3);
+      for (const z of mine) { z.keep = false; z.ev = null; z.tgt = null; z.angry = 30; }
+    }
+  }
+  marker() { return { p: [this.x, this.y + 30, this.z], col: '#ff6a2a', icon: '☣', text: `OUTBREAK · ${this.left}`, sub: this.real ? `CLEAR IT · ${Math.max(0, Math.ceil(this.time))}s` : this.town.name, horde: true, r: 45 }; }
+  net() { return { k: 'outbreak', x: this.x, z: this.z, n: this.left }; }
+}
+
+// a convoy of survivors' trucks driving along a road. They move while you're near; anything on the road ahead stops them.
+export class Convoy extends Ev {
+  constructor(path) {
+    super('convoy', 'CONVOY', path[0][0], path[0][1]);
+    this.path = path; this.L = 0;
+    for (const p of path) { p.s = this.L; this.L += p.len; }
+    this.s = 30; this.hp = this.max = 1000; this.spawnT = 2; this.trucks = [];
+    this.tgt = { kind: 'chase', sticky: true, r: 4, alive: true, x: this.x, z: this.z };
+    this.blocked = false; this.place();
+  }
+  at(s) {
+    s = Math.max(0, Math.min(this.L - 0.01, s));
+    let i = 0; while (i < this.path.length - 1 && this.path[i + 1].s <= s) i++;
+    const p = this.path[i], f = (s - p.s) / p.len;
+    return [p[0] + (p[2] - p[0]) * f, p[4] + (p[5] - p[4]) * f, p[1] + (p[3] - p[1]) * f, Math.atan2(p[2] - p[0], p[3] - p[1])];
+  }
+  place() {
+    this.trucks = [0, 1, 2].map((k) => this.at(this.s - k * 13));
+    const m = this.trucks[1]; this.x = m[0]; this.z = m[2]; this.tgt.x = m[0]; this.tgt.z = m[2];
+  }
+  update(dt, g) {
+    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]), near = d < 450;
+    const lead = this.trucks[0];
+    // anything standing on the road just ahead blocks it
+    let block = 0;
+    if (near) for (const z of g.horde.list) if (z.alive && Math.abs(z.x - lead[0]) < 14 && Math.abs(z.z - lead[2]) < 14) { const ahead = (z.x - lead[0]) * Math.sin(lead[3]) + (z.z - lead[2]) * Math.cos(lead[3]); if (ahead > 0 && ahead < 12) block++; }
+    this.blocked = block >= 3;
+    if (near && !this.blocked) { this.s += 6.5 * dt; this.place(); }
+    if (this.s >= this.L - 5) {
+      this.done = true; this.tgt.alive = false;
+      const b = 500 + Math.round((this.hp / this.max) * 500);
+      g.addScrap(b); g.save.events = (g.save.events || 0) + 1; g.save.saved = (g.save.saved || 0) + 8;
+      g.banner('CONVOY SAFE', `8 SURVIVORS MADE IT · +⚙${b}`, 'g', 3);
+      for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.ev = null; z.tgt = null; }
+      return;
+    }
+    if (!near) return;
+    // they come at it from the sides of the road ahead
+    this.spawnT -= dt;
+    if (this.spawnT <= 0 && g.horde.list.filter((z) => z.ev === this.id && z.alive).length < 45) {
+      this.spawnT = 1.1;
+      const ah = this.at(this.s + 50 + Math.random() * 90), side = Math.random() < 0.5 ? -1 : 1, off = 14 + Math.random() * 22;
+      const x = ah[0] + Math.cos(ah[3]) * off * side, z = ah[2] - Math.sin(ah[3]) * off * side;
+      if (!g.horde.blockedAt(x, z)) { const zb = g.horde.spawn(this.mix(g), x, z, { tgt: this.tgt }); zb.ev = this.id; zb.keep = true; }
+    }
+  }
+  hitTarget(tgt, dmg, g) {
+    if (this.done) return;
+    this.hp -= dmg;
+    if (this.hp <= 0) {
+      this.done = true; this.tgt.alive = false;
+      g.banner('CONVOY LOST', 'THEY OVERRAN THE TRUCKS', 'r', 3);
+      for (const t of this.trucks) g.fires?.push({ pos: [t[0], t[1], t[2]], r: 5, t: 10, tick: 0 });
+      for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.ev = null; z.tgt = null; }
+    }
+  }
+  marker() {
+    const left = Math.max(0, Math.round(this.L - this.s));
+    return { p: [this.x, this.trucks[1][1] + 8, this.z], col: '#7ad7ff', icon: '⛟', text: this.blocked ? 'CONVOY · ROAD BLOCKED' : 'CONVOY', sub: `${Math.ceil((this.hp / this.max) * 100)}% · ${left} M TO GO` };
+  }
+  parts(P) { convoyParts(P, this.trucks); }
+  net() { return { k: 'convoy', t: this.trucks.map((t) => t.map((v) => Math.round(v * 10) / 10)) }; }
+}
+export function convoyParts(P, trucks) {
+  trucks.forEach((t, k) => {
+    const [x, y, z, yaw] = t, c = Math.cos(yaw), s = Math.sin(yaw), W = (lx, ly, lz) => [x + lx * c + lz * s, y + ly, z - lx * s + lz * c];
+    const col = k === 1 ? [0.75, 0.72, 0.65] : [0.3, 0.38, 0.25];
+    P(W(0, 0.9, 2.6), [0, yaw, 0], [2.3, 1.9, 2.0], col, { shape: 0.12, mat: 'paint' });
+    P(W(0, 1.4, 3.55), [0, yaw, 0], [2.0, 0.8, 0.1], [0.1, 0.13, 0.16], { mat: 'glass' });
+    P(W(0, 1.7, -1.4), [0, yaw, 0], [2.4, 2.8, 5.6], k === 1 ? [0.85, 0.85, 0.82] : [0.36, 0.4, 0.3], { shape: 0.06, mat: k === 1 ? 'paint' : 'cloth' });
+    if (k === 1) for (const sd of [-1, 1]) P(W(sd * 1.22, 1.9, -1.4), [0, yaw, 0], [0.02, 0.9, 0.9], [0.85, 0.1, 0.1], {});
+    for (const lz of [2.6, -0.4, -3]) for (const sd of [-1, 1]) P(W(sd * 1.1, 0.45, lz), [0, yaw, Math.PI / 2], [0.9, 0.4, 0.9], [0.06, 0.06, 0.06], { shape: 'cylY' });
+    for (const sd of [-0.8, 0.8]) P(W(sd, 0.95, 3.62), [0, yaw, 0], [0.3, 0.2, 0.05], [1, 0.95, 0.75], { em: 1 });
+  });
+}
+
 export class Director {
   constructor() { this.list = []; this.newT = 6; }
   clear() { this.list.length = 0; this.newT = 6; }
-  start(g) { this.add(g, 'rescue'); this.add(g, 'rescue'); this.add(g, 'crate'); this.hordeT = 70; this.add(g, 'horde'); }
+  start(g) { this.add(g, 'rescue'); this.add(g, 'rescue'); this.add(g, 'crate'); this.add(g, 'convoy'); this.hordeT = 70; this.add(g, 'horde'); }
   add(g, kind) {
     const H = g.heli.pos, map = g.map;
     let ev = null;
@@ -218,6 +380,29 @@ export class Director {
       const used = new Set(this.list.filter((e) => e.kind === 'rescue').map((e) => e.roof.box.id));
       const c = map.roofs.filter((r) => !used.has(r.box.id) && !r.loot && Math.hypot(r.x - H[0], r.z - H[2]) > 150 && Math.hypot(r.x - H[0], r.z - H[2]) < far && r.h < 45);
       if (c.length) ev = new Rescue(c[Math.floor(Math.random() * c.length)]);
+    } else if (kind === 'crash') {
+      const used = new Set(this.list.filter((e) => e.kind === 'rescue').map((e) => e.roof.box.id));
+      const c = map.roofs.filter((r) => !used.has(r.box.id) && !r.loot && (r.sx || 0) >= 16 && (r.sz || 0) >= 16 && r.h < 70 && Math.hypot(r.x - H[0], r.z - H[2]) > 250 && Math.hypot(r.x - H[0], r.z - H[2]) < far);
+      if (c.length) { ev = new CrashSite(c[Math.floor(Math.random() * c.length)]); g.feed('RADIO: MAYDAY, MAYDAY · A HELICOPTER IS DOWN', 'y'); }
+    } else if (kind === 'outbreak') {
+      const towns = map.towns.filter((t) => t.kind === 'town' && Math.hypot(t.x - H[0], t.z - H[2]) < far * 1.4 && !this.list.some((e) => e.town === t));
+      if (towns.length) { const t = towns[Math.floor(Math.random() * towns.length)]; ev = new Outbreak(t); g.feed(`RADIO: OUTBREAK IN ${t.name}`, 'r'); }
+    } else if (kind === 'convoy') {
+      // a run of joined-up road at least 700 m long, starting within reach
+      const R = map.roads;
+      for (let tries = 0; tries < 40 && !ev; tries++) {
+        let i = Math.floor(Math.random() * R.length);
+        if (Math.hypot(R[i][0] - H[0], R[i][1] - H[2]) > far) continue;
+        const path = [];
+        let L = 0;
+        while (i < R.length && path.length < 40) {
+          const r = R[i], len = Math.hypot(r[2] - r[0], r[3] - r[1]);
+          path.push(Object.assign([...r], { len })); L += len;
+          if (i + 1 >= R.length || Math.hypot(R[i + 1][0] - r[2], R[i + 1][1] - r[3]) > 0.5) break;
+          i++;
+        }
+        if (L > 700) { ev = new Convoy(path); g.feed('RADIO: SURVIVORS ARE MAKING A RUN FOR IT · ESCORT THE CONVOY', 'y'); }
+      }
     } else if (kind === 'crate') {
       const spots = map.open.filter(([x, z]) => Math.hypot(x - H[0], z - H[2]) > 160 && Math.hypot(x - H[0], z - H[2]) < 1000 && !this.list.some((e) => Math.hypot(e.x - x, e.z - z) < 80) && g.groundAt(x, z) > WATER + 1);
       if (spots.length) { const [x, z] = spots[Math.floor(Math.random() * spots.length)]; ev = new Crate(x + (Math.random() - 0.5) * 8, z + (Math.random() - 0.5) * 8); }
@@ -228,12 +413,14 @@ export class Director {
   update(dt, g) {
     for (const e of this.list) e.update(dt, g);
     for (const e of this.list) if (e.done && e.kind === 'rescue') g.horde.dropField(`roof${e.roof.box.id}`);
+    for (const e of this.list) if (e.done && e.kind === 'outbreak') g.horde.dropField(`ob${e.id}`);
     this.list = this.list.filter((e) => !e.done || (e.kind === 'crate' && e.carried));
     this.newT -= dt;
-    if (this.newT <= 0 && this.list.filter((e) => e.kind !== 'horde').length < 4) {
+    if (this.newT <= 0 && this.list.filter((e) => e.kind !== 'horde').length < 5) {
       this.newT = 30 + Math.random() * 20;
       const r = Math.random();
-      this.add(g, r < 0.12 && !this.list.some((e) => e.br) ? 'bridge' : r < 0.72 ? 'rescue' : 'crate');
+      const has = (k) => this.list.some((e) => e.kind === k);
+      this.add(g, r < 0.1 && !this.list.some((e) => e.br) ? 'bridge' : r < 0.2 && !this.list.some((e) => e.crash) ? 'crash' : r < 0.3 && !has('outbreak') ? 'outbreak' : r < 0.4 && !has('convoy') ? 'convoy' : r < 0.78 ? 'rescue' : 'crate');
     }
     this.hordeT = (this.hordeT ?? 200) - dt;
     if (this.hordeT <= 0 && this.list.filter((e) => e.kind === 'horde').length < 2) { this.hordeT = 200 + Math.random() * 160; this.add(g, 'horde'); }

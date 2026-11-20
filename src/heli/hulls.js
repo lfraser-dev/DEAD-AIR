@@ -34,6 +34,20 @@ const SEC = {
     [-7.62, -0.32, 0.1, 0.1, 2, 2], [-7.52, -0.3, 1.6, 1.5, 2.4, 3], [-7.2, -0.2, 2.42, 2.24, 2.8, 3.6], [-6.6, -0.1, 2.86, 2.62, 3.6, 4.6],
     [-5.8, 0.0, 3.0, 2.8, 4.6, 5.6], [5.5, 0.0, 3.0, 2.8, 4.6, 5.6], [6.2, 0.12, 2.92, 2.6, 4.4, 6], [6.5, 0.18, 2.6, 2.3, 4, 6], [6.58, 0.18, 0.4, 0.4, 2, 2],
   ],
+  kestrel: [
+    [-5.42, -0.5, 0.06, 0.06, 2, 2], [-5.3, -0.48, 0.72, 0.62, 2.2, 2.2], [-5.06, -0.42, 1.32, 1.16, 2.4, 2.8], [-4.65, -0.32, 1.86, 1.72, 2.6, 3.2],
+    [-4.0, -0.2, 2.26, 2.16, 3, 4], [-3.2, -0.1, 2.5, 2.46, 3.6, 4.8], [-2.4, -0.05, 2.6, 2.56, 4, 5], [2.4, 0, 2.6, 2.56, 4, 5],
+    [3.3, 0.15, 2.34, 2.2, 3.6, 4], [4.2, 0.4, 1.5, 1.4, 2.8, 2.8], [5.0, 0.55, 0.96, 0.96, 2.3, 2.3], [7.6, 0.65, 0.62, 0.66, 2.1, 2.1],
+    [9.4, 0.75, 0.46, 0.52, 2, 2], [9.9, 0.8, 0.32, 0.38, 2, 2], [10.06, 0.8, 0.05, 0.05, 2, 2],
+  ],
+  kestrel_cowl: [[-2.32, 1.2, 0.3, 0.1, 2, 2], [-2.0, 1.25, 1.5, 0.5, 2.5, 4], [-1.3, 1.35, 1.9, 0.86, 3, 5], [1.8, 1.38, 1.96, 0.9, 3.2, 5], [2.8, 1.3, 1.4, 0.6, 2.6, 5], [3.16, 1.2, 0.5, 0.2, 2, 2]],
+  viper: [
+    [-4.92, -0.35, 0.06, 0.06, 2, 2], [-4.78, -0.33, 0.5, 0.5, 2.2, 2.2], [-4.4, -0.28, 0.8, 0.86, 2.4, 2.6], [-3.6, -0.22, 0.96, 1.2, 2.6, 3],
+    [-1.6, -0.2, 1.0, 1.34, 3, 3.4], [0.4, -0.15, 1.0, 1.34, 3, 3.4], [1.6, 0.0, 0.84, 1.04, 2.6, 2.8], [2.6, 0.15, 0.55, 0.62, 2.3, 2.3],
+    [6.4, 0.25, 0.36, 0.44, 2.1, 2.1], [6.95, 0.3, 0.26, 0.36, 2, 2], [7.1, 0.3, 0.05, 0.05, 2, 2],
+  ],
+  viper_c: [[-4.0, 0.15, 0.1, 0.08, 2, 2], [-3.75, 0.25, 0.72, 0.56, 2.4, 3], [-2.6, 0.38, 0.86, 0.76, 2.6, 3], [-1.6, 0.48, 0.88, 0.86, 2.6, 3], [-1.0, 0.45, 0.8, 0.7, 2.6, 3], [-0.74, 0.38, 0.4, 0.3, 2, 2]],
+  viper_spine: [[-1.02, 0.55, 0.2, 0.1, 2, 2], [-0.75, 0.68, 0.8, 0.6, 2.6, 4], [0.8, 0.75, 0.86, 0.72, 3, 4], [2.0, 0.55, 0.55, 0.46, 2.6, 3], [2.5, 0.4, 0.2, 0.14, 2, 2]],
   mule_fwd: [[-6.4, 1.45, 0.3, 0.2, 2, 2], [-6.05, 1.62, 1.3, 0.86, 2.6, 5], [-4.4, 1.7, 1.42, 0.98, 3, 5], [-3.9, 1.6, 0.4, 0.3, 2, 2]],
   mule_aft: [[2.85, 1.9, 0.3, 0.3, 2, 2], [3.25, 2.0, 1.4, 1.7, 2.6, 4], [5.5, 2.1, 1.54, 2.06, 3, 5], [6.35, 2.25, 1.22, 1.62, 2.6, 4], [6.6, 2.3, 0.2, 0.2, 2, 2]],
 };
@@ -48,6 +62,8 @@ const PANES = {
   ],
   hornet: [[26, 88, -1.98, -0.78], [218, 254, -1.94, -1.32], [6, 40, -0.62, 0.12]],
   reaper: [],
+  kestrel: [[50, 88, -5.2, -3.95], [60, 87, -3.85, -3.2], [8, 46, -4.75, -3.25], [226, 252, -5.22, -4.55], [14, 36, -2.2, -1.4], [14, 36, -0.6, 0.2], [14, 36, 1.0, 1.8]],
+  viper: [],
   mule: [[42, 88, -7.5, -6.62], [228, 256, -7.56, -7.02], [12, 40, -7.12, -6.3]],
 };
 
@@ -145,6 +161,135 @@ export function hullGeometries() {
   for (const k of Object.keys(SEC)) G['h_' + k] = loft(SEC[k], k === 'pod' ? 24 : 48);
   for (const k of Object.keys(PANES)) if (PANES[k].length) G['g_' + k] = panes(SEC[k], PANES[k]);
   // the Reaper's canopies are glass all over
-  G.g_reaper_c1 = loft(SEC.reaper_c1, 40); G.g_reaper_c2 = loft(SEC.reaper_c2, 40);
+  G.g_reaper_c1 = loft(SEC.reaper_c1, 40); G.g_reaper_c2 = loft(SEC.reaper_c2, 40); G.g_viper_c = loft(SEC.viper_c, 40);
+  Object.assign(G, decalGeometries());
+  return G;
+}
+
+// ---- nose art and tail markings: shapes drawn in (distance back from the nose / boom position, angle) and wrapped
+// onto the skin, a few cm proud of it. One mesh per airframe, design and colour: d_<kind>_<design>_<colour index>.
+// where each airframe's nose starts, its tail boom runs, where the number goes, and how big its nose is
+const DEC = {
+  warhorse: { boom: [3.9, 7.4], num: 1.85, ns: 1 },
+  hornet: { boom: [1.5, 4.4], num: -0.1, ns: 0.72 },
+  reaper: { boom: [2.6, 6.2], num: 0.9, ns: 0.85 },
+  mule: { boom: [3.2, 5.4], num: 4.4, ns: 1.35 },
+  kestrel: { boom: [5.2, 9.2], num: 3.0, ns: 1.1 },
+  viper: { boom: [2.8, 6.2], num: 1.2, ns: 0.85 },
+};
+export const DECAL_COLS = {
+  shark: [[0.72, 0.07, 0.06], [0.93, 0.93, 0.9], [0.04, 0.04, 0.05]],
+  flames: [[1, 0.42, 0.06], [1, 0.82, 0.12]],
+  skull: [[0.92, 0.92, 0.88], [0.04, 0.04, 0.05]],
+  checks: [[0.06, 0.06, 0.07], [0.92, 0.92, 0.9]],
+  stripes: [[0.92, 0.92, 0.9], [0.05, 0.05, 0.06]],
+  bands: [[1, 0.42, 0.04]],
+  number: [[0.9, 0.9, 0.86]],
+};
+function sampler(S) {
+  const K = skin(S, 96, 10), R = K.R;
+  const pt = (thDeg, z) => {
+    let i = 0; while (i < R.length - 2 && R[i + 1][0] < z) i++;
+    const a = R[i], b = R[i + 1], f = Math.max(0, Math.min(1, (z - a[0]) / (b[0] - a[0] || 1)));
+    const th = thDeg * Math.PI / 180, pa = ringPoint(a, th), pb = ringPoint(b, th);
+    return [pa[0] + (pb[0] - pa[0]) * f, pa[1] + (pb[1] - pa[1]) * f, z];
+  };
+  return (thDeg, z, off) => {
+    const p = pt(thDeg, z), u = pt(thDeg + 0.5, z), v = pt(thDeg - 0.5, z), w = pt(thDeg, z + 0.02), q = pt(thDeg, z - 0.02);
+    const A = [u[0] - v[0], u[1] - v[1], u[2] - v[2]], B = [w[0] - q[0], w[1] - q[1], w[2] - q[2]];
+    let n = [A[1] * B[2] - A[2] * B[1], A[2] * B[0] - A[0] * B[2], A[0] * B[1] - A[1] * B[0]];
+    let cy = 0; for (let i = 0; i < R.length - 1; i++) if (R[i][0] <= z) cy = R[i][1];
+    if (n[0] * p[0] + n[1] * (p[1] - cy) < 0) n = n.map((x) => -x);
+    const l = Math.hypot(...n) || 1; n = n.map((x) => x / l);
+    return { p: [p[0] + n[0] * off, p[1] + n[1] * off, p[2] + n[2] * off], n };
+  };
+}
+// a list of polygons in (z, angle) -> one mesh: each polygon fanned from its middle, each fan triangle split up finely
+// so it follows the curve of the skin
+function wrap(at, polys, off) {
+  const P = [], N = [], q = [];
+  for (const poly of polys) {
+    const c = poly.reduce((a, b) => [a[0] + b[0] / poly.length, a[1] + b[1] / poly.length], [0, 0]);
+    for (let e = 0; e < poly.length; e++) {
+      const A = c, Bp = poly[e], C = poly[(e + 1) % poly.length], n = 4;
+      const base = P.length, idx = {};
+      for (let i = 0; i <= n; i++) for (let j = 0; j <= n - i; j++) {
+        const u = i / n, v = j / n, z = A[0] + (Bp[0] - A[0]) * u + (C[0] - A[0]) * v, th = A[1] + (Bp[1] - A[1]) * u + (C[1] - A[1]) * v;
+        const s = at(th, z, off); idx[i + ',' + j] = P.length; P.push(s.p); N.push(s.n);
+      }
+      for (let i = 0; i < n; i++) for (let j = 0; j < n - i; j++) {
+        q.push([idx[i + ',' + j], idx[(i + 1) + ',' + j], idx[i + ',' + (j + 1)], idx[i + ',' + (j + 1)]]);
+        if (i + j < n - 1) q.push([idx[(i + 1) + ',' + j], idx[(i + 1) + ',' + (j + 1)], idx[i + ',' + (j + 1)], idx[i + ',' + (j + 1)]]);
+      }
+      void base;
+    }
+  }
+  return build(P, N, q, 0);
+}
+// both sides: phi is degrees below the side line on the right (negative = above); the left side mirrors it
+const sides = (poly) => [poly.map(([z, ph]) => [z, -ph]), poly.map(([z, ph]) => [z, 180 + ph])];
+const circle = (z, ph, rz, rp, n = 12) => Array.from({ length: n }, (_, k) => [z + Math.cos(k / n * 6.283) * rz, ph + Math.sin(k / n * 6.283) * rp]);
+const SEG7 = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcfgd' };
+function designs(kind, S) {
+  const D = DEC[kind], tip = S[0][0], ns = D.ns, out = {};
+  const lerpLip = (pts, d) => { for (let i = 0; i < pts.length - 1; i++) if (d >= pts[i][0] && d <= pts[i + 1][0]) { const f = (d - pts[i][0]) / (pts[i + 1][0] - pts[i][0]); return pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f; } return pts[pts.length - 1][1]; };
+  const N = (d) => tip + d * ns;
+  // shark mouth: red mouth, white teeth top and bottom, an eye above the corner
+  const up = [[0.32, 22], [0.55, 8], [0.95, 2], [1.45, 6], [1.62, 14]], lo = [[0.32, 22], [0.55, 40], [0.95, 42], [1.45, 30], [1.62, 14]];
+  const mouth = [...up, ...lo.slice(1, -1).reverse()].map(([d, p]) => [N(d), p]);
+  const teeth = [];
+  for (let d = 0.5; d < 1.42; d += 0.16) {
+    teeth.push([[N(d), lerpLip(up, d)], [N(d + 0.16), lerpLip(up, d + 0.16)], [N(d + 0.08), lerpLip(up, d + 0.08) + 9]]);
+    teeth.push([[N(d), lerpLip(lo, d)], [N(d + 0.08), lerpLip(lo, d + 0.08) - 9], [N(d + 0.16), lerpLip(lo, d + 0.16)]]);
+  }
+  out.shark = [sides(mouth), teeth.flatMap(sides), sides(circle(N(1.78), -8, 0.065 * ns, 3))];
+  out.sharkEye = [...sides(circle(N(1.75), -8, 0.15 * ns, 6.5))];
+  // flames: tongues licking back from the nose, orange with yellow inside
+  const tongues = (sc) => { const t = []; for (let k = 0; k < 5; k++) { const p0 = -24 + k * 12, len = (1.4 + ((k * 37) % 5) * 0.25) * sc; t.push([[N(0.15), p0], [N(0.15 + len * 0.45), p0 + 2.5], [N(0.15 + len), p0 + 6 + (k % 2 ? 3 : -2)], [N(0.15 + len * 0.55), p0 + 10], [N(0.15), p0 + 11]]); } return t; };
+  out.flames = [tongues(1).flatMap(sides), tongues(0.62).map((t) => t.map(([z, p], i) => [z, p + (i === 0 || i === 4 ? (i ? -2.5 : 2.5) : 0)])).flatMap(sides)];
+  // a skull and crossed bones
+  const sz = N(1.15), sp = 6;
+  out.skull = [[...sides(circle(sz, sp, 0.27 * ns, 13)), ...sides([[sz - 0.15 * ns, sp + 9], [sz + 0.15 * ns, sp + 9], [sz + 0.13 * ns, sp + 18], [sz - 0.13 * ns, sp + 18]]),
+    ...sides([[sz - 0.45 * ns, sp + 20], [sz - 0.38 * ns, sp + 24], [sz + 0.45 * ns, sp + 8], [sz + 0.38 * ns, sp + 4]]), ...sides([[sz + 0.45 * ns, sp + 20], [sz + 0.38 * ns, sp + 24], [sz - 0.45 * ns, sp + 8], [sz - 0.38 * ns, sp + 4]])],
+    [...sides(circle(sz - 0.1 * ns, sp + 2, 0.075 * ns, 4)), ...sides(circle(sz + 0.1 * ns, sp + 2, 0.075 * ns, 4)), ...sides([[sz, sp + 6], [sz - 0.04 * ns, sp + 9], [sz + 0.04 * ns, sp + 9]])]];
+  // a chequered nose
+  const ck = [[], []];
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 16; j++) { const z0 = N(0.06 + i * 0.22), z1 = N(0.06 + (i + 1) * 0.22), a0 = j * 22.5, a1 = a0 + 22.5; ck[(i + j) % 2].push([[z0, a0], [z1, a0], [z1, a1], [z0, a1]]); }
+  out.checks = ck;
+  // invasion stripes round the tail boom, and dayglo rescue bands
+  const [b0, b1] = D.boom, L = b1 - b0, ring = (z0, z1) => { const r = []; for (let j = 0; j < 12; j++) r.push([[z0, j * 30], [z1, j * 30], [z1, j * 30 + 30], [z0, j * 30 + 30]]); return r; };
+  const w = L * 0.08;
+  out.stripes = [[0, 2, 4].flatMap((k) => ring(b0 + L * 0.15 + k * w, b0 + L * 0.15 + (k + 1) * w)), [1, 3].flatMap((k) => ring(b0 + L * 0.15 + k * w, b0 + L * 0.15 + (k + 1) * w))];
+  out.bands = [[...ring(b0 + L * 0.2, b0 + L * 0.32), ...ring(b0 + L * 0.62, b0 + L * 0.74)]];
+  return out;
+}
+// the tail number: two digits on each side of the cabin, made of seven-segment bars
+function digitPolys(kind, S, pos, dgt) {
+  const D = DEC[kind], z0 = D.num, hp = 13 * (kind === 'hornet' || kind === 'viper' ? 1.25 : kind === 'mule' ? 0.9 : 1), wz = 0.28, t = 0.06;
+  // segment rectangles in (reading x 0..1, height 0..1, 0 = top)
+  const SG = { a: [0, 0, 1, t / 0.5], b: [1 - t / wz, 0, 1, 0.5], c: [1 - t / wz, 0.5, 1, 1], d: [0, 1 - t / 0.5, 1, 1], e: [0, 0.5, t / wz, 1], f: [0, 0, t / wz, 0.5], g: [0, 0.5 - t / 1, 1, 0.5 + t / 1] };
+  const polys = [];
+  for (const side of [1, -1]) {
+    const x0 = pos * (wz + 0.1) - (wz + 0.05);
+    for (const c of SEG7[dgt]) {
+      const [rx0, ry0, rx1, ry1] = SG[c];
+      const zA = z0 - side * (x0 + rx0 * wz), zB = z0 - side * (x0 + rx1 * wz), pA = -hp + ry0 * hp * 2 * 0.5 - 2, pB = -hp + ry1 * hp * 2 * 0.5 - 2;
+      const poly = [[zA, pA], [zB, pA], [zB, pB], [zA, pB]].map(([z, p]) => [z, side > 0 ? -p : 180 + p]);
+      polys.push(poly);
+    }
+  }
+  void S;
+  return polys;
+}
+export function decalGeometries() {
+  const G = {};
+  for (const kind of Object.keys(DEC)) {
+    const S = SEC[kind], at = sampler(S), d = designs(kind, S);
+    const put = (name, lists) => lists.forEach((polys, i) => { if (polys.length) G[`d_${kind}_${name}_${i}`] = wrap(at, polys, 0.02 + i * 0.004); });
+    put('shark', [d.shark[0], d.shark[1], d.shark[2]]);
+    G[`d_${kind}_shark_3`] = wrap(at, d.sharkEye, 0.021);
+    put('flames', d.flames); put('skull', d.skull); put('checks', d.checks); put('stripes', d.stripes); put('bands', d.bands);
+    for (let pos = 0; pos < 2; pos++) for (let n = 0; n < 10; n++) G[`d_${kind}_num${pos}_${n}`] = wrap(at, digitPolys(kind, S, pos, String(n)), 0.024);
+  }
   return G;
 }

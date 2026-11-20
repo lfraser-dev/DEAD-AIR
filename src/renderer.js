@@ -585,10 +585,37 @@ void main() {
       base *= 0.65 + 0.55 * br; tRough = 0.97; tMetal = 0.0;
     } else if (k == 70) {
       tRough = 1.0; tMetal = 0.0;
-    } else if (k == 65 || k == 68) {
+    } else if (k == 65 || k == 68 || (k >= 81 && k <= 86)) {
       // aircraft skin: riveted panels, slight tone changes panel to panel, oil and soot streaks running back and down,
       // and paint worn to bare metal on the edges. All in the part's own space so it moves with the helicopter.
       vec3 lp = vLocal * uScale, ln = abs(vLocalN);
+      if (k >= 81) {
+        // camouflage over the paint
+        int cm = k - 80;
+        vec3 dark = base * 0.5, light = min(base * 1.45 + 0.04, vec3(1.0)), brown = mix(base, vec3(0.3, 0.22, 0.13), 0.65), blk = vec3(0.05);
+        float g0 = dot(base, vec3(0.333));
+        if (cm == 1) {
+          float a = noise(lp * 0.55), b = noise(lp * 0.8 + 11.0), c = noise(lp * 1.3 + 23.0);
+          base = a > 0.56 ? dark : (b > 0.6 ? brown : (c > 0.7 ? blk : base));
+        } else if (cm == 2) {
+          float a = noise(lp * 0.35), b = noise(lp * 0.6 + 5.0);
+          base = a > 0.55 ? mix(base, vec3(0.78, 0.68, 0.48), 0.6) : (b > 0.6 ? mix(base, vec3(0.45, 0.36, 0.24), 0.6) : base);
+        } else if (cm == 3) {
+          float a = noise(lp * 0.6), b = noise(lp * 0.9 + 3.0);
+          base = vec3(a > 0.55 ? g0 * 0.55 : (b > 0.6 ? min(1.0, g0 * 1.5 + 0.05) : g0));
+        } else if (cm == 4) {
+          float w = sin(lp.z * 2.6 + noise(lp * 0.8) * 4.0 + lp.y * 0.8);
+          base = w > 0.55 ? blk : base;
+        } else if (cm == 5) {
+          vec2 q2 = vec2(lp.z * 0.8 + lp.y * 0.5, lp.y * 0.9 - lp.z * 0.35 + lp.x * 0.3);
+          float h1 = hash(vec3(floor(q2 * 0.9), 1.0)), h2 = hash(vec3(floor((q2 + vec2(0.5, 0.2)) * vec2(1.3, 0.7)), 2.0));
+          base = h1 > 0.6 ? dark : (h2 > 0.7 ? light : base);
+        } else {
+          vec3 c3 = floor(lp * 4.0);
+          float a = noise(c3 * 0.13), b = hash(c3);
+          base = a > 0.55 ? (b > 0.5 ? dark : brown) : ((a < 0.38 && b > 0.6) ? light : base);
+        }
+      }
       vec2 q = ln.x > 0.5 ? lp.zy : (ln.y > 0.5 ? lp.xz : lp.xy);
       vec2 cell = q / vec2(1.3, 0.85) + 0.37;
       vec2 f = abs(fract(cell) - 0.5), fw = fwidth(cell);
