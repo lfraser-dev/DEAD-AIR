@@ -190,4 +190,17 @@ export const CSS = `
 .da-chips i.dn { background: rgba(255,106,74,.14); color: #ff8a6a; }
 .da-tier:not(.lock):hover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.08) 50%, transparent 70%); animation: da-shine .8s ease-out; pointer-events: none; }
 @keyframes da-shine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.da-hpick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.da-hpick button { background: rgba(255,255,255,.12); color: #ffcf3a; border: 0; width: 26px; height: 24px; font: 900 13px var(--font); cursor: pointer; border-radius: 3px; }
+.da-hpick button:hover { background: #ffcf3a; color: #111; }
+.da-hpick small { flex-basis: 100%; font: 700 10px var(--font); letter-spacing: .08em; opacity: .6; }
+.da-tiers { max-height: 52vh; }
+.da-tiers { scrollbar-width: auto; scrollbar-color: #ffcf3a rgba(0,0,0,.3); }
+.da-tiers.compact { gap: 6px; }
+.da-tiers.compact .da-tier { width: 132px; padding: 8px 10px; }
+.da-tiers.compact .da-tier.eq { width: 210px; }
+.da-tiers.compact .da-tier p { min-height: 0; font-size: 11px; margin: 4px 0 6px; }
+.da-tiers.compact .da-tier small { font-size: 10px; }
+@media (max-width: 1150px) { .da-tiers { left: 230px; right: 250px; } .da-tiers.compact .da-tier { width: 118px; } .da-tiers.compact .da-tier.eq { width: 170px; } }
+@media (max-width: 900px) { .da-tiers { left: 20px; right: 20px; } }
 `;

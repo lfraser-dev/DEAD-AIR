@@ -396,14 +396,10 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     add('armor', [0, -0.55, -3.5], [0.35, 0, 0], [1.3, 0.55, 0.1], PLATE, { mat: 'metal', shape: 0.03 });
   }
   if (ar >= 2) {
-    for (const x of [-0.45, 0, 0.45]) add('armor', [x, 0.06, -3.2], [0.55, 0, 0], [0.06, 0.95, 0.06], GUNM, { mat: 'metal', shape: 'cyl' });
-    add('armor', [0, 0.32, -3.0], [0.55, 0, 0], [1.4, 0.06, 0.06], GUNM, { mat: 'metal', shape: 'cyl' });
     add('armor', [0, 1.64, 0.6], [0, 0, 0], [1.5, 0.08, 2.4], PLATE, { mat: 'metal', shape: 0.03 });
     add('armor', [0, -1.2, 0.2], [0, 0, 0], [1.8, 0.1, 3.0], PLATE, { mat: 'metal', shape: 0.03 });
   }
   if (ar >= 3) {
-    add('armor', [0, -0.85, -4.0], [-0.35, 0, 0], [1.7, 0.14, 1.1], PLATE, { mat: 'metal', shape: 0.03 });
-    for (const x of [-0.6, -0.2, 0.2, 0.6]) add('armor', [x, -0.95, -4.55], [0, 0.785, 0], [0.18, 0.18, 0.18], STEEL, { mat: 'steel', shape: undefined });
     for (const z of [3.0, 4.6, 6.2]) add('armor', [0, z < 4 ? 0.42 : 0.5, z], [0, 0, 0], [z < 4 ? 1.0 : 0.72, z < 4 ? 1.0 : 0.72, 0.22], PLATE, { mat: 'metal', shape: 0.1 });
     for (const x of [-1.25, 1.25]) add('armor', [x, -1.6, 0.25], [0, 0, 0], [0.08, 0.35, 3.4], PLATE, { mat: 'metal', shape: 0.02 });
   }

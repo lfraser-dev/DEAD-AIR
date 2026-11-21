@@ -29,7 +29,7 @@ export const SLOTS = [
     { n: 'STOCK HULL', cost: 0, d: 'Thin metal. Be careful.' },
     { n: 'BOLT-ON PLATES', cost: 300, d: 'Steel plates on the sides and nose. +60% health.' },
     { n: 'HEAVY ARMOUR', cost: 900, d: 'Thick plates and a cage over the glass. +130% health.' },
-    { n: 'FORTRESS', cost: 2000, d: 'Armour everywhere plus a nose ram. +220% health. Heavy!' },
+    { n: 'FORTRESS', cost: 2000, d: 'Armour everywhere, even round the tail. +220% health. Heavy!' },
     { n: 'CERAMIC COMPOSITE', cost: 4500, d: 'Ceramic armour tiles over everything. +300% health and lighter than steel.' },
   ] },
   { id: 'engine', name: 'ENGINE', icon: '✦', tiers: [
@@ -151,7 +151,7 @@ export const HELIS = {
   warhorse: { n: 'WARHORSE', cost: 0, d: 'The all-rounder. Good guns, room for your team, takes a beating. Fits every upgrade.', seats: [4, 8, 12, 16],
     hp: 1, mass: 1, lift: 1, speed: 1, agility: 1, fuel: 1, cap: {} },
   hornet: { n: 'HORNET', cost: 1500, d: 'A tiny, fast scout. Darts between skyscrapers and turns on a coin. Two inside, two on the benches outside. Paper-thin.', seats: [4, 6],
-    hp: 0.6, mass: 0.72, lift: 1.06, speed: 1.3, agility: 1.65, fuel: 0.85, cap: { gun: 2, rockets: 2, bombs: 1, armor: 1, cabin: 1, fuel: 1, winch: 1, turret: 0, medbay: 0, drops: 1, tail: 1, engine: 3, speaker: 1 } },
+    hp: 0.6, mass: 0.72, lift: 1.06, speed: 1.3, agility: 1.65, fuel: 0.85, cap: { gun: 2, rockets: 2, bombs: 1, armor: 1, cabin: 1, fuel: 1, winch: 1, medbay: 0, drops: 1, engine: 3, speaker: 1 } },
   reaper: { n: 'REAPER', cost: 4500, d: 'A gunship. Its chin gun hits 30% harder, its four pylons carry 50% more rockets, and it\'s armoured like a tank. Two seats only.', seats: [2],
     hp: 1.75, mass: 1.2, lift: 1.28, speed: 1.14, agility: 1.08, fuel: 1, gunMul: 1.3, rocketMul: 1.5, cap: { cabin: 0, door: 0, winch: 0, medbay: 0 } },
   viper: { n: 'VIPER', cost: 3000, d: 'A slim two-seat attack helicopter: the fastest thing in the sky, a chin gun 15% harder and 25% more rockets. Not much armour, no cabin.', seats: [2],
@@ -159,7 +159,7 @@ export const HELIS = {
   kestrel: { n: 'KESTREL', cost: 6500, d: 'A big three-engine utility helicopter: 12 to 24 seats, a quick cruise, tough as anything, and room for nearly every upgrade.', seats: [12, 16, 20, 24],
     hp: 1.45, mass: 1.35, lift: 1.42, speed: 1.08, agility: 0.8, fuel: 1.5, cap: { gun: 3 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
-    hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, tail: 0, racks: 0 } },
+    hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0 } },
 };
 export const HELI_IDS = Object.keys(HELIS);
 // the upgrades that actually fit this helicopter

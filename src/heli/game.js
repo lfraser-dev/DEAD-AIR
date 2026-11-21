@@ -298,7 +298,7 @@ export class HeliGame {
     this.$('tbtn').onclick = () => this.openTeam();
     this.$('raid').addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-r]'); if (b && !b.disabled) { e.preventDefault(); this.raidCmd(b.dataset.r); } });
   }
-  flash(t) { const m = this.$('msg'); m.textContent = t; m.style.opacity = 1; clearTimeout(this.msgT); this.msgT = setTimeout(() => { m.style.opacity = 0; }, 1800); }
+  flash(t, ms = 1800) { const m = this.$('msg'); m.textContent = t; m.style.opacity = 1; clearTimeout(this.msgT); this.msgT = setTimeout(() => { m.style.opacity = 0; }, ms); }
 
   // ---------------------------------------------------------------- hangar
   toHangar() {
@@ -321,8 +321,8 @@ export class HeliGame {
     this.$('scrap').innerHTML = `<small>SCRAP</small>⚙ ${s.scrap.toLocaleString('en-GB')}`;
     if (s.refundMsg) {
       // a one-off note: the belly turret / tail gun / electric skids were taken out and paid back
-      this.$('scrap').innerHTML += `<small style="display:block;color:#7dff9a;letter-spacing:.06em;margin-top:4px">+⚙ ${s.refundMsg.toLocaleString('en-GB')} REFUNDED FOR THE<br>BELLY TURRET, TAIL GUN AND ELECTRIC SKIDS</small>`;
-      clearTimeout(this.refundT); this.refundT = setTimeout(() => { delete s.refundMsg; saveSave(s); }, 20000);
+      const n = s.refundMsg; delete s.refundMsg; saveSave(s);
+      setTimeout(() => this.flash(`+⚙ ${n.toLocaleString('en-GB')} REFUNDED FOR THE BELLY TURRET, TAIL GUN AND ELECTRIC SKIDS`, 7000), 400);
     }
     const slots = this.$('slots'); slots.replaceChildren();
     const HK = HELIS[s.heli], cap = (id) => HK.cap[id] ?? 99;
@@ -334,13 +334,19 @@ export class HeliGame {
       b.onclick = () => { this.snd.click?.(2400, 0.2); this.sel = this.sel === sl.id ? 'all' : sl.id; this.renderHangar(); };
       slots.append(b);
     }
-    const tiers = this.$('tiers'); tiers.replaceChildren();
+    const tiers = this.$('tiers'); tiers.replaceChildren(); tiers.classList.toggle('compact', this.sel === 'heli');
     if (this.sel === 'heli') {
       for (const k of HELI_IDS) {
         const h = HELIS[k], own = s.helis.includes(k), eq = s.heli === k;
-        const st2 = statsFor(s.eq, k);
-        const facts = `${st2.seats} SEATS · ${st2.hp} HEALTH · ${st2.fuel} FUEL${Object.keys(h.cap).length ? ` · CAN'T FIT: ${Object.entries(h.cap).filter(([, v]) => v === 0).map(([id]) => SLOT[id].name).join(', ') || 'THE BIGGEST UPGRADES'}` : ''}`;
-        const b = el(`<button class="da-tier${eq ? ' eq' : own ? '' : s.scrap >= h.cost ? ' buy' : ' poor'}" type="button"><b>${h.n}</b><p>${h.d}<br><small>${facts}</small></p><span>${eq ? 'FLYING THIS' : own ? 'FLY THIS' : `BUY ⚙ ${h.cost.toLocaleString('en-GB')}`}</span></button>`);
+        // one card going wrong must never hide the rest
+        let facts = '';
+        try {
+          const st2 = statsFor(s.eq, k);
+          const cant = Object.entries(h.cap || {}).filter(([id, v]) => v === 0 && SLOT[id]).map(([id]) => SLOT[id].name);
+          facts = `${st2.seats} SEATS · ${st2.hp} HEALTH · ${st2.fuel} FUEL${cant.length ? ` · CAN'T FIT: ${cant.join(', ')}` : ''}`;
+        } catch (e) { console.error(e); }
+        // compact cards so all the helicopters fit at once; the full description shows for the one you're flying
+        const b = el(`<button class="da-tier${eq ? ' eq' : own ? '' : s.scrap >= h.cost ? ' buy' : ' poor'}" type="button" title="${h.d.replace(/"/g, '')}"><b>${h.n}</b><p>${eq ? `${h.d}<br>` : ''}<small>${facts}</small></p><span>${eq ? 'FLYING THIS' : own ? 'FLY THIS' : `BUY ⚙ ${h.cost.toLocaleString('en-GB')}`}</span></button>`);
         b.onclick = () => {
           if (!own) { if (s.scrap < h.cost) { this.snd.fail?.(); this.flash('NOT ENOUGH SCRAP'); return; } s.scrap -= h.cost; s.helis.push(k); this.snd.coins?.(); this.flash(`${h.n} BOUGHT`); }
           if (s.heli !== k) { s.heli = k; this.session = this.session ? { ...this.session } : null; this.snd.bolt?.(); this.toHangar(); }
@@ -396,7 +402,14 @@ export class HeliGame {
       });
     }
     const st = this.$('stats');
-    st.innerHTML = `<h4>${HK.n}</h4>${bars(s.eq, s.heli).map(([n, p]) => `<div class="da-bar">${n}<i style="--p:${clamp(p, 0.04, 1).toFixed(2)}"></i></div>`).join('')}<div class="da-best">SAVED: ${s.rescued} · JOBS DONE: ${s.events || 0} · TEAM: ${s.team.length} · WORLD #${s.seed}</div>`;
+    st.innerHTML = `<h4 class="da-hpick"><button type="button" data-d="-1">◀</button>${HK.n}<button type="button" data-d="1">▶</button><small>${s.helis.length} OF ${HELI_IDS.length} HELICOPTERS · CLICK HELICOPTER FOR ALL</small></h4>${bars(s.eq, s.heli).map(([n, p]) => `<div class="da-bar">${n}<i style="--p:${clamp(p, 0.04, 1).toFixed(2)}"></i></div>`).join('')}<div class="da-best">SAVED: ${s.rescued} · JOBS DONE: ${s.events || 0} · TEAM: ${s.team.length} · WORLD #${s.seed}</div>`;
+    // the arrows flip between the helicopters you own
+    for (const b of st.querySelectorAll('.da-hpick button')) b.onclick = () => {
+      const own = HELI_IDS.filter((k) => s.helis.includes(k));
+      if (own.length < 2) { this.sel = 'heli'; this.renderHangar(); return; }
+      s.heli = own[(own.indexOf(s.heli) + Number(b.dataset.d) + own.length) % own.length];
+      saveSave(s); this.snd.bolt?.(); this.toHangar(); this.renderHangar();
+    };
     const opts = this.$('opts'); opts.replaceChildren();
     const opt = (label, val, fn) => { const b = el(`<button class="da-opt" type="button">${label}<b>${val}</b></button>`); b.onclick = () => { fn(); saveSave(s); this.snd.click?.(2000, 0.2); this.renderHangar(); }; opts.append(b); };
     opt('FLYING', FLIGHT[s.flight] || 'EASY', () => { s.flight = s.flight === 'easy' ? 'assist' : s.flight === 'assist' ? 'pro' : 'easy'; });
