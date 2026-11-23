@@ -610,8 +610,8 @@ export class HeliGame {
       this.incomeT = (this.incomeT || 0) + dt;
       if (this.incomeT >= 60) { this.incomeT = 0; const n = this.income(); if (n > 0) { this.addScrap(n); this.feed(`THE SPIRE'S SCAVENGERS BROUGHT IN ⚙${n}`, 'g'); } }
       this.fobTick(dt);
-      const aglHit = this.world.raycast([H.pos[0], H.pos[1] - 2, H.pos[2]], [0, -1, 0], 300);
-      this.agl = aglHit ? aglHit.t : 300;
+      const aglHit = this.world.raycast([H.pos[0], H.pos[1] - 2, H.pos[2]], [0, -1, 0], 1000);
+      this.agl = aglHit ? aglHit.t : 1000;
       const roofs = this.director.list.filter((e) => e.kind === 'rescue').map((e) => e.roof);
       if (this.raid && this.raid.roofT) roofs.push(this.raid.roofT);
       if (this.raid) this.raidTick(dt);
@@ -636,7 +636,7 @@ export class HeliGame {
       if (p < -L) { H.vel[ax] += (-L - p) * 4 * dt; this.outT = 1; }
       if (p > L) { H.vel[ax] -= (p - L) * 4 * dt; this.outT = 1; }
     }
-    const ceil = Math.max(260, this.groundAt(H.pos[0], H.pos[2]) + 160);
+    const ceil = Math.max(750, this.groundAt(H.pos[0], H.pos[2]) + 500);
     if (H.pos[1] > ceil) { H.vel[1] -= (H.pos[1] - ceil) * 3 * dt; this.outT = 1; }
   }
 
@@ -2568,8 +2568,8 @@ export class HeliGame {
     this.updateShots(dt);
     this.gadgets(dt);
     this.wingLanding(dt);
-    const aglHit = this.world.raycast([H.pos[0], H.pos[1] - 2, H.pos[2]], [0, -1, 0], 300);
-    this.agl = aglHit ? aglHit.t : 300;
+    const aglHit = this.world.raycast([H.pos[0], H.pos[1] - 2, H.pos[2]], [0, -1, 0], 1000);
+    this.agl = aglHit ? aglHit.t : 1000;
     for (let i = this.blasts.length - 1; i >= 0; i--) { const b = this.blasts[i]; b.t += dt; if (b.t > 0.5) this.blasts.splice(i, 1); }
     this.fx.update(dt); this.ageSmoke(dt);
     // tell the host where we are (20 a second) and what we hit (15 a second)
