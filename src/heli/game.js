@@ -2170,6 +2170,18 @@ export class HeliGame {
       }
     }
   }
+  // name tags for everyone else online: where your friends' helicopters are (and the host's, if you joined)
+  friendMarks() {
+    const out = [], col = '#5ad8ff';
+    const tag = (pos, name, sub) => out.push({ p: [pos[0], pos[1] + 5, pos[2]], col, icon: '🚁', text: name, sub, friend: true });
+    if (this.coop) for (const f of this.coop.friends.values()) { if (f.pilot && f.wh && !f.wh.dead) tag(f.wh.pos, f.name, `${f.kills} KILLS`); }
+    const cl = this.client;
+    if (cl && cl.wing) {
+      if (cl.heli && cl.hs && cl.hs.m === 'f') tag(cl.heli.pos, cl.hx && cl.hx.hn ? cl.hx.hn : 'HOST', 'THE HOST');
+      for (const o of cl.wings) if (o.id !== cl.myId && o.h && o.h.pos && !o.h.dead) { const i = cl.wx && cl.wx.get(o.id); tag(o.h.pos, i ? i.name : 'FRIEND', ''); }
+    } else if (cl) for (const o of cl.wings) if (o.h && o.h.pos && !o.h.dead) { const i = cl.wx && cl.wx.get(o.id); tag(o.h.pos, i ? i.name : 'FRIEND', ''); }
+    return out;
+  }
   wingSpots() { return this.coop ? [...this.coop.friends.values()].filter((f) => f.pilot && f.wh && !f.wh.dead).map((f) => [f.wh.pos[0], f.wh.pos[2], f.wh.pos[1]]) : []; }
   stopCoop() {
     if (this.coop) { try { this.coop.tr.close(); } catch { /* ignore */ } }
@@ -2202,7 +2214,7 @@ export class HeliGame {
       C.hxT = 1;
       send({ k: 'hx', hpm: S.hp, fum: S.fuel, cr: this.save.team.filter((m) => m.aboard && !m.raid && m.hp > 0).slice(0, 4).map((c) => ROLE_IDS.indexOf(c.role)), sc: this.save.scrap, kl: this.run?.kills || 0,
         fr: [...C.friends.values()].filter((f) => f.seat >= 0).map((f) => [f.seat, f.kills]), eq: this.save.eq, pt: this.save.paint, hk: this.save.heli, rk: this.rockets, bm: this.bombs, td: this.tod,
-        fort: !!this.save.story.fort, masts: this.save.story.masts, st: this.story ? this.story.lines() : null, sw: this.map.spire.wrecked ? 1 : 0,
+        hn: this.coop.info.host || 'HOST', fort: !!this.save.story.fort, masts: this.save.story.masts, st: this.story ? this.story.lines() : null, sw: this.map.spire.wrecked ? 1 : 0,
         wx: [...C.friends.values()].filter((f) => f.pilot).map((f) => [f.id, f.name, f.kind, f.eq, f.paint, f.kills]) });
     }
     if (C.zsT <= 0 && this.mode !== 'hangar') {
@@ -2676,8 +2688,9 @@ export class HeliGame {
     this.hitT = Math.max(0, (this.hitT || 0) - dt); if (this.hitT <= 0) this.$('hit').style.opacity = 0;
     this.$('acts').replaceChildren(); this.$('status').textContent = '';
     this.$('warn').classList.toggle('hidden', hs.m !== 'h'); this.$('warn').textContent = hs.m === 'h' ? 'THE PILOT IS IN THE HANGAR' : '';
-    this.markers(cl.evs.map((e) => e.mk), cl.heli.pos);
-    this.minimap(cl.heli.pos, cl.heli.heading, cl.evs.map((e) => e.mk), [...cl.zs.values()]);
+    const fm = this.friendMarks();
+    this.markers([...cl.evs.map((e) => e.mk), ...fm], cl.heli.pos);
+    this.minimap(cl.heli.pos, cl.heli.heading, [...cl.evs.map((e) => e.mk), ...fm], [...cl.zs.values()]);
     this.eventsList(cl.evs.map((e) => e.mk), cl.heli.pos);
     const boss = this.$('boss');
     boss.classList.toggle('hidden', !cl.titan);
@@ -2942,8 +2955,8 @@ export class HeliGame {
   }
   eventsList(list, from) {
     // story jobs always stay on the list, then the nearest of the rest
-    const all = list.filter(Boolean).map((mk) => ({ mk, d: Math.hypot(mk.p[0] - from[0], mk.p[2] - from[2]) })).sort((a, b) => (b.mk.story ? 1 : 0) - (a.mk.story ? 1 : 0) || a.d - b.d);
-    const rows = all.slice(0, 6);
+    const all = list.filter(Boolean).map((mk) => ({ mk, d: Math.hypot(mk.p[0] - from[0], mk.p[2] - from[2]) })).sort((a, b) => (b.mk.story ? 2 : b.mk.friend ? 1 : 0) - (a.mk.story ? 2 : a.mk.friend ? 1 : 0) || a.d - b.d);
+    const rows = all.slice(0, 7);
     const st = this.client ? this.client.story : this.story && this.story.lines();
     const top = st ? `<div class="da-story" style="--c:#ffd23a"><span><b>${st.title}</b>${st.goals.map((g) => `<em class="${g.have >= g.n ? 'ok' : ''}">${g.have >= g.n ? '✔' : '▸'} ${g.t}${g.n > 1 ? ` · ${g.have}/${g.n}` : ''}</em>`).join('')}</span></div>` : '';
     this.$('evs').innerHTML = top + rows.map(({ mk, d }) => `<div style="--c:${mk.col}"><i>${mk.icon}</i><span>${mk.text}${mk.sub ? `<em>${mk.sub}</em>` : ''}</span><small>${Math.round(d)}M</small></div>`).join('');
@@ -3138,6 +3151,8 @@ export class HeliGame {
       }
     }
     const nearLoot = loots.filter((m) => m.d < (m.text === 'RAIDED' ? 160 : 420)).sort((a, b) => a.d - b.d).slice(0, 8);
+    const fm = this.friendMarks();
+    list.push(...fm);
     this.markers([...list.filter((m) => !m.fob || Math.hypot(m.p[0] - H.pos[0], m.p[2] - H.pos[2]) < 900), ...nearLoot], H.pos, extra);
     this.eventsList(list.filter((m) => !m.fob), H.pos);
     const zr = Math.max([150, 450, 600][S.flir || 0], S.drones ? 650 : 0);
