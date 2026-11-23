@@ -509,7 +509,7 @@ export class HeliGame {
     if (!this.session) {
       this.session = { fob };
       this.run = { t: 0, kills: 0, rescued: 0, lost: 0, scrap: 0 };
-      this.fx.clear(); this.horde.clear(); this.director.clear();
+      this.fx.clear(); this.horde.clear(); this.director.clear(); this.dustoffs = [];
       for (const f of this.fobs) { f.hp = f.max; f.wrecked = false; }
       { const sp0 = this.spawnFor(S); this.heli.reset(sp0.pos, sp0.yaw, S); }
       this.tod = 0.3;
@@ -557,7 +557,7 @@ export class HeliGame {
     const h = this.$('help');
     const mode = this.save.flight, S = this.S || {};
     if (S.plane) {
-      h.innerHTML = `<b>YOU'RE FLYING A PLANE</b> · <kbd>W</kbd><kbd>S</kbd> THROTTLE · <kbd>MOUSE</kbd> PITCH AND ROLL (BANK TO TURN) · <kbd>A</kbd><kbd>D</kbd> RUDDER${S.vtol ? ' · <kbd>V</kbd> HOVER / FLY LIKE A PLANE' : ''}<br>KEEP YOUR SPEED UP OR IT STALLS · ${S.vtol ? 'HOVER TO LAND ANYWHERE' : 'FULL THROTTLE DOWN THE RUNWAY, THEN PULL BACK ON THE MOUSE TO TAKE OFF · LAND AND STOP ON THE RUNWAY TO REFUEL'} · <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>M</kbd> MAP`;
+      h.innerHTML = `<b>YOU'RE FLYING A PLANE</b> · <kbd>W</kbd><kbd>S</kbd> THROTTLE · <kbd>MOUSE</kbd> PITCH AND ROLL (BANK TO TURN) · <kbd>A</kbd><kbd>D</kbd> RUDDER${S.vtol ? ' · <kbd>V</kbd> HOVER / FLY LIKE A PLANE' : ''}<br>KEEP YOUR SPEED UP OR IT STALLS · ${S.vtol ? 'HOVER TO LAND ANYWHERE' : 'FULL THROTTLE DOWN THE RUNWAY, THEN PULL BACK ON THE MOUSE TO TAKE OFF · LAND AND STOP ON THE RUNWAY TO REFUEL'}<br>JOBS: FLY NEAR AN SOS OR A SUPPLY DROP AND PRESS <kbd>E</kbd> TO CALL A DUSTOFF HELICOPTER, THEN KEEP THE ZOMBIES OFF IT · <kbd>E</kbd> OVER A MAST DROPS THE ENGINEER BY PARACHUTE · <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>M</kbd> MAP`;
       this.helpT = on ? 22 : 0;
       return;
     }
@@ -626,6 +626,7 @@ export class HeliGame {
       this.ambientSpawns(dt);
       this.director.update(dt, this);
       if (this.story) this.story.update(dt, this);
+      this.dustoffTick(dt);
       this.incomeT = (this.incomeT || 0) + dt;
       if (this.incomeT >= 60) { this.incomeT = 0; const n = this.income(); if (n > 0) { this.addScrap(n); this.feed(`THE SPIRE'S SCAVENGERS BROUGHT IN ⚙${n}`, 'g'); } }
       this.fobTick(dt);
@@ -1556,6 +1557,7 @@ export class HeliGame {
     const seatsFree = S.seats - aboard.length - this.riders;
     this.seatsFree = seatsFree;
     const acts = [];
+    if (S.plane && !S.vtol && !H.dead && this.mode === 'fly') this.planeActs(acts);
     if (this.atRoof) acts.push(['KeyE', 'E', this.boarding ? `LOADING… ${this.atRoof.roof.count} LEFT` : seatsFree <= 0 ? 'CABIN FULL' : `PICK UP ${this.atRoof.roof.count}`, () => { this.boarding = true; }]);
     const f = this.atFob;
     if (f && !f.wrecked) {
@@ -1805,6 +1807,76 @@ export class HeliGame {
     this.drop = { x: H[0] + Math.cos(a) * 9, y: H[1] + 70, z: H[2] + Math.sin(a) * 9 };
     this.feed('FUEL DROP ON ITS WAY · HOLD ON', 'y');
     this.snd.checkpoint?.();
+  }
+  // ---- PLANES and the jobs: a plane can't land on a roof, so it calls in a DUSTOFF (an AI rescue helicopter from the
+  // Spire) and keeps the area clear while it works. Masts get their engineer by parachute.
+  planeActs(acts) {
+    const H = this.heli, P = H.pos, D = this.director.list;
+    const hd = (e) => Math.hypot(e.x - P[0], e.z - P[2]);
+    const busy = (e) => (this.dustoffs || []).some((d) => d.ev === e);
+    const job = D.filter((e) => ((e.kind === 'rescue' || e.kind === 'crash') && e.roof && e.roof.active && e.roof.count > 0) || (e.kind === 'crate' && e.landed && !e.carried && !e.dust && !e.done))
+      .filter((e) => !busy(e) && hd(e) < 800).sort((a, b) => hd(a) - hd(b))[0];
+    if (job) acts.push(['KeyE', 'E', `CALL A DUSTOFF TO THE ${job.kind === 'crate' ? 'SUPPLY DROP' : job.evac ? 'HOSPITAL' : 'SURVIVORS'} (${Math.round(hd(job))} M)`, () => this.callDustoff(job)]);
+    const mast = D.find((e) => e.kind === 'mast' && !e.working && hd(e) < 260 && P[1] - e.mast.y < 300);
+    if (mast) acts.push(['KeyE', 'E', `PARACHUTE THE ENGINEER IN AT ${mast.name}`, () => { mast.start(this); this.feed('ENGINEER AWAY · CHUTE OPEN', 'g'); }]);
+  }
+  callDustoff(ev) {
+    const sp = this.map.spire, n = (this.dustoffs || []).length;
+    if (n >= 3) { this.feed('ALL THREE DUSTOFFS ARE OUT · WAIT FOR ONE TO COME BACK', 'y'); return; }
+    this.dustoffs = this.dustoffs || [];
+    this.dustoffs.push({ ev, pos: [sp.padAt[0], sp.padAt[1] + 2, sp.padAt[2]], yaw: 0, phase: 'in', riders: 0, t: 0, rotorA: 0, hotT: 0, H: mat4() });
+    this.feed(`DUSTOFF ${n + 1} LAUNCHING FROM THE SPIRE · KEEP THE ${ev.kind === 'crate' ? 'DROP' : 'ROOF'} CLEAR`, 'g');
+    this.radio(ev.kind === 'crate' ? 'Dustoff launching for the supply drop. Keep them off it till we\'ve got it hooked.' : 'Dustoff launching. We\'ll get them off that roof, pilot, you keep the dead off it.', 6);
+    this.snd.checkpoint?.();
+  }
+  dustoffTick(dt) {
+    const L = this.dustoffs; if (!L || !L.length) return;
+    const sp = this.map.spire, home = [sp.padAt[0], sp.padAt[1] + 3, sp.padAt[2]];
+    for (let i = L.length - 1; i >= 0; i--) {
+      const d = L[i], e = d.ev, crate = e.kind === 'crate';
+      d.t += dt; d.rotorA += dt * 26;
+      const r = e.roof, spot = crate ? [e.x, e.y + 9, e.z] : [r.sx0 ?? r.x, r.top + 3.5, r.sz0 ?? r.z];
+      const gone = crate ? e.done && !e.dust : !r.active || r.count <= 0;
+      if (d.phase !== 'out' && gone && !d.riders && !e.dust) d.phase = 'out';
+      const goal = d.phase === 'out' ? home : spot;
+      // fly high between places, then come straight down
+      const dx = goal[0] - d.pos[0], dz = goal[2] - d.pos[2], dh = Math.hypot(dx, dz);
+      const wantY = dh > 60 ? Math.max(goal[1], home[1], this.groundAt(d.pos[0], d.pos[2])) + 150 : goal[1];
+      const hs = Math.min(dh, 70 * dt), vs = clamp(wantY - d.pos[1], -16 * dt, 16 * dt);
+      if (dh > 0.01) { d.pos[0] += (dx / dh) * hs; d.pos[2] += (dz / dh) * hs; if (dh > 5) d.yaw = Math.atan2(-dx, -dz); }
+      d.pos[1] += vs;
+      const there = dh < 2 && Math.abs(d.pos[1] - goal[1]) < 1.5;
+      if (!there) continue;
+      if (d.phase === 'in') d.phase = 'load';
+      if (d.phase === 'load') {
+        if (crate) { if (!e.dust) { e.dust = d; this.feed('DUSTOFF HAS THE CRATE HOOKED', 'g'); } d.loadT = (d.loadT || 0) + dt; if (d.loadT > 2) d.phase = 'out'; continue; }
+        // a hot landing zone: zombies on the roof (or the pile right at the top) stop the loading
+        const hot = this.horde.list.filter((z) => z.alive && Math.abs(z.x - r.x) < (r.sx || 14) / 2 + 3 && Math.abs(z.z - r.z) < (r.sz || 14) / 2 + 3 && z.y > r.top - 3).length;
+        d.hotT -= dt;
+        if (hot > 1) { if (d.hotT <= 0) { d.hotT = 5; this.feed(`DUSTOFF: ${hot} ON THE ROOF · CLEAR IT AND WE'LL LOAD`, 'y'); } continue; }
+        d.loadT = (d.loadT || 0) - dt;
+        if (d.loadT <= 0 && r.count > 0 && d.riders < 12) { d.loadT = 0.6; r.count--; d.riders++; if (r.count <= 0) r.active = false; }
+        if (r.count <= 0 || d.riders >= 12) d.phase = 'out';
+        continue;
+      }
+      // home: hand them over
+      if (crate && e.dust) { e.dust = null; e.done = true; this.addScrap(250); this.save.events = (this.save.events || 0) + 1; this.banner('CRATE DELIVERED BY THE DUSTOFF', '+250 SCRAP', 'good', 2.2); this.storyHit('crate', 1); }
+      if (d.riders) {
+        const n = d.riders; d.riders = 0;
+        if (this.run) this.run.rescued += n; this.save.rescued += n; this.addScrap(25 * n); this.storyHit('rescued', n);
+        this.feed(`THE DUSTOFF BROUGHT ${n} HOME · +⚙${25 * n}`, 'g'); this.snd.coins?.();
+      }
+      if (!crate && r.active && r.count > 0) { d.phase = 'in'; d.loadT = 0; this.feed('DUSTOFF GOING BACK FOR THE REST', 'g'); }
+      else L.splice(i, 1);
+    }
+  }
+  dustoffParts(out) {
+    const L = this.dustoffs, e = this.eye; if (!L || !L.length || !e) return;
+    for (const d of L) {
+      if (Math.hypot(d.pos[0] - e[0], d.pos[2] - e[2]) > 1600) continue;
+      qmat(d.H, [0, Math.sin(d.yaw / 2), 0, Math.cos(d.yaw / 2)], d.pos);
+      try { for (const p of chopperParts({ door: 1, cabin: 2, winch: 1 }, { ...PAINT.rescue, camo: 0, nose: 'none', tailArt: 'bands' }, { rotorA: d.rotorA, tailA: d.rotorA * 2.6, rpm: 1, spin: 0, t: this.t, riders: d.riders, crew: [], rockets: 0, rocketMax: 0, bombs: 0, bombMax: 0, doorAim: [[-1.57, -0.3], [1.57, -0.3]], doorFlash: [0, 0] }, d.H, 'warhorse')) out.push(p); } catch (err) { console.error(err); }
+    }
   }
   deliverCrate() {
     const c = this.crate;
@@ -2961,6 +3033,7 @@ export class HeliGame {
     }
     this.parkedParts(out);
     this.wingParts(out);
+    if (!client) this.dustoffParts(out);
     for (const b of this.blasts || []) {
       const k = b.t / 0.5;
       if (b.ring) { const s = (3 + k * 16) * b.size; P(b.pos, [0, 0, 0], [s, 0.15, s], [1, 0.85, 0.6], { em: 1, shape: 'cylY', alpha: (1 - k) * 0.35 }); continue; }
@@ -3227,6 +3300,7 @@ export class HeliGame {
     const list = this.client ? this.client.evs.map((e) => e.mk).filter(Boolean) : this.director.list.map((e) => e.marker(this));
     const sp = this.map.spire;
     if (this.map.fort && !this.map.fort.locked) list.push({ p: [this.map.fort.padAt[0], this.map.fort.padAt[1] + 6, this.map.fort.padAt[2]], col: '#c8ff5a', icon: 'H', text: 'FORT CALDER', sub: '', fob: true });
+    for (const d of this.dustoffs || []) list.push({ p: [d.pos[0], d.pos[1] + 4, d.pos[2]], col: '#7dff9a', icon: '✚', text: 'DUSTOFF', sub: d.phase === 'load' ? (d.ev.kind === 'crate' ? 'HOOKING THE CRATE' : `LOADING · ${d.riders} ABOARD`) : d.phase === 'out' ? `HEADING HOME${d.riders ? ` · ${d.riders} ABOARD` : ''}` : 'ON ITS WAY' });
     const af = this.map.airfield;
     if (af) list.push({ p: [af.x, af.y + 8, af.z], col: '#5ab4ff', icon: '✈', text: 'AIRFIELD', sub: S.plane && !S.vtol && this.fuel / S.fuel < 0.35 ? 'FUEL HERE' : '', fob: true });
     list.push({ p: [sp.padAt[0], sp.padAt[1] + 6, sp.padAt[2]], col: '#5ab4ff', icon: 'H', text: sp.name, sub: this.riders ? `DROP OFF ${this.riders}` : this.fuel / S.fuel < 0.35 ? 'FUEL HERE' : '', fob: true });

@@ -168,6 +168,7 @@ export class Crate extends Ev {
     this.hp = 300; this.spawnT = 3;
   }
   update(dt, g) {
+    if (this.dust) { const d = this.dust.pos; this.x = d[0]; this.y = d[1] - 7; this.z = d[2]; this.tgt.x = this.x; this.tgt.z = this.z; return; }
     if (this.carried) { const p = g.heli.toWorld([0, -6.5, 0.3]); this.x = p[0]; this.y = p[1]; this.z = p[2]; this.tgt.x = this.x; this.tgt.z = this.z; return; }
     if (!this.landed) {
       this.y -= 6 * dt;
@@ -181,7 +182,7 @@ export class Crate extends Ev {
     if (this.spawnT <= 0 && g.horde.list.filter((z) => z.ev === this.id).length < 14) { this.spawnT = 3; this.spawnAt(g, this.mix(g), this.x, this.z, this.tgt); }
   }
   hitTarget(tgt, dmg, g) {
-    if (this.carried) return;
+    if (this.carried || this.dust) return;
     this.hp -= dmg;
     if (this.hp <= 0) { this.done = true; this.tgt.alive = false; g.feed('THE INFECTED SMASHED THE CRATE OPEN', 'r'); }
   }
