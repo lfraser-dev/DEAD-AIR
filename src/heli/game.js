@@ -2258,7 +2258,7 @@ export class HeliGame {
       <p>HOW DO YOU WANT TO PLAY?</p>
       <div class="da-seg" data-x="role"><button type="button" data-r="wing" class="on">🚁 FLY MY OWN HELICOPTER</button><button type="button" data-r="gun">🔫 RIDE IN THE DOOR</button></div>
       <p><input data-x="name" maxlength="12" placeholder="YOUR NICKNAME" value="${name.replace(/[^\w ]/g, '')}" style="font-size:20px;letter-spacing:.1em;width:260px"></p>
-      <h3 style="margin:10px 0 4px;font:900 14px var(--font);letter-spacing:.2em;color:#7dff9a">SERVERS ON NOW</h3>
+      <h3 style="margin:10px 0 4px;font:900 14px var(--font);letter-spacing:.2em;color:#7dff9a">SERVERS ON NOW <small data-x="relays" style="color:#9aa;letter-spacing:.05em;font-weight:700"></small></h3>
       <div class="da-srv" data-x="list"><p style="opacity:.7">LOOKING FOR SERVERS…</p></div>
       <p>OR TYPE A CODE: <input data-x="code" maxlength="5" placeholder="CODE" autocomplete="off" style="width:130px"></p>
       <p data-x="msg"></p><div class="row"><button data-x="go" type="button">JOIN WITH CODE</button><button class="alt" data-x="back" type="button">BACK</button></div></div>`;
@@ -2277,10 +2277,10 @@ export class HeliGame {
     this.stopList = listServers((rows) => {
       if (!list.isConnected) return;
       if (rows === null) { list.innerHTML = '<p>COULDN\'T REACH THE SERVER LIST. YOU CAN STILL USE A CODE.</p>'; return; }
-      if (!rows.length) { list.innerHTML = '<p style="opacity:.7">NO PUBLIC SERVERS RIGHT NOW. MAKE ONE (HANGAR → 🌐 ONLINE), OR USE A FRIEND\'S CODE.</p>'; return; }
+      if (!rows.length) { list.innerHTML = '<p style="opacity:.7">NO PUBLIC SERVERS YET (THEY CAN TAKE 5 SECONDS TO SHOW UP). YOUR FRIEND MAKES ONE IN THE HANGAR → 🌐 ONLINE, SET TO PUBLIC. OR TYPE THEIR CODE BELOW.</p>'; return; }
       list.innerHTML = rows.map((r) => `<button type="button" data-c="${r.code}" ${r.n >= r.max ? 'disabled' : ''}><span>${r.name}<br><small>${r.host ? `HOST ${r.host} · ` : ''}CHAPTER ${r.ch}</small></span><span>${r.n}/${r.max} ${r.n >= r.max ? 'FULL' : 'JOIN ▶'}</span></button>`).join('');
       list.querySelectorAll('[data-c]').forEach((b) => { b.onclick = () => go(b.dataset.c); });
-    });
+    }, (ok, all) => { const r = j.querySelector('[data-x=relays]'); if (r) r.textContent = `· ${ok} OF ${all} RELAYS CONNECTED`; });
     j.querySelector('[data-x=go]').onclick = () => go(code.value.trim().toUpperCase());
     code.onkeydown = (e) => { if (e.key === 'Enter') go(code.value.trim().toUpperCase()); };
     j.querySelector('[data-x=back]').onclick = () => { this.stopList?.(); this.stopList = null; j.classList.add('hidden'); if (this.joinBack) this.toHangar(); else this.close(); };

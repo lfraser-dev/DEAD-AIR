@@ -65,7 +65,8 @@ class RelayTransport {
   advertise(info) {
     this.info = info;
     if (!this.c) return;
-    try { this.c.publish(TOPIC + 'lobby/' + this.code, info && info.pub ? JSON.stringify({ ...info, code: this.code, t: Date.now() }) : '', { qos: 0, retain: true }); } catch { /* ignore */ }
+    const body = info && info.pub ? JSON.stringify({ ...info, code: this.code, t: Date.now() }) : '';
+    for (const c of [this.c, ...(this.extra || [])]) { try { c.publish(TOPIC + 'lobby/' + this.code, body, { qos: 0, retain: true }); } catch { /* ignore */ } }
   }
   async listen(code) {
     const mqtt = await loadMQTT();
@@ -74,7 +75,9 @@ class RelayTransport {
     let got;
     try { got = await firstOf(tries); } catch { throw new Error("COULDN'T REACH ANY GAME SERVER. CHECK YOUR INTERNET AND TRY AGAIN."); }
     this.c = got.c; this.broker = got.b.name;
-    tries.forEach((p) => p.then(({ c }) => { if (c !== this.c) c.end(true); }, () => {}));
+    // the other relays stay open just to put this server in the list (friends might only reach some of them)
+    this.extra = [];
+    tries.forEach((p) => p.then(({ c }) => { if (c === this.c) return; if (this.closed) { c.end(true); return; } this.extra.push(c); if (this.info) this.advertise(this.info); }, () => {}));
     this.c.subscribe(TOPIC + code + '/h');
     this.c.on('message', (topic, buf) => {
       const m = parse(buf); if (!m || !m.from) return;
@@ -147,6 +150,9 @@ class RelayTransport {
   kick(id) { this.pub('/c/' + id, { kind: 'bye', from: 'host' }); this.peers.delete(id); }
   close() {
     clearInterval(this.timer);
+    this.closed = true;
+    for (const c of this.extra || []) { try { c.publish(TOPIC + 'lobby/' + this.code, '', { retain: true }); } catch { /* ignore */ } setTimeout(() => { try { c.end(true); } catch { /* ignore */ } }, 300); }
+    this.extra = [];
     if (this.c) {
       try {
         if (this.lastHost) this.pub('/h', { kind: 'bye', from: this.id });
@@ -207,30 +213,35 @@ class LocalTransport {
 }
 
 // the public server list: calls back with the servers it can see (newest first) until you call the stop function
-export function listServers(onList) {
+export function listServers(onList, onStatus) {
   const seen = new Map();
-  const emit = () => onList([...seen.values()].filter((v) => Date.now() - v.t < 30000 && Math.abs(Date.now() - v.t) < 5 * 60000).sort((a, b) => b.t - a.t));
-  const take = (v) => {
+  // a server stays in the list while it keeps saying hello (every 5 s). Computers' clocks can be minutes apart, so this
+  // only goes by when THIS computer last heard from it.
+  const emit = () => onList([...seen.values()].filter((v) => Date.now() - v.at < 25000).sort((a, b) => b.at - a.at));
+  const take = (v, retained) => {
     if (!v || !v.code) return;
-    if (v.gone || !v.name) { seen.delete(v.code); emit(); return; }
-    const clean = { code: String(v.code).slice(0, 5).toUpperCase(), name: String(v.name).replace(/[^A-Za-z0-9 '!?-]/g, '').slice(0, 22) || 'SERVER', host: String(v.host || '').replace(/[^A-Za-z0-9 ]/g, '').slice(0, 12), n: Math.max(0, Math.min(9, +v.n || 0)), max: Math.max(1, Math.min(9, +v.max || 5)), ch: Math.max(0, Math.min(9, +v.ch || 0)), world: +v.world || 0, t: Math.min(Date.now(), +v.t || 0) };
+    if (v.gone || !v.name) { seen.delete(String(v.code).toUpperCase()); emit(); return; }
+    // an old leftover from a server that crashed: ignore it unless it's recent (allowing for a badly set clock)
+    if (retained && Math.abs(Date.now() - (+v.t || 0)) > 15 * 60000) return;
+    const clean = { code: String(v.code).slice(0, 5).toUpperCase(), name: String(v.name).replace(/[^A-Za-z0-9 '!?-]/g, '').slice(0, 22) || 'SERVER', host: String(v.host || '').replace(/[^A-Za-z0-9 ]/g, '').slice(0, 12), n: Math.max(0, Math.min(9, +v.n || 0)), max: Math.max(1, Math.min(9, +v.max || 5)), ch: Math.max(0, Math.min(9, +v.ch || 0)), world: +v.world || 0, at: Date.now() };
     seen.set(clean.code, clean); emit();
   };
   const tick = setInterval(emit, 3000);
   if (new URLSearchParams(location.search).get('net') === 'local') {
     const ch = new BroadcastChannel('da-lobby');
-    ch.onmessage = ({ data }) => take(data);
+    ch.onmessage = ({ data }) => take(data, false);
+    onStatus?.(1, 1);
     return () => { clearInterval(tick); ch.close(); };
   }
   const clients = [];
-  let stopped = false;
+  let stopped = false, ok = 0, failed = 0;
   loadMQTT().then((mqtt) => {
     for (const b of BROKERS) openBroker(mqtt, b, rid()).then((c) => {
       if (stopped) { c.end(true); return; }
-      clients.push(c);
+      clients.push(c); ok++; onStatus?.(ok, BROKERS.length);
       c.subscribe(TOPIC + 'lobby/+');
-      c.on('message', (topic, buf) => { const code = topic.split('/').pop(); if (!buf || !buf.length) { seen.delete(code); emit(); return; } take(parse(buf)); });
-    }, () => {});
+      c.on('message', (topic, buf, packet) => { const code = topic.split('/').pop(); if (!buf || !buf.length) { seen.delete(code); emit(); return; } take(parse(buf), !!(packet && packet.retain)); });
+    }, () => { failed++; if (failed === BROKERS.length) onList(null); else onStatus?.(ok, BROKERS.length); });
   }, () => onList(null));
   return () => { stopped = true; clearInterval(tick); for (const c of clients) { try { c.end(true); } catch { /* ignore */ } } };
 }
