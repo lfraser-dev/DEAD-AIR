@@ -223,7 +223,7 @@ export class HeliGame {
       if (flying() && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.code)) e.preventDefault();
       if (!this.keys.has(e.code)) this.hitKeys.add(e.code);
       this.keys.add(e.code);
-      if (this.mode === 'hangar' && e.code === 'Escape') { if (this.panel) this.closePanel(); else this.close(); }
+      if (this.mode === 'hangar' && e.code === 'Escape') { if (this.panel) this.closePanel(); else if (this.client && this.client.wing) this.deploy(); else this.close(); }
       if (this.mode === 'hangar' && e.code === 'Enter' && !this.panel) this.deploy();
       if (flying() && e.code === 'Escape') { if (this.panel) this.closePanel(); else this.pause(true); }
       if (this.mode === 'fly' && e.code === 'KeyT') { if (this.panel) this.closePanel(); else this.openTeam(); }
@@ -460,7 +460,9 @@ export class HeliGame {
       saveSave(s); this.session = null; this.raid = null; this.mapImg = null;
       this.load(); this.toHangar(); this.flash(`NEW WORLD #${s.seed}`); this.snd.checkpoint?.();
     };
-    opts.append(nw);
+    if (!this.client) opts.append(nw);
+    this.$('netbtn').classList.toggle('hidden', !!this.client);
+    this.$('back').textContent = this.client ? '◀ LEAVE SERVER' : '◀ TITLE';
     const c = CAMS[this.sel] || CAMS.all, cm = (AIRFRAMES[s.heli] || AIRFRAMES.warhorse).cam;
     Object.assign(this.cam, { yawT: c[0], pitchT: c[1], distT: c[2] * (this.sel === 'all' || this.sel === 'heli' || this.sel === 'paint' || this.sel === 'camo' ? Math.min(cm, 1.1) : cm > 1.05 ? Math.min(cm, 1.15) : 1), tgtT: c[3] });
   }
@@ -489,6 +491,7 @@ export class HeliGame {
   deploy() {
     this.suppressUsed = false;
     if (this.mode !== 'hangar') return;
+    if (this.client && this.client.wing) { this.wingReturn(); return; }
     this.snd.unlock?.(); this.snd.startRun?.();
     const s = this.save, S = statsFor(s.eq, s.heli);
     S.rotorTier = s.eq.rotor;
@@ -2079,6 +2082,11 @@ export class HeliGame {
       else if (m.k === 'hi') this.friendHello(f, m);
       else if (m.k === 'wp' && f.pilot) this.wingPose(f, m);
       else if (m.k === 'hits' && f.pilot) this.wingHits(f, m);
+      else if (m.k === 'kit' && f.pilot) {
+        f.kind = HELIS[m.kind] ? m.kind : f.kind; f.eq = m.eq && typeof m.eq === 'object' ? m.eq : f.eq;
+        f.paint = { ...(PAINT[m.paint] || PAINT.olive), ...(m.dc || {}), camo: (CAMO[m.dc && m.dc.camo] || {}).k || 0 };
+        if (f.wh) Object.assign(f.wh, { kind: f.kind, eq: f.eq, paint: f.paint });
+      }
       else if (m.k === 'board' && f.pilot) {
         const e = this.director.list.find((q) => q.id === m.id && q.kind === 'rescue' && q.roof.active && q.roof.count > 0);
         if (e) { e.roof.count--; tr.sendTo(id, { k: 'boarded', id: m.id }); if (e.roof.count <= 0) { e.roof.active = false; this.feed(`${f.name} CLEARED A ROOF`, 'g'); } }
@@ -2121,7 +2129,24 @@ export class HeliGame {
   wingPose(f, m) {
     if (!Array.isArray(m.p) || !Array.isArray(m.q) || m.p.length !== 3 || m.q.length !== 4) return;
     const num = (a) => a.map((v) => (Number.isFinite(+v) ? +v : 0));
-    f.tgt = { p: num(m.p), q: num(m.q), v: Array.isArray(m.v) ? num(m.v) : [0, 0, 0], r: +m.r || 0, f: !!m.f, d: Array.isArray(m.d) ? norm(num(m.d)) : [0, 0, -1], dead: !!m.dead, rd: +m.rd || 0, at: performance.now() };
+    const now = performance.now(), t = Number.isFinite(+m.t) ? +m.t : now;
+    f.tgt = { t, p: num(m.p), q: num(m.q), v: Array.isArray(m.v) ? num(m.v) : [0, 0, 0], r: +m.r || 0, f: !!m.f, d: Array.isArray(m.d) ? norm(num(m.d)) : [0, 0, -1], dead: !!m.dead, rd: +m.rd || 0, at: now };
+    // keep the last second or so of where they were, stamped with THEIR clock, to play back smoothly
+    const off = now - t; f.off = f.off == null ? off : Math.min(f.off, off);
+    f.buf = f.buf || [];
+    if (!f.buf.length || t > f.buf[f.buf.length - 1].t) f.buf.push(f.tgt);
+    if (f.buf.length > 24) f.buf.shift();
+  }
+  // where something was at time t, from a buffer of stamped snapshots: in between two of them, or a little past the last
+  static sample(buf, t) {
+    if (!buf || !buf.length) return null;
+    let i = buf.length - 1;
+    while (i > 0 && buf[i].t > t) i--;
+    const a = buf[i], b = buf[Math.min(i + 1, buf.length - 1)];
+    const k = b.t > a.t ? clamp((t - a.t) / (b.t - a.t), 0, 1) : 0, over = Math.max(0, Math.min(0.25, (t - Math.max(a.t, b.t)) / 1000));
+    const p = a.p.map((v, j) => v + (b.p[j] - v) * k + (b.v ? b.v[j] * over : 0));
+    let qb = b.q; if (a.q[0] * qb[0] + a.q[1] * qb[1] + a.q[2] * qb[2] + a.q[3] * qb[3] < 0) qb = qb.map((v) => -v);
+    return { p, q: norm4(a.q.map((v, j) => v + (qb[j] - v) * k)), last: b };
   }
   // a wingman's bullets, rockets and bombs: their game says what it hit, this game does the damage (and pays them)
   wingHits(f, m) {
@@ -2149,11 +2174,13 @@ export class HeliGame {
     for (const f of C.friends.values()) {
       if (!f.pilot || !f.tgt) continue;
       const T = f.tgt, w = f.wh || (f.wh = { pos: [...T.p], q: [...T.q], H: mat4(), rotorA: 0, tailA: 0, kind: f.kind, eq: f.eq, paint: f.paint });
-      const age = Math.min(0.3, (performance.now() - T.at) / 1000), want = T.p.map((v, i) => v + T.v[i] * age);
+      // play them back 160 ms in the past, smoothly between the updates either side (messages arrive in clumps)
+      f.off += dt * 4;
+      const S2 = HeliGame.sample(f.buf, performance.now() - f.off - 160), want = S2 ? S2.p : T.p;
       if (Math.hypot(want[0] - w.pos[0], want[1] - w.pos[1], want[2] - w.pos[2]) > 40) w.pos = [...want];
-      const k = damp(14, dt);
+      const k = damp(30, dt);
       for (let i = 0; i < 3; i++) w.pos[i] += (want[i] - w.pos[i]) * k;
-      let q = T.q; if (q[0] * w.q[0] + q[1] * w.q[1] + q[2] * w.q[2] + q[3] * w.q[3] < 0) q = q.map((v) => -v);
+      let q = S2 ? S2.q : T.q; if (q[0] * w.q[0] + q[1] * w.q[1] + q[2] * w.q[2] + q[3] * w.q[3] < 0) q = q.map((v) => -v);
       w.q = norm4(w.q.map((v, i) => v + (q[i] - v) * k));
       qmat(w.H, w.q, w.pos);
       w.rpm = T.r; w.rotorA += w.rpm * 26 * dt; w.tailA += w.rpm * 70 * dt; w.fire = T.f && !T.dead; w.dead = T.dead; w.rd = T.rd;
@@ -2193,20 +2220,15 @@ export class HeliGame {
     if (!C || !C.friends.size) { if (this.nfx) this.nfx.length = 0; return; }
     if (this.mode !== 'hangar') this.wingTick(dt);
     const send = (m) => { for (const id of C.friends.keys()) C.tr.sendTo(id, m); };
-    C.hsT -= dt; C.zsT -= dt; C.evT -= dt; C.fxT -= dt; C.wgT -= dt;
+    C.hsT -= dt; C.zsT -= dt; C.evT -= dt; C.fxT -= dt;
     const H = this.mode === 'hangar' ? this.hangarHeli : this.heli, S = this.S || statsFor(this.save.eq, this.save.heli);
     if (C.hsT <= 0) {
-      C.hsT = 1 / 20;
-      send({ k: 'hs', t: Math.round(performance.now()), p: H.pos.map(q2), q: H.q.map((v) => Math.round(v * 1000) / 1000), v: H.vel.map(q1), rpm: q2(H.rpm), b: q2(H.boost || 0),
+      C.hsT = 1 / 15;
+      const wg = [...C.friends.values()].filter((f) => f.pilot && f.wh).map((f) => [f.id, ...f.wh.pos.map(q1), ...f.wh.q.map((v) => Math.round(v * 1000) / 1000), q2(f.wh.rpm || 0), f.wh.fire ? 1 : 0, f.wh.dead ? 1 : 0, f.wh.rd || 0]);
+      send({ k: 'hs', w: wg.length ? wg : undefined, t: Math.round(performance.now()), p: H.pos.map(q2), q: H.q.map((v) => Math.round(v * 1000) / 1000), v: H.vel.map(q1), rpm: q2(H.rpm), b: q2(H.boost || 0),
         hp: Math.round(this.hp || 0), fu: Math.round(this.fuel || 0), rd: this.riders || 0,
         da: (this.doorAim || []).map((a) => a.map(q2)), df: (this.doorFlash || [0, 0]).map((v) => (v > 0 ? 1 : 0)),
         fl: this.flashT > 0 ? 1 : 0, sp: q1(this.spin || 0), m: this.mode === 'hangar' ? 'h' : this.mode === 'down' ? 'd' : 'f' });
-    }
-    // the wingmen: where everyone's helicopter is, for everyone else to draw
-    if (C.wgT <= 0) {
-      C.wgT = 1 / 12;
-      const wg = [...C.friends.values()].filter((f) => f.pilot && f.wh).map((f) => [f.id, ...f.wh.pos.map(q1), ...f.wh.q.map((v) => Math.round(v * 1000) / 1000), q2(f.wh.rpm || 0), f.wh.fire ? 1 : 0, f.wh.dead ? 1 : 0, f.wh.rd || 0]);
-      if (wg.length) send({ k: 'wg', w: wg });
     }
     // the things that hardly change, once a second
     C.hxT = (C.hxT ?? 0) - dt;
@@ -2252,7 +2274,7 @@ export class HeliGame {
       C.evT = 1 / 4;
       send({ k: 'ev', e: this.director.list.map((e) => ({ ...e.net(), id: e.id, mk: e.marker(this) })), sh: this.shots.filter((s) => s.kind === 'rocket' || s.kind === 'bomb' || s.kind === 'plasma').map((s) => [s.kind[0], ...s.pos.map(q1), ...s.vel.map(q1)]) });
     }
-    if (this.nfx && this.nfx.length && C.fxT <= 0) { C.fxT = 1 / 15; send({ k: 'fx', f: this.nfx.splice(0, 80) }); this.nfx.length = 0; }
+    if (this.nfx && this.nfx.length && C.fxT <= 0) { C.fxT = 1 / 10; send({ k: 'fx', f: this.nfx.splice(0, 80) }); this.nfx.length = 0; }
   }
   titanEv() { return this.director.list.find((e) => e.kind === 'titan' && e.z0.alive); }
 
@@ -2342,28 +2364,15 @@ export class HeliGame {
       if (this.map.spire) this.map.spire.wrecked = !!m.sw;
       cl.wx = new Map((m.wx || []).map((w) => [w[0], { name: w[1], kind: w[2], eq: w[3], paint: w[4], kills: w[5] }]));
     }
+    if (m.k === 'hs' && Array.isArray(m.w)) this.clientWings(m.w, m.t);
+    else if (m.k === 'hs') cl.wings = [];
     if (m.k === 'hs') {
       cl.hs = Object.assign({ hpm: 1, fum: 1, cr: [], fr: [], kl: 0, sc: 0, rk: 0, bm: 0 }, cl.hx || {}, m);
       cl.hb = cl.hb || [];
       if (!cl.hb.length || m.t > cl.hb[cl.hb.length - 1].t) cl.hb.push({ t: m.t, p: m.p, q: m.q, v: m.v });
       if (cl.hb.length > 30) cl.hb.shift();
     }
-    else if (m.k === 'wg') {
-      // the other wingmen
-      const keep = [];
-      for (const w of m.w || []) {
-        const [id, x, y, z, qx, qy, qz, qw, rpm, fire, dead, rd] = w;
-        let o = cl.wings.find((q) => q.id === id);
-        if (!o) o = { id, h: { pos: [x, y, z], q: [qx, qy, qz, qw], H: mat4(), rotorA: 0, tailA: 0 } };
-        Object.assign(o.h, { tp: [x, y, z], tq: [qx, qy, qz, qw], rpm, fire: !!fire, dead: !!dead, rd });
-        const info = cl.wx && cl.wx.get(id);
-        if (info) Object.assign(o.h, { kind: info.kind, eq: info.eq, paint: info.paint });
-        o.h.kind = o.h.kind || 'warhorse';
-        keep.push(o);
-      }
-      cl.wings = keep;
-    }
-    else if (m.k === 'hurt') { if (cl.wing) this.hurt(clamp(+m.d || 0, 0, 200), this.heli.pos); }
+    else if (m.k === 'hurt') { if (cl.wing && this.mode === 'wing') this.hurt(clamp(+m.d || 0, 0, 200), this.heli.pos); }
     else if (m.k === 'cr') { if (m.s) { this.save.scrap += m.s; this.run && (this.run.scrap += m.s); } if (m.n) { this.run && (this.run.kills += m.n); this.hitMark(true); } }
     else if (m.k === 'boarded') { if (cl.wing) { this.riders++; this.snd.step?.(1); cl.boardWait = false; } }
     else if (m.k === 'zf') { this.horde.farCrowd = m.f; }
@@ -2402,6 +2411,23 @@ export class HeliGame {
         else if (f[0] === 'R') this.radio(f[1], f[2]);
       }
     }
+  }
+  // the other wingmen, as the host last saw them (stamped with the host's clock)
+  clientWings(list, t) {
+    const cl = this.client, keep = [];
+    for (const w of list) {
+      const [id, x, y, z, qx, qy, qz, qw, rpm, fire, dead, rd] = w;
+      let o = cl.wings.find((q) => q.id === id);
+      if (!o) o = { id, buf: [], h: { pos: [x, y, z], q: [qx, qy, qz, qw], H: mat4(), rotorA: 0, tailA: 0 } };
+      if (!o.buf.length || t > o.buf[o.buf.length - 1].t) o.buf.push({ t, p: [x, y, z], q: [qx, qy, qz, qw] });
+      if (o.buf.length > 24) o.buf.shift();
+      Object.assign(o.h, { rpm, fire: !!fire, dead: !!dead, rd });
+      const info = cl.wx && cl.wx.get(id);
+      if (info) Object.assign(o.h, { kind: info.kind, eq: info.eq, paint: info.paint });
+      o.h.kind = o.h.kind || 'warhorse';
+      keep.push(o);
+    }
+    cl.wings = keep;
   }
   // play the host's helicopter and the zombies back a little in the past, smoothly between the updates either side
   // (updates over the internet arrive in uneven clumps; chasing the newest one is what made it stutter)
@@ -2446,13 +2472,13 @@ export class HeliGame {
       p.ph += dt * Math.min(9, 1.5 + sp * 2.4);
       p.hitT = Math.max(0, p.hitT - dt);
     }
-    // the other wingmen glide to where they were last seen
+    // the other wingmen: played back like the host's helicopter
     for (const o of cl.wings) {
-      const w = o.h; if (!w.tp) continue;
-      const kk = damp(12, dt);
-      if (Math.hypot(w.tp[0] - w.pos[0], w.tp[1] - w.pos[1], w.tp[2] - w.pos[2]) > 40) w.pos = [...w.tp];
-      for (let i = 0; i < 3; i++) w.pos[i] += (w.tp[i] - w.pos[i]) * kk;
-      let q = w.tq; if (q[0] * w.q[0] + q[1] * w.q[1] + q[2] * w.q[2] + q[3] * w.q[3] < 0) q = q.map((v) => -v);
+      const w = o.h, S2 = HeliGame.sample(o.buf, rt); if (!S2) continue;
+      const kk = damp(30, dt);
+      if (Math.hypot(S2.p[0] - w.pos[0], S2.p[1] - w.pos[1], S2.p[2] - w.pos[2]) > 40) w.pos = [...S2.p];
+      for (let i = 0; i < 3; i++) w.pos[i] += (S2.p[i] - w.pos[i]) * kk;
+      let q = S2.q; if (q[0] * w.q[0] + q[1] * w.q[1] + q[2] * w.q[2] + q[3] * w.q[3] < 0) q = q.map((v) => -v);
       w.q = norm4(w.q.map((v, i) => v + (q[i] - v) * kk));
       qmat(w.H, w.q, w.pos); w.rotorA += (w.rpm || 0) * 26 * dt; w.tailA += (w.rpm || 0) * 70 * dt;
     }
@@ -2549,20 +2575,34 @@ export class HeliGame {
     // tell the host where we are (20 a second) and what we hit (15 a second)
     cl.sendT -= dt;
     if (cl.sendT <= 0) {
-      cl.sendT = 1 / 20;
+      cl.sendT = 1 / 15;
       const { d } = this.bore();
       const firing = live && this.locked && (this.btn.has(0) || this.clk.has(0) || this.key('KeyF')) && this.overT <= 0 && !H.dead;
-      cl.tr.send({ k: 'wp', p: H.pos.map(q2), q: H.q.map((v) => Math.round(v * 1000) / 1000), v: H.vel.map(q1), r: q2(H.rpm), f: firing ? 1 : 0, d: d.map(q2), dead: H.dead || this.wDown ? 1 : 0, rd: this.riders });
+      cl.tr.send({ k: 'wp', t: Math.round(performance.now()), p: H.pos.map(q2), q: H.q.map((v) => Math.round(v * 1000) / 1000), v: H.vel.map(q1), r: q2(H.rpm), f: firing ? 1 : 0, d: d.map(q2), dead: H.dead || this.wDown ? 1 : 0, rd: this.riders });
     }
     cl.hitT = (cl.hitT || 0) - dt;
     if (cl.hitT <= 0 && (cl.hz.size || cl.hbl.length)) {
-      cl.hitT = 1 / 15;
+      cl.hitT = 1 / 10;
       cl.tr.send({ k: 'hits', z: [...cl.hz].map(([n, e]) => [n, Math.round(e[0]), e[1]]), b: cl.hbl.splice(0, 40) });
       cl.hz.clear();
     }
     this.camera(dt);
     this.hud(dt);
     this.audio();
+  }
+  // back out of the hangar onto the server, with whatever you just changed
+  wingReturn() {
+    const cl = this.client, s = this.save, S = statsFor(s.eq, s.heli);
+    S.rotorTier = s.eq.rotor; this.S = S;
+    this.closePanel();
+    this.$('hangar').classList.add('hidden'); this.$('hud').classList.remove('hidden');
+    this.wDown = 0; this.wingRespawn();
+    this.flaresLeft = S.flares; this.beaconsLeft = S.beacons; this.heat = 0; this.overT = 0; this.riders = 0;
+    cl.tr.send({ k: 'kit', kind: s.heli, eq: capEq(s.eq, s.heli), paint: s.paint, dc: (({ camo, nose, tailArt, num }) => ({ camo, nose, tailArt, num }))(s) });
+    this.applyDay();
+    this.mode = 'wing';
+    this.startAudio();
+    this.lock();
   }
   wingCrash() {
     const p = this.heli.pos;
@@ -2601,6 +2641,7 @@ export class HeliGame {
       acts.push(['Digit2', '2', this.hp >= S.hp ? 'NO DAMAGE' : `REPAIR (${pct(this.hp / S.hp)})`, () => { this.svc = 'fix'; }, this.hp >= S.hp]);
       const full = this.rockets >= S.rockets && this.bombs >= S.bombs;
       acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.rockets = S.rockets; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); this.feed('REARMED', 'g'); }, full]);
+      acts.push(['KeyH', 'H', 'HANGAR', () => { if (this.riders > 0) { cl.tr.send({ k: 'drop', n: this.riders }); this.riders = 0; } this.toHangar(); }, true]);
     }
     if (!f || f.wrecked) this.svc = null;
     if (this.svc === 'fuel') { this.fuelUp(S.fuel * 1.5 * dt); if (this.fuel >= S.fuel) this.svc = null; }
