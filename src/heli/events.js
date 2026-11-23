@@ -21,7 +21,9 @@ export { randName } from './team.js';
 
 class Ev {
   constructor(kind, name, x, z) { this.kind = kind; this.name = name; this.x = x; this.z = z; this.done = false; this.id = Math.random().toString(36).slice(2, 7); }
-  near(g) { return dist2(this, g.heli.pos[0], g.heli.pos[2]) < NEAR; }
+  // how far the nearest player is (the host, or a friend flying their own helicopter)
+  dist(g) { return g.pilotDist ? g.pilotDist(this.x, this.z) : dist2(this, g.heli.pos[0], g.heli.pos[2]); }
+  near(g) { return this.dist(g) < NEAR; }
   edgeSpot(g, x, z, r0 = 50, r1 = 100) {
     for (let i = 0; i < 14; i++) {
       const a = Math.random() * Math.PI * 2, r = r0 + Math.random() * (r1 - r0), px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
@@ -110,7 +112,7 @@ export class HordeEv extends Ev {
     this.tgt = { kind: 'chase', sticky: true, r: town.r * 0.5, alive: true, x: town.x, z: town.z, field: `horde${this.id}` };
   }
   update(dt, g) {
-    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]);
+    const d = this.dist(g);
     const mine = this.real ? g.horde.list.filter((z) => z.ev === this.id) : [];
     if (this.real) {
       const live = mine.filter((z) => z.alive);
@@ -252,7 +254,7 @@ export class Outbreak extends Ev {
     this.tgt = { kind: 'chase', sticky: true, r: 26, alive: true, x: town.x, z: town.z, field: `ob${this.id}` };
   }
   update(dt, g) {
-    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]);
+    const d = this.dist(g);
     if (!this.real) { if (d < 650) { this.real = true; this.unspawned = this.left; g.feed(`OUTBREAK IN ${this.town.name}: CLEAR IT!`, 'r'); } return; }
     const mine = g.horde.list.filter((z) => z.ev === this.id && z.alive);
     if (this.unspawned > 0) for (let k = 0; k < 30 && this.unspawned > 0; k++) {
@@ -300,7 +302,7 @@ export class Convoy extends Ev {
     const m = this.trucks[1]; this.x = m[0]; this.z = m[2]; this.tgt.x = m[0]; this.tgt.z = m[2];
   }
   update(dt, g) {
-    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]), near = d < 450;
+    const d = this.dist(g), near = d < 450;
     const lead = this.trucks[0];
     // anything standing on the road just ahead blocks it
     let block = 0;
@@ -368,7 +370,7 @@ export class MastEv extends Ev {
   start(g) { if (this.working) return; this.working = true; this.hut = 100; g.feed(`ENGINEER ON THE GROUND AT ${this.name} · KEEP THEM OFF THE HUT`, 'y'); g.radio?.(`${this.name}: I'm in. Give me a minute to get the radios going. Keep them off me.`); }
   update(dt, g) {
     if (!this.working) return;
-    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]);
+    const d = this.dist(g);
     if (d > 500) { this.working = false; this.prog = Math.max(0, this.prog - 0.25); g.feed(`YOU LEFT THE ENGINEER AT ${this.name} · THEY HID`, 'r'); return; }
     this.prog += dt / 55;
     this.spawnT -= dt;
@@ -404,7 +406,7 @@ export class FortEv extends Ev {
     this.tgt = { kind: 'chase', sticky: true, r: 60, alive: true, x: fort.x, z: fort.z, field: `fort${this.id}` };
   }
   update(dt, g) {
-    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]);
+    const d = this.dist(g);
     if (!this.real) { if (d < 700) { this.real = true; this.unspawned = this.left; g.radio?.('Fort Calder dead ahead. The whole garrison turned. Clear the place out and we can use it.'); } return; }
     const mine = g.horde.list.filter((z) => z.ev === this.id && z.alive);
     if (this.unspawned > 0) for (let k = 0; k < 40 && this.unspawned > 0; k++) {

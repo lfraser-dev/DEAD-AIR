@@ -607,9 +607,16 @@ export class Horde {
       }
     }
     // (a friend's view: the far-off crowd the host told us about)
-    if (this.farCrowd) for (let i = 0; i < this.farCrowd.length; i += 3) {
-      const x = this.farCrowd[i], z = this.farCrowd[i + 1], y = this.groundAt(x, z), sh = SHIRT[this.farCrowd[i + 2] % SHIRT.length];
-      put({ pos: [x, y + 0.85, z], rot: [0, (i * 0.37) % 6.28, 0], size: [0.5, 1.75, 0.32], col: sh, mesh: 'box' });
+    if (this.farCrowd) {
+      const F = this.farCrowd, st = this.farStride || 3;
+      for (let i = 0; i < F.length; i += st) {
+        const x = F[i], z = st === 4 ? F[i + 2] : F[i + 1], y = st === 4 ? F[i + 1] : this.groundAt(x, z), sh = SHIRT[F[i + st - 1] % SHIRT.length];
+        const dx = x - cam[0], dz = z - cam[2];
+        if (dx * dx + dz * dz > 900 * 900 || dx * fwd[0] + dz * fwd[2] < -20) continue;
+        // a slow shuffle so the crowd doesn't look frozen between updates
+        const sw = Math.sin(performance.now() * 0.0015 + i) * 0.15;
+        put({ pos: [x + sw, y + 0.85, z], rot: [0, (i * 0.37) % 6.28, 0], size: [0.5, 1.75, 0.32], col: sh, mesh: 'box' });
+      }
     }
     let total = 0;
     for (const k of Object.keys(N)) { r.fillBatch(batches[k], this.datas[k], N[k], N[k]); total += N[k]; }

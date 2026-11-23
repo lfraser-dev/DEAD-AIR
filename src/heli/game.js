@@ -2209,6 +2209,11 @@ export class HeliGame {
     } else if (cl) for (const o of cl.wings) if (o.h && o.h.pos && !o.h.dead) { const i = cl.wx && cl.wx.get(o.id); tag(o.h.pos, i ? i.name : 'FRIEND', ''); }
     return out;
   }
+  pilotDist(x, z) {
+    let d = Math.hypot(x - this.heli.pos[0], z - this.heli.pos[2]);
+    if (this.coop) for (const f of this.coop.friends.values()) if (f.pilot && f.wh && !f.wh.dead) d = Math.min(d, Math.hypot(x - f.wh.pos[0], z - f.wh.pos[2]));
+    return d;
+  }
   wingSpots() { return this.coop ? [...this.coop.friends.values()].filter((f) => f.pilot && f.wh && !f.wh.dead).map((f) => [f.wh.pos[0], f.wh.pos[2], f.wh.pos[1]]) : []; }
   stopCoop() {
     if (this.coop) { try { this.coop.tr.close(); } catch { /* ignore */ } }
@@ -2249,17 +2254,20 @@ export class HeliGame {
         groups.get(key).ids.push(f.id);
       }
       const far = (C.zfT = (C.zfT || 0) - 1) <= 0;
-      if (far) C.zfT = 10;
+      if (far) C.zfT = 7;
       for (const { c: P, ids } of groups.values()) {
-        const near = this.horde.list.filter((z) => z.alive && Math.abs(z.x - P[0]) < 170 && Math.abs(z.z - P[2]) < 170);
-        near.sort((a, b) => Math.abs(a.x - P[0]) + Math.abs(a.z - P[2]) - Math.abs(b.x - P[0]) - Math.abs(b.z - P[2]));
+        const dd = (z) => Math.abs(z.x - P[0]) + Math.abs(z.z - P[2]);
+        const all = this.horde.list.filter((z) => z.alive);
+        all.sort((a, b) => dd(a) - dd(b));
+        const near = all.slice(0, 220).filter((z) => dd(z) < 300);
         const out = [];
         if (far) {
+          // everything else (hordes included), nearest first, as simple figures: x, y, z, shirt
           const fz = [];
-          for (const z of this.horde.list) if (z.alive && (Math.abs(z.x - P[0]) >= 170 || Math.abs(z.z - P[2]) >= 170) && fz.length < 2400 * 3) fz.push(Math.round(z.x), Math.round(z.z), (z.id || 0) % 9);
-          for (const id of ids) C.tr.sendTo(id, { k: 'zf', f: fz });
+          for (let i = near.length; i < all.length && fz.length < 4000 * 4; i++) { const z = all[i]; fz.push(Math.round(z.x), Math.round(z.y), Math.round(z.z), (z.id || 0) % 9); }
+          for (const id of ids) C.tr.sendTo(id, { k: 'zf', f: fz, v: 2 });
         }
-        for (const z of near.slice(0, 160)) {
+        for (const z of near) {
           if (!z.nid) { z.nid = (this.nidN = (this.nidN || 0) + 1); this.nidMap.set(z.nid, z); }
           out.push(z.nid, Math.round(z.x * 10), Math.round(z.y * 10), Math.round(z.z * 10), Math.round(z.yaw * 100), ZT.indexOf(z.type), ZS.indexOf(z.st), z.hitT > 0 ? 1 : 0);
         }
@@ -2375,7 +2383,7 @@ export class HeliGame {
     else if (m.k === 'hurt') { if (cl.wing && this.mode === 'wing') this.hurt(clamp(+m.d || 0, 0, 200), this.heli.pos); }
     else if (m.k === 'cr') { if (m.s) { this.save.scrap += m.s; this.run && (this.run.scrap += m.s); } if (m.n) { this.run && (this.run.kills += m.n); this.hitMark(true); } }
     else if (m.k === 'boarded') { if (cl.wing) { this.riders++; this.snd.step?.(1); cl.boardWait = false; } }
-    else if (m.k === 'zf') { this.horde.farCrowd = m.f; }
+    else if (m.k === 'zf') { this.horde.farCrowd = m.f; this.horde.farStride = m.v === 2 ? 4 : 3; }
     else if (m.k === 'zs') {
       const seen = new Set(), z = m.z;
       let i = 0;
