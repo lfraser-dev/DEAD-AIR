@@ -585,7 +585,7 @@ void main() {
       base *= 0.65 + 0.55 * br; tRough = 0.97; tMetal = 0.0;
     } else if (k == 70) {
       tRough = 1.0; tMetal = 0.0;
-    } else if (k == 65 || k == 68 || (k >= 81 && k <= 86)) {
+    } else if (k == 65 || k == 68 || (k >= 81 && k <= 89)) {
       // aircraft skin: riveted panels, slight tone changes panel to panel, oil and soot streaks running back and down,
       // and paint worn to bare metal on the edges. All in the part's own space so it moves with the helicopter.
       vec3 lp = vLocal * uScale, ln = abs(vLocalN);
@@ -610,6 +610,18 @@ void main() {
           vec2 q2 = vec2(lp.z * 0.8 + lp.y * 0.5, lp.y * 0.9 - lp.z * 0.35 + lp.x * 0.3);
           float h1 = hash(vec3(floor(q2 * 0.9), 1.0)), h2 = hash(vec3(floor((q2 + vec2(0.5, 0.2)) * vec2(1.3, 0.7)), 2.0));
           base = h1 > 0.6 ? dark : (h2 > 0.7 ? light : base);
+        } else if (cm == 7) {
+          // arctic: white and pale grey blotches
+          float a = noise(lp * 0.5), b = noise(lp * 0.9 + 7.0);
+          base = a > 0.52 ? vec3(0.9, 0.91, 0.92) : (b > 0.62 ? vec3(0.55, 0.57, 0.6) : mix(base, vec3(0.8), 0.5));
+        } else if (cm == 8) {
+          // jungle: three greens and a brown, in small busy shapes
+          float a = noise(lp * 1.1), b = noise(lp * 1.6 + 9.0), c = noise(lp * 0.7 + 17.0);
+          base = a > 0.58 ? vec3(0.1, 0.17, 0.08) : (b > 0.6 ? vec3(0.32, 0.4, 0.16) : (c > 0.62 ? vec3(0.3, 0.22, 0.12) : vec3(0.18, 0.27, 0.12)));
+        } else if (cm == 9) {
+          // lizard: long ragged horizontal streaks
+          float w = noise(vec3(lp.x * 0.5, lp.y * 3.2, lp.z * 0.4));
+          base = w > 0.6 ? dark : (w < 0.34 ? brown : base);
         } else {
           vec3 c3 = floor(lp * 4.0);
           float a = noise(c3 * 0.13), b = hash(c3);

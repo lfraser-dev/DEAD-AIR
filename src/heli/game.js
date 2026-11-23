@@ -18,7 +18,7 @@ import { Forest } from './trees.js';
 import { Horde, TYPES, pickType } from './horde.js';
 import { hullGeometries } from './hulls.js';
 import { mountAt, AIRFRAMES, Chopper, chopperParts, qrot, qmat, droneParts } from './chopper.js';
-import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, BASE, BEDS, baseCut } from './data.js';
+import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, TIPS, TRIMS, BASE, BEDS, baseCut } from './data.js';
 import { Story, CHAPTERS } from './story.js';
 import { Director, crateParts, wreckParts, convoyParts } from './events.js';
 import { ROLES, ROLE_IDS, WEAPONS, ARMORS, ITEMS, newMember, recruitCost, Raid, HAIR, randName } from './team.js';
@@ -59,13 +59,15 @@ function tierChips(a, b) {
 
 // the paint job plus camo, nose art and tail markings, in the form the model wants
 function paintFor(s) {
-  const p = PAINT[s.paint] || PAINT.olive;
-  return { ...p, camo: (CAMO[s.camo] || {}).k || 0, nose: s.nose && s.nose !== 'none' ? s.nose : p.shark ? 'shark' : 'none', tailArt: s.tailArt || 'none', num: s.num };
+  const p = PAINT[s.paint] || PAINT.olive, tip = TIPS.find((q) => q.id === s.tips), trim = TRIMS.find((q) => q.id === s.trimCol);
+  return { ...p, trim: trim && trim.col ? trim.col : p.trim, tips: tip ? tip.col : null, tips2: tip ? tip.col2 : null, camo: (CAMO[s.camo] || {}).k || 0, nose: s.nose && s.nose !== 'none' ? s.nose : p.shark ? 'shark' : 'none', tailArt: s.tailArt || 'none', num: s.num };
 }
 const DECOR = {
   camo: { list: CAMOS, own: 'camos', cur: 'camo', name: 'CAMO', icon: '▦' },
   nose: { list: NOSEART, own: 'noses', cur: 'nose', name: 'NOSE ART', icon: '☠' },
   tailart: { list: TAILART, own: 'tails', cur: 'tailArt', name: 'TAIL MARKINGS', icon: '#' },
+  trim: { list: TRIMS, own: 'trimsOwn', cur: 'trimCol', name: 'TRIM COLOUR', icon: '◧' },
+  tips: { list: TIPS, own: 'tipsOwn', cur: 'tips', name: 'ROTOR TIPS', icon: '✲' },
 };
 
 export class HeliGame {
@@ -2203,7 +2205,7 @@ export class HeliGame {
       let q = S2 ? S2.q : T.q; if (q[0] * w.q[0] + q[1] * w.q[1] + q[2] * w.q[2] + q[3] * w.q[3] < 0) q = q.map((v) => -v);
       w.q = norm4(w.q.map((v, i) => v + (q[i] - v) * k));
       qmat(w.H, w.q, w.pos);
-      w.rpm = T.r; w.rotorA += w.rpm * 26 * dt; w.tailA += w.rpm * 70 * dt; w.fire = T.f && !T.dead; w.dead = T.dead; w.rd = T.rd;
+      w.rpm = T.r; w.rotorA += w.rpm * 26 * dt; w.tailA += w.rpm * 70 * dt; w.fire = T.f && !T.dead; w.dead = T.dead; w.rd = T.rd; w.vs = Math.hypot(T.v[0], T.v[2]);
       if (w.fire) {
         f.trT -= dt;
         if (f.trT <= 0) { f.trT = 0.08; const o = qrot(w.q, [0, -1.05, -5]).map((c, i) => c + w.pos[i]); this.tracer(o, T.d, 150, 10 + f.slot); }
@@ -2730,7 +2732,7 @@ export class HeliGame {
     if (this.shake > 0) eye = eye.map((c) => c + (Math.random() - 0.5) * this.shake * 0.4);
     this.eye = eye;
     const st = {
-      rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, spin: hs ? hs.sp : 0, t: this.t, riders: hs ? hs.rd : 0, boost: H.boost,
+      rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), spin: hs ? hs.sp : 0, t: this.t, riders: hs ? hs.rd : 0, boost: H.boost,
       crew: hs ? hs.cr.map((r) => ({ col: (ROLES[ROLE_IDS[r]] || ROLES.rifleman).col })) : [],
       doorAim: [0, 1].map((sd) => (sd === cl.seat ? cl.aim : hs && hs.da[sd] ? hs.da[sd] : [sd === 0 ? -1.57 : 1.57, -0.3])),
       doorFlash: [0, 1].map((sd) => (sd === cl.seat ? cl.flash : hs ? hs.df[sd] * 0.05 : 0)),
@@ -2801,7 +2803,7 @@ export class HeliGame {
     const S = this.S, s = this.save;
     const fr = this.coop ? [...this.coop.friends.values()] : [];
     const st = {
-      rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, spin: (this.spin = (this.spin || 0) + this.spinV * dt * 40), t: this.t, install: null, riders: this.riders,
+      rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), spin: (this.spin = (this.spin || 0) + this.spinV * dt * 40), t: this.t, install: null, riders: this.riders,
       crew: s.team.filter((m) => m.aboard && !m.raid && m.hp > 0).slice(0, 4).map((m) => ({ col: ROLES[m.role].col })),
       rockets: this.rockets, rocketMax: S.rockets, bombs: this.bombs, bombMax: S.bombs, boost: H.boost, doorAim: this.doorAim, doorFlash: this.doorFlash, flash: this.flashT,
       shieldK: S.shield ? this.shield / S.shield : 0, shieldHit: this.shieldHit, flares: S.flares ? this.flaresLeft / S.flares : 0,
@@ -2983,7 +2985,7 @@ export class HeliGame {
     if (cl && cl.wing && cl.heli && cl.hs && cl.hs.m === 'f') {
       try {
         const H = cl.heli, hs = cl.hs;
-        const st = { rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, spin: hs.sp || 0, t: this.t, riders: hs.rd || 0, crew: (hs.cr || []).map((r) => ({ col: (ROLES[ROLE_IDS[r]] || ROLES.rifleman).col })), boost: H.boost,
+        const st = { rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), spin: hs.sp || 0, t: this.t, riders: hs.rd || 0, crew: (hs.cr || []).map((r) => ({ col: (ROLES[ROLE_IDS[r]] || ROLES.rifleman).col })), boost: H.boost,
           doorAim: [0, 1].map((sd) => (hs.da && hs.da[sd]) || [sd === 0 ? -1.57 : 1.57, -0.3]), doorFlash: [0, 1].map((sd) => (hs.df ? hs.df[sd] * 0.05 : 0)), flash: hs.fl ? 0.04 : 0,
           rockets: hs.rk || 0, rocketMax: statsFor(cl.eq, cl.hk).rockets, bombs: hs.bm || 0, bombMax: statsFor(cl.eq, cl.hk).bombs };
         for (const p of chopperParts(capEq(cl.eq, cl.hk), cl.dc ? { ...(PAINT[cl.paint] || PAINT.olive), ...cl.dc, camo: (CAMO[cl.dc.camo] || {}).k || 0 } : PAINT[cl.paint] || PAINT.olive, st, H.H, cl.hk)) out.push(p);
@@ -2994,7 +2996,7 @@ export class HeliGame {
       const w = f.wh || f.h;
       if (!w || w.dead) continue;
       try {
-        const st = { rotorA: w.rotorA, tailA: w.tailA, rpm: w.rpm, spin: 0, t: this.t, riders: w.rd || 0, crew: [], rockets: 4, rocketMax: 4, bombs: 2, bombMax: 2, flash: w.fire ? 0.04 : 0, doorAim: [[-1.57, -0.3], [1.57, -0.3]], doorFlash: [0, 0] };
+        const st = { rotorA: w.rotorA, tailA: w.tailA, rpm: w.rpm, vs: w.vs || 0, spin: 0, t: this.t, riders: w.rd || 0, crew: [], rockets: 4, rocketMax: 4, bombs: 2, bombMax: 2, flash: w.fire ? 0.04 : 0, doorAim: [[-1.57, -0.3], [1.57, -0.3]], doorFlash: [0, 0] };
         for (const p of chopperParts(capEq(w.eq || {}, w.kind), w.paint || PAINT.olive, st, w.H, w.kind)) out.push(p);
       } catch (err) { console.error(err); }
     }

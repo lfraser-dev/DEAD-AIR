@@ -166,6 +166,10 @@ export const HELIS = {
     hp: 0.95, mass: 0.95, lift: 1.04, speed: 1.02, agility: 1.08, fuel: 1.15, cap: { gun: 3, rockets: 2, armor: 3, rotor: 1 } },
   seaking: { n: 'SEA KING', cost: 5500, d: 'A big search-and-rescue helicopter with a boat hull: it can land on water. A rescue hoist comes fitted, 14 to 26 seats, and it flies for ages.', seats: [14, 18, 22, 26],
     hp: 1.55, mass: 1.45, lift: 1.52, speed: 0.98, agility: 0.74, fuel: 1.7, floats: true, min: { winch: 1 }, cap: { gun: 2, rockets: 2, pods: 1 } },
+  osprey: { n: 'OSPREY', cost: 8000, d: 'A tiltrotor: it takes off like a helicopter, then tips its rotors forward and flies like a plane. Very fast, 16 to 28 seats, huge range. Wide, so mind the buildings.', seats: [16, 20, 24, 28],
+    hp: 1.5, mass: 1.5, lift: 1.62, speed: 1.75, agility: 0.7, fuel: 2.0, tilt: true, cap: { rotor: 0, gun: 2, rockets: 2, pods: 1, bombs: 2 } },
+  harrier: { n: 'HARRIER', cost: 9500, d: 'A jump jet. Takes off straight up on four swivelling nozzles, then it\'s the fastest thing in the game by miles. Guns 20% harder, 50% more rockets. One seat.', seats: [1],
+    hp: 0.85, mass: 0.9, lift: 1.3, speed: 2.1, agility: 1.55, fuel: 0.9, gunMul: 1.2, rocketMul: 1.5, jet: true, cap: { rotor: 0, cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0, drops: 0, armor: 2 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
     hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0, pods: 0 } },
 };
@@ -188,6 +192,15 @@ export const PAINTS = [
   { id: 'hazard', n: 'HAZARD', body: [0.95, 0.72, 0.08], trim: [0.08, 0.08, 0.08], cost: 500, stripe: [0.08, 0.08, 0.08] },
   { id: 'shark', n: 'SHARK MOUTH', body: [0.42, 0.46, 0.5], trim: [0.2, 0.22, 0.25], cost: 800, shark: true },
   { id: 'toxic', n: 'TOXIC', body: [0.2, 0.22, 0.2], trim: [0.35, 1, 0.2], cost: 1200, glow: [0.35, 1, 0.2], stripe: [0.35, 1, 0.2] },
+  { id: 'navy', n: 'NAVY GREY', body: [0.42, 0.45, 0.48], trim: [0.22, 0.24, 0.26], cost: 200 },
+  { id: 'jungle', n: 'JUNGLE GREEN', body: [0.16, 0.25, 0.13], trim: [0.08, 0.1, 0.07], cost: 200 },
+  { id: 'midnight', n: 'MIDNIGHT BLUE', body: [0.08, 0.12, 0.25], trim: [0.04, 0.05, 0.1], cost: 350 },
+  { id: 'police', n: 'POLICE', body: [0.9, 0.91, 0.92], trim: [0.1, 0.2, 0.55], cost: 400, stripe: [0.1, 0.25, 0.75] },
+  { id: 'medevac', n: 'MEDEVAC', body: [0.92, 0.92, 0.9], trim: [0.75, 0.1, 0.1], cost: 400, stripe: [0.85, 0.12, 0.1] },
+  { id: 'coast', n: 'COASTGUARD', body: [0.95, 0.45, 0.1], trim: [0.92, 0.92, 0.9], cost: 450, stripe: [0.92, 0.92, 0.9] },
+  { id: 'cherry', n: 'CHERRY RED', body: [0.55, 0.05, 0.07], trim: [0.12, 0.02, 0.03], cost: 600 },
+  { id: 'carbon', n: 'CARBON BLACK', body: [0.07, 0.07, 0.08], trim: [0.3, 0.3, 0.32], cost: 700, mat: 'metal' },
+  { id: 'sky', n: 'SKY BLUE', body: [0.45, 0.65, 0.85], trim: [0.92, 0.92, 0.9], cost: 500, stripe: [0.92, 0.92, 0.9] },
   { id: 'gold', n: 'SOLID GOLD', body: [0.85, 0.64, 0.2], trim: [0.5, 0.36, 0.1], cost: 5000, mat: 'brass' },
   { id: 'dev', n: 'DEV: ROOT', body: [0.04, 0.05, 0.06], trim: [0.1, 1, 0.45], cost: 0, glow: [0.1, 1, 0.45], stripe: [0.1, 1, 0.45], dev: true },
 ];
@@ -201,6 +214,9 @@ export const CAMOS = [
   { id: 'tiger', n: 'TIGER STRIPES', cost: 700, k: 4, d: 'Black stripes the whole way down.' },
   { id: 'splinter', n: 'SPLINTER', cost: 900, k: 5, d: 'Hard-edged shards of light and dark.' },
   { id: 'digital', n: 'DIGITAL', cost: 1200, k: 6, d: 'Tiny pixels, like modern uniforms.' },
+  { id: 'arcticcamo', n: 'ARCTIC CAMO', cost: 800, k: 7, d: 'White and pale grey blotches, for snow.' },
+  { id: 'junglecamo', n: 'JUNGLE', cost: 800, k: 8, d: 'Busy little shapes in three greens and a brown.' },
+  { id: 'lizard', n: 'LIZARD', cost: 1000, k: 9, d: 'Long ragged streaks along the body.' },
 ];
 export const CAMO = Object.fromEntries(CAMOS.map((p) => [p.id, p]));
 export const NOSEART = [
@@ -209,12 +225,35 @@ export const NOSEART = [
   { id: 'flames', n: 'FLAMES', cost: 900, d: 'Hot-rod flames licking back from the nose.' },
   { id: 'skull', n: 'SKULL & BONES', cost: 900, d: 'A skull and crossbones on both sides.' },
   { id: 'checks', n: 'CHEQUERED NOSE', cost: 500, d: 'Black and white checks, like the old fighter squadrons.' },
+  { id: 'bolt', n: 'LIGHTNING BOLT', cost: 600, d: 'A yellow lightning bolt down each side.' },
+  { id: 'sunburst', n: 'SUNBURST', cost: 800, d: 'Orange and yellow rays fanning back from the nose.' },
 ];
 export const TAILART = [
   { id: 'none', n: 'PLAIN TAIL', cost: 0, d: 'Nothing on the tail.' },
   { id: 'stripes', n: 'INVASION STRIPES', cost: 400, d: 'Black and white bands round the tail boom.' },
   { id: 'bands', n: 'RESCUE BANDS', cost: 400, d: 'Dayglo orange bands, so your team can spot you.' },
   { id: 'number', n: 'TAIL NUMBER', cost: 200, d: 'Your number on both sides. Click it again for a new one.' },
+  { id: 'tchecks', n: 'CHEQUERED BAND', cost: 400, d: 'A black and white chequered band round the tail.' },
+  { id: 'star', n: 'STAR ROUNDEL', cost: 500, d: 'A white star in a blue circle on each side of the cabin.' },
+];
+// rotor tip colours (the tips are painted so people can see the blades spinning)
+export const TIPS = [
+  { id: 'none', n: 'YELLOW TIPS', cost: 0, d: 'The standard: yellow.', col: [0.9, 0.8, 0.2] },
+  { id: 'white', n: 'WHITE TIPS', cost: 100, d: 'Plain white.', col: [0.93, 0.93, 0.9] },
+  { id: 'red', n: 'RED TIPS', cost: 150, d: 'Bright red.', col: [0.85, 0.1, 0.08] },
+  { id: 'orange', n: 'DAYGLO TIPS', cost: 200, d: 'Dayglo orange, very easy to see.', col: [1, 0.45, 0.05] },
+  { id: 'black', n: 'BLACK TIPS', cost: 150, d: 'Stealthy.', col: [0.04, 0.04, 0.05] },
+  { id: 'chequer', n: 'STRIPED TIPS', cost: 300, d: 'Red and white stripes.', col: [0.85, 0.1, 0.08], col2: [0.93, 0.93, 0.9] },
+];
+// a second colour for the trim (tail plane, fins, pods...), over the paint job's own
+export const TRIMS = [
+  { id: 'none', n: 'MATCHING TRIM', cost: 0, d: 'Whatever the paint job comes with.' },
+  { id: 'black', n: 'BLACK TRIM', cost: 150, d: 'Black.', col: [0.05, 0.05, 0.06] },
+  { id: 'white', n: 'WHITE TRIM', cost: 150, d: 'White.', col: [0.9, 0.9, 0.88] },
+  { id: 'red', n: 'RED TRIM', cost: 200, d: 'Red.', col: [0.7, 0.08, 0.07] },
+  { id: 'yellow', n: 'YELLOW TRIM', cost: 200, d: 'Yellow.', col: [0.95, 0.72, 0.08] },
+  { id: 'blue', n: 'BLUE TRIM', cost: 200, d: 'Blue.', col: [0.1, 0.25, 0.65] },
+  { id: 'gunmetal', n: 'GUNMETAL TRIM', cost: 250, d: 'Dark bare metal.', col: [0.22, 0.23, 0.25] },
 ];
 
 // THE SPIRE: what you build at the base. Each tier needs scrap AND enough people living there (everyone you rescue

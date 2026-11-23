@@ -62,6 +62,17 @@ const SEC = {
     [9.7, 0.92, 0.6, 0.7, 2.1, 2.1], [10.5, 1.0, 0.42, 0.5, 2, 2], [10.66, 1.0, 0.05, 0.05, 2, 2],
   ],
   seaking_cowl: [[-2.7, 1.42, 0.3, 0.1, 2, 2], [-2.3, 1.52, 1.6, 0.62, 2.5, 4], [2.2, 1.58, 1.72, 0.82, 3, 5], [3.2, 1.5, 1.2, 0.5, 2.6, 4], [3.5, 1.44, 0.3, 0.1, 2, 2]],
+  // OSPREY: a tiltrotor: a fat cabin, a high wing with a rotor at each tip, a twin-fin tail and a loading ramp
+  osprey: [
+    [-7.0, -0.2, 0.06, 0.06, 2, 2], [-6.8, -0.18, 0.9, 0.8, 2.2, 2.2], [-6.3, -0.1, 1.6, 1.5, 2.4, 2.6], [-5.5, 0.0, 2.2, 2.1, 2.8, 3.4],
+    [-4.5, 0.05, 2.5, 2.5, 3.6, 4.6], [4.2, 0.1, 2.5, 2.5, 3.6, 4.6], [5.8, 0.35, 2.2, 1.9, 3.2, 3.8], [7.1, 0.62, 1.5, 1.1, 2.8, 3], [7.5, 0.72, 0.3, 0.3, 2, 2],
+  ],
+  // HARRIER: a jump jet. A pointed nose, a bubble canopy, big intakes, shoulder wings, four swivelling nozzles
+  harrier: [
+    [-6.6, -0.15, 0.05, 0.05, 2, 2], [-6.3, -0.13, 0.4, 0.42, 2.1, 2.1], [-5.6, -0.1, 0.8, 0.85, 2.3, 2.4], [-4.6, -0.05, 1.1, 1.15, 2.5, 2.6],
+    [-3.6, 0.0, 1.3, 1.35, 2.8, 3], [-1.0, 0.0, 1.8, 1.45, 3.4, 3.6], [2.0, 0.05, 1.7, 1.4, 3.2, 3.4], [4.5, 0.2, 1.1, 1.0, 2.6, 2.6], [7.0, 0.35, 0.5, 0.5, 2.2, 2.2], [7.4, 0.4, 0.06, 0.06, 2, 2],
+  ],
+  harrier_c: [[-4.7, 0.42, 0.1, 0.08, 2, 2], [-4.35, 0.55, 0.72, 0.55, 2.4, 3], [-3.6, 0.7, 0.84, 0.76, 2.6, 3], [-2.7, 0.66, 0.78, 0.66, 2.6, 3], [-2.3, 0.55, 0.4, 0.3, 2, 2]],
   mule_fwd: [[-6.4, 1.45, 0.3, 0.2, 2, 2], [-6.05, 1.62, 1.3, 0.86, 2.6, 5], [-4.4, 1.7, 1.42, 0.98, 3, 5], [-3.9, 1.6, 0.4, 0.3, 2, 2]],
   mule_aft: [[2.85, 1.9, 0.3, 0.3, 2, 2], [3.25, 2.0, 1.4, 1.7, 2.6, 4], [5.5, 2.1, 1.54, 2.06, 3, 5], [6.35, 2.25, 1.22, 1.62, 2.6, 4], [6.6, 2.3, 0.2, 0.2, 2, 2]],
 };
@@ -80,6 +91,8 @@ const PANES = {
   viper: [],
   huey: [[46, 89, -4.2, -3.15], [62, 88, -3.1, -2.55], [4, 46, -3.95, -2.75], [220, 258, -4.15, -3.35]],
   seaking: [[48, 89, -5.85, -4.75], [6, 44, -5.45, -4.35], [228, 256, -5.95, -5.3], [16, 32, -2.9, -2.3], [16, 32, -1.5, -0.9], [16, 32, -0.1, 0.5], [16, 32, 1.3, 1.9]],
+  osprey: [[46, 89, -6.65, -5.55], [6, 44, -6.25, -5.15], [226, 256, -6.8, -6.1], [16, 32, -3.5, -3.0], [16, 32, -1.5, -1.0], [16, 32, 0.5, 1.0]],
+  harrier: [],
   mule: [[42, 88, -7.5, -6.62], [228, 256, -7.56, -7.02], [12, 40, -7.12, -6.3]],
 };
 
@@ -177,7 +190,7 @@ export function hullGeometries() {
   for (const k of Object.keys(SEC)) G['h_' + k] = loft(SEC[k], k === 'pod' ? 24 : 48);
   for (const k of Object.keys(PANES)) if (PANES[k].length) G['g_' + k] = panes(SEC[k], PANES[k]);
   // the Reaper's canopies are glass all over
-  G.g_reaper_c1 = loft(SEC.reaper_c1, 40); G.g_reaper_c2 = loft(SEC.reaper_c2, 40); G.g_viper_c = loft(SEC.viper_c, 40);
+  G.g_reaper_c1 = loft(SEC.reaper_c1, 40); G.g_reaper_c2 = loft(SEC.reaper_c2, 40); G.g_viper_c = loft(SEC.viper_c, 40); G.g_harrier_c = loft(SEC.harrier_c, 40);
   Object.assign(G, decalGeometries());
   return G;
 }
@@ -194,6 +207,8 @@ const DEC = {
   viper: { boom: [2.8, 6.2], num: 1.2, ns: 0.85 },
   huey: { boom: [3.0, 7.6], num: 1.6, ns: 1.05 },
   seaking: { boom: [6.2, 9.6], num: 2.6, ns: 1.25 },
+  osprey: { boom: [4.6, 7.0], num: 1.4, ns: 1.2 },
+  harrier: { boom: [3.0, 6.6], num: 0.6, ns: 0.9 },
 };
 export const DECAL_COLS = {
   shark: [[0.72, 0.07, 0.06], [0.93, 0.93, 0.9], [0.04, 0.04, 0.05]],
@@ -203,6 +218,10 @@ export const DECAL_COLS = {
   stripes: [[0.92, 0.92, 0.9], [0.05, 0.05, 0.06]],
   bands: [[1, 0.42, 0.04]],
   number: [[0.9, 0.9, 0.86]],
+  bolt: [[1, 0.82, 0.08]],
+  star: [[0.1, 0.15, 0.38], [0.93, 0.93, 0.9]],
+  tchecks: [[0.06, 0.06, 0.07], [0.92, 0.92, 0.9]],
+  sunburst: [[0.95, 0.35, 0.08], [1, 0.8, 0.15]],
 };
 function sampler(S) {
   const K = skin(S, 96, 10), R = K.R;
@@ -279,6 +298,19 @@ function designs(kind, S) {
   const w = L * 0.08;
   out.stripes = [[0, 2, 4].flatMap((k) => ring(b0 + L * 0.15 + k * w, b0 + L * 0.15 + (k + 1) * w)), [1, 3].flatMap((k) => ring(b0 + L * 0.15 + k * w, b0 + L * 0.15 + (k + 1) * w))];
   out.bands = [[...ring(b0 + L * 0.2, b0 + L * 0.32), ...ring(b0 + L * 0.62, b0 + L * 0.74)]];
+  // a lightning bolt down each side of the nose
+  out.bolt = [[[[N(0.7), -14], [N(2.1), -6], [N(1.85), 2]], [[N(1.7), -4], [N(3.3), 12], [N(2.05), 4]]].flatMap(sides)];
+  // a star in a blue disc on the cabin sides
+  const stz = D.num - 1.1 * ns, star = Array.from({ length: 10 }, (_, k) => { const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? 0.42 : 1; return [stz + Math.cos(a) * 0.34 * ns * r, -2 + Math.sin(a) * 11 * r]; });
+  out.star = [sides(circle(stz, -2, 0.42 * ns, 14, 18)), sides(star)];
+  // a chequered band round the tail boom
+  const tc = [[], []];
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 12; j++) { const z0 = b0 + L * 0.4 + i * L * 0.08, z1 = z0 + L * 0.08; tc[(i + j) % 2].push([[z0, j * 30], [z1, j * 30], [z1, j * 30 + 30], [z0, j * 30 + 30]]); }
+  out.tchecks = tc;
+  // a sunburst: rays fanning back from the nose, orange and yellow
+  const rays = [[], []];
+  for (let k = 0; k < 7; k++) { const p0 = -30 + k * 10; rays[k % 2].push([[N(0.2), p0 + 4], [N(2.4), p0 - 2], [N(2.4), p0 + 6]]); }
+  out.sunburst = [rays[0].flatMap(sides), rays[1].flatMap(sides)];
   return out;
 }
 // the tail number: two digits on each side of the cabin, made of seven-segment bars
@@ -307,6 +339,7 @@ export function decalGeometries() {
     put('shark', [d.shark[0], d.shark[1], d.shark[2]]);
     G[`d_${kind}_shark_3`] = wrap(at, d.sharkEye, 0.021);
     put('flames', d.flames); put('skull', d.skull); put('checks', d.checks); put('stripes', d.stripes); put('bands', d.bands);
+    put('bolt', d.bolt); put('star', d.star); put('tchecks', d.tchecks); put('sunburst', d.sunburst);
     for (let pos = 0; pos < 2; pos++) for (let n = 0; n < 10; n++) G[`d_${kind}_num${pos}_${n}`] = wrap(at, digitPolys(kind, S, pos, String(n)), 0.024);
   }
   return G;
