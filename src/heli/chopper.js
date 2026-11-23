@@ -10,6 +10,7 @@
 // Local frame: -Z forward, +Y up, +X right. Body rates: w[0] pitch (+ = nose up), w[1] yaw (+ = left), w[2] roll (+ = left).
 import { compose, mul, mat4, clamp, damp } from '../math.js';
 import { DECAL_COLS } from './hulls.js';
+import { WATER } from './terrain.js';
 
 // ---------------------------------------------------------------- quaternions
 export const qmul = (a, b) => [
@@ -85,6 +86,17 @@ export const AIRFRAMES = {
       skids: [0.78, 0, 0], light: [1, 0.1, -1.5], drops: [0.85, 0.3, 0], radio: [1, -0.3, 0.6], fuel: [0.95, 0.3, -0.6], racks: [0.95, 0.2, -1.2], nvg: [1, 0.1, -1.6], flares: [0.9, 0.05, -0.2],
       beacon: [0.9, -0.3, 0], drone: [0.6, -0.6, -0.3], suppress: [0.7, -0.5, -2.1], repair: [0.45, 0.3, -1], ammo: [1, 0.1, -1.6] },
   },
+  huey: {
+    hubs: [[2.3, -0.15, 1.1, 2]], tail: [-0.3, 1.62, 8.3, 0.85], cam: 1,
+    off: { gun: [1, 0.05, -0.3], door: [1.05, 0, -0.3], cabin: [1.05, 0, -0.2], winch: [1.05, 0, -0.3], medbay: [1.05, 0, -0.3], fuel: [1.05, 0, 0], armor: [1.05, 0, -0.2],
+      rockets: [1.05, 0, -0.2], racks: [1.05, 0, -0.2], bombs: [1.05, 0, -0.2], flir: [1, 0.05, -0.3], light: [1, 0.05, -0.3], nvg: [1, 0.05, -0.3], ammo: [1, 0.05, -0.3], skids: [1.02, 0, -0.2], engine: [0.95, -0.05, -0.4] },
+  },
+  seaking: {
+    hubs: [[2.85, -0.4, 1.16, 5]], tail: [-0.34, 2.45, 10.45, 1.0], cam: 1.35,
+    off: { gun: [1, 0.2, -2.3], rockets: [1.2, -0.05, -0.6], bombs: [1.15, -0.05, -0.4], armor: [1.18, 0.05, -0.6], engine: [1.15, 0.35, -1.2], door: [1.18, 0.05, -1.4], fuel: [1.2, 0.05, -0.4],
+      cabin: [1.18, 0, -0.6], winch: [1.18, 0.2, -1.2], flir: [1, 0.2, -2.3], skids: [1.05, 0.1, -0.3], light: [1, 0.2, -2.3], medbay: [1.18, 0, -0.8], drops: [1.15, 0, -0.4],
+      radio: [1, 0, 2.8], racks: [1.2, -0.05, -0.6], nvg: [1, 0.2, -2.3], suppress: [1.15, 0.3, -0.8], repair: [1.18, 0, -0.6], ammo: [1, 0.2, -2.3], pods: [1.2, -0.05, -0.6], sniper: [1.18, 0.05, -1.4] },
+  },
   mule: {
     hubs: [[2.4, -5.2, 1.08, 3], [3.15, 4.8, 1.08, 3]], tail: null, cam: 1.5,
     off: { gun: [1, 0.25, -3.65], bombs: [1.2, 0.05, 0], armor: [1.28, 0.1, 0], engine: [2.95, 0.25, 2.6], door: [1.25, 0.1, -3.4], fuel: [1.3, 0.2, 0],
@@ -99,8 +111,17 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
   const out = [], loc = mat4();
   const AF = AIRFRAMES[kind] || AIRFRAMES.warhorse;
   const body = paint.body, trim = paint.trim, pm = paint.mat || 'paint', glow = paint.glow, camo = paint.camo || 0;
+  // some kit is drawn a bit smaller than it was, so it doesn't swamp the helicopter: scaled in towards where it bolts on
+  // (the gun towards its turret, each pod towards its pylon)
+  let PV = null;
   const add = (slot, p, r, s, col, o = {}) => {
     let k = 1;
+    const sh = !o.full && (slot === 'gun' ? 0.78 : slot === 'rockets' && PV ? 0.82 : 0);
+    if (sh) {
+      const pv = slot === 'gun' ? [0, -0.85, -3.0] : PV;
+      p = [pv[0] + (p[0] - pv[0]) * sh, pv[1] + (p[1] - pv[1]) * sh, pv[2] + (p[2] - pv[2]) * sh];
+      s = [s[0] * sh, s[1] * sh, s[2] * sh];
+    }
     const of = slot && AF.off[slot];
     if (of) p = [p[0] * of[0], p[1] + of[1], p[2] + of[2]];
     if (slot && st.install && st.install[slot] != null && st.install[slot] < 1) {
@@ -269,6 +290,14 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     for (let k = 0; k < 6; k++) { const f = k / 5; add('gun', [bx + 0.1 - f * 0.12, -1.0 - Math.sin(f * 3.1) * 0.14, -2.62 - f * 0.62], [0.4, 0, 0], [0.16, 0.05, 0.11], BR, { mat: 'brass' }); }
   }
   const barrelsAt = (x) => {
+    // cooled barrels: a vented jacket round the barrels (or a clamp ring on the spinning ones)
+    if (eq.cooling) {
+      if (g === 1 || g === 2) add('gun', [x, -1.05, -4.45], [0, 0, spin], [0.34, 0.34, 0.1], STEEL, { mat: 'steel', shape: 'cyl' });
+      else {
+        add('gun', [x, -1.05, g === 0 ? -4.0 : -4.1], [0, 0, 0], [g === 0 ? 0.24 : 0.32, g === 0 ? 0.24 : 0.32, 0.95], [0.2, 0.21, 0.22], { mat: 'metal', shape: 'cyl' });
+        for (let k = 0; k < 4; k++) add('gun', [x, -1.05, (g === 0 ? -3.7 : -3.8) - k * 0.2], [0, 0, 0], [g === 0 ? 0.25 : 0.33, g === 0 ? 0.25 : 0.33, 0.04], [0.05, 0.05, 0.05], { shape: 'cyl' });
+      }
+    }
     if (g === 0) {
       add('gun', [x, -1.05, -3.35], [0, 0, 0], [0.32, 0.32, 0.7], GUNM, { mat: 'metal', shape: 0.05 });
       add('gun', [x, -1.05, -4.1], [0, 0, 0], [0.13, 0.13, 1.5], GUNM, { mat: 'metal', shape: 'cyl' });
@@ -290,7 +319,7 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     }
   };
   if (g === 2 || g === 4) { add('gun', [0, -1.0, -3.2], [0, 0, 0], [g === 4 ? 1.55 : 1.25, 0.3, 0.6], GUNM, { mat: 'metal', shape: 0.06 }); barrelsAt(g === 4 ? -0.52 : -0.42); barrelsAt(g === 4 ? 0.52 : 0.42); } else barrelsAt(0);
-  if (st.flash > 0) for (const x of g === 2 ? [-0.42, 0.42] : g === 4 ? [-0.52, 0.52] : [0]) add(null, [x, -1.05, -5.1], [0, 0, st.t * 40], [0.45, 0.45, 0.6], g >= 3 ? [1, 0.7, 0.3] : [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
+  if (st.flash > 0) for (const x of g === 2 ? [-0.42, 0.42] : g === 4 ? [-0.52, 0.52] : [0]) add('gun', [x, -1.05, -5.1], [0, 0, st.t * 40], [0.45, 0.45, 0.6], g >= 3 ? [1, 0.7, 0.3] : [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
 
   // ---- rockets
   const rk = eq.rockets;
@@ -298,6 +327,7 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     const xs = rk === 1 ? [-1.75, 1.75] : [-1.35, 1.35, -2.15, 2.15];
     const show = st.rocketMax ? st.rockets / st.rocketMax : 1;
     xs.forEach((x, j) => {
+      PV = [x, -0.3, 0.45];
       add('rockets', [x, -0.66, 0.45], [0, 0, 0], [0.58, 0.58, 1.75], trim, { mat: 'metal', shape: 'cyl' });
       add('rockets', [x, -0.66, -0.43], [0, 0, 0], [0.5, 0.5, 0.04], DARK, { shape: 'cyl' });
       add('rockets', [x, -0.66, 0.45], [0, 0, 0], [0.6, 0.6, 0.12], paint.stripe || [0.7, 0.62, 0.2], { shape: 'cyl' });
@@ -315,6 +345,7 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     // APKWS: two long 19-tube pods; the guidance kits show as little glass eyes on the rocket noses
     const show = st.rocketMax ? st.rockets / st.rocketMax : 1;
     for (const x of [-1.75, 1.75]) {
+      PV = [x, -0.3, 0.45];
       add('rockets', [x, -0.7, 0.45], [0, 0, 0], [0.72, 0.72, 1.95], trim, { mat: 'metal', shape: 'cyl' });
       add('rockets', [x, -0.7, -0.53], [0, 0, 0], [0.74, 0.74, 0.08], STEEL, { mat: 'steel', shape: 'cyl' });
       add('rockets', [x, -0.7, 1.44], [0, 0, 0], [0.56, 0.56, 0.03], [0.04, 0.04, 0.04], { shape: 'cyl' });
@@ -329,6 +360,7 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
   } else if (rk === 3) {
     const show = st.rocketMax ? Math.ceil((st.rockets / st.rocketMax) * 4) : 4;
     [[-1.5, 0], [1.5, 1], [-2.15, 2], [2.15, 3]].forEach(([x, i]) => {
+      PV = [x, -0.3, 0.45];
       add('rockets', [x, -0.5, 0.5], [0, 0, 0], [0.12, 0.18, 1.7], GUNM, { mat: 'metal', shape: 0.03 });
       if (i >= show) return;
       add('rockets', [x, -0.75, 0.45], [0, 0, 0], [0.24, 0.24, 1.7], [0.82, 0.82, 0.78], { mat: 'paint', shape: 'cyl' });
@@ -339,6 +371,7 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     });
   }
 
+  PV = null;
   // ---- bombs
   if (eq.bombs) {
     const show = st.bombMax ? st.bombs : 4;
@@ -439,10 +472,12 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     B([x, y + 0.45, z], [0.26, 0.28, 0.26], SKIN[i % SKIN.length], { shape: 'sphere', mat: 'skin' });
   }
 
+  PV = null;
   // ---- gun pods under the wings: a fat pod, a fairing and a barrel; they flash when they fire
   if (eq.pods) {
     const px = eq.rockets || eq.bombs ? 2.7 : 1.8;
     for (const x of [-px, px]) {
+      PV = [x, -0.3, 0.2];
       const big = eq.pods === 2;
       add('rockets', [x, -0.4, 0.2], [0, 0, 0], [0.1, 0.24, 0.9], GUNM, { mat: 'metal', shape: 0.02 });
       add('rockets', [x, -0.74, 0.25], [0, 0, 0], [0.42, 0.46, 2.1], big ? [0.3, 0.32, 0.26] : GUNM, { mat: 'metal', shape: 'cyl' });
@@ -453,6 +488,7 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
       if (st.podFlash > 0 && (st.podSide == null || Math.sign(st.podSide) === Math.sign(x))) add('rockets', [x, -0.74, -2.25], [0, 0, st.t * 40], [0.4, 0.4, 0.55], [1, 0.75, 0.35], { em: 1, shape: 'sphere', alpha: 0.85 });
     }
   }
+  PV = null;
   // ---- the marksman: kneeling in the back of the left door with a long scoped rifle
   if (eq.sniper) {
     const ex = -0.75, aim = st.snipeAim;
@@ -741,6 +777,60 @@ function hullFor(kind, B, add, st, eq, paint, M) {
     B([1.5, -0.35, -6.0], [0.12, 0.12, 0.12], [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
     strobe([0, 3.05, 6.3]);
     if (paint.stripe) for (const x of [-1.49, 1.49]) B([x, -0.55, -0.2], [0.03, 0.22, 11], paint.stripe, { em: glow ? 0.8 : 0 });
+  } else if (kind === 'huey') {
+    // HUEY: the classic Vietnam-era utility helicopter: a glassy nose, a "doghouse" over the engine with the exhaust
+    // pointing up, wide open doors, a long thin boom, a two-blade rotor, skids
+    M('h_huey'); M('h_huey_cowl'); M('g_huey', GLASS);
+    B([0, 1.38, 2.35], [0.42, 0.42, 0.6], GUNM, { shape: 'cyl', mat: 'metal', r: [-0.55, 0, 0] });                  // exhaust, angled up
+    B([0, 1.55, 2.6], [0.32, 0.32, 0.03], [0.1, 0.08, 0.07], { shape: 'cyl', r: [-0.55, 0, 0] });
+    for (const x of [-1, 1]) {
+      B([x * 1.21, -0.1, -0.35], [0.03, 2.0, 2.9], [0.05, 0.05, 0.06], { mat: 'metal' });                      // the big open door (dark inside)
+      B([x * 1.22, 0.92, -0.35], [0.05, 0.06, 3.3], GUNM, { mat: 'metal' });                                     // door rail
+      B([x * 1.22, -0.1, -2.0], [0.03, 1.8, 0.04], DARK, { mat: 'metal' });
+      B([x * 0.7, 1.35, -1.2], [0.22, 0.32, 0.4], [0.03, 0.03, 0.035], { shape: 0.04 });                         // intake
+      // skids on two curved cross tubes
+      B([x * 1.3, -1.85, -0.3], [0.12, 0.12, 4.6], GUNM, { shape: 'cyl', mat: 'metal' });
+      B([x * 1.3, -1.73, -2.7], [0.12, 0.12, 0.5], GUNM, { shape: 'cyl', mat: 'metal', r: [-0.7, 0, 0] });
+      for (const z of [-1.6, 1.0]) {
+        B([x * 1.0, -1.55, z], [0.1, 0.62, 0.1], GUNM, { r: [0, 0, x > 0 ? 0.42 : -0.42], shape: 'cylY', mat: 'metal' });
+        B([x * 0.6, -1.25, z], [0.6, 0.09, 0.09], GUNM, { r: [0, 0, x > 0 ? -0.15 : 0.15], shape: 0.04, mat: 'metal' });
+      }
+      B([x * 1.3, -0.2, 0.9], [0.1, 0.1, 0.1], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
+    }
+    // the fin, the tail plane half way down the boom, a tail skid
+    B([0, 1.15, 8.15], [0.12, 1.6, 0.95], body, { r: [-0.45, 0, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });
+    B([0, 0.55, 5.6], [2.3, 0.07, 0.5], trim, { shape: 0.03 });
+    B([0, 0.05, 8.1], [0.06, 0.5, 0.06], GUNM, { r: [0.6, 0, 0], mat: 'metal' });
+    tailRotor(-0.3, 1.62, 8.3, 0.85);
+    // the stabiliser bar on the rotor head (it turns with the blades)
+    B([0, 2.5, -0.15], [1.7, 0.05, 0.08], DARK, { r: [0, -st.rotorA, 0], mat: 'metal' });
+    for (const sx of [-1, 1]) B([Math.cos(st.rotorA) * 0.85 * sx, 2.5, -0.15 - Math.sin(-st.rotorA) * 0.85 * sx], [0.12, 0.08, 0.12], DARK, { shape: 'sphere', mat: 'metal' });
+    strobe([0, 1.62, 1.6]);
+    if (paint.stripe) B([0, 0.4, 4.0], [0.6, 0.62, 0.45], paint.stripe, { shape: 0.2, em: glow ? 0.8 : 0 });
+  } else if (kind === 'seaking') {
+    // SEA KING: a big boat-hulled search-and-rescue helicopter: float sponsons with the wheels in them, a tall fin
+    // with the tail rotor, five blades, and a rescue hoist over the door as standard
+    M('h_seaking'); M('h_seaking_cowl'); M('g_seaking', GLASS);
+    for (const x of [-1, 1]) {
+      B([x * 1.62, -0.85, 0.3], [0.9, 0.85, 2.6], body, { shape: { cap: [0.42, 0.36] } });                       // sponson / float
+      B([x * 1.62, -1.62, 0.3], [0.28, 0.6, 0.6], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+      B([x * 1.95, -0.6, 0.3], [0.1, 0.1, 0.1], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
+      B([x * 1.36, 0.0, -1.2], [0.03, 1.9, 1.5], [0.05, 0.05, 0.06], { mat: 'metal' });                         // door
+      B([x * 0.9, 1.55, -0.8], [0.25, 0.4, 0.6], [0.03, 0.03, 0.035], { shape: 0.04 });                         // intakes
+      B([x * 0.55, 1.55, 3.3], [0.32, 0.32, 0.5], GUNM, { shape: 'cyl', mat: 'metal' });                        // exhausts
+      B([x * 0.55, 1.55, 3.56], [0.24, 0.24, 0.03], [1, 0.45, 0.15], { shape: 'cyl', em: 0.3 + (st.rpm || 0) * 0.3 });
+      for (let k = 0; k < 4; k++) B([x * 1.37, 0.6, -2.6 + k * 1.4], [0.02, 0.32, 0.4], GLASS, { mat: 'glass' });
+    }
+    // the hoist over the right door
+    B([1.25, 1.2, -1.2], [0.6, 0.18, 0.2], GUNM, { mat: 'metal' });
+    B([1.62, 1.05, -1.2], [0.24, 0.3, 0.3], [0.85, 0.82, 0.78], { shape: 'cyl', r: [0, 0, Math.PI / 2], mat: 'paint' });
+    B([0, -1.25, -4.6], [0.1, 0.6, 0.1], GUNM, { mat: 'metal' });
+    B([0, -1.62, -4.6], [0.2, 0.56, 0.56], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+    B([0, 1.85, 10.1], [0.16, 2.0, 1.2], body, { r: [-0.25, 0, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });
+    B([0.3, 2.3, 9.9], [1.7, 0.08, 0.5], trim, { shape: 0.03 });
+    tailRotor(-0.34, 2.45, 10.45, 1.0);
+    strobe([0, 3.0, 10.6]);
+    if (paint.stripe) for (const x of [-1.37, 1.37]) B([x, -0.55, -1.0], [0.03, 0.2, 6.0], paint.stripe, { em: glow ? 0.8 : 0 });
   } else if (kind === 'kestrel') {
     // KESTREL: a big three-engine utility helicopter: long cabin, wheels in sponsons, a tall swept fin
     M('h_kestrel'); M('h_kestrel_cowl'); M('g_kestrel', GLASS);
@@ -791,6 +881,8 @@ function hullFor(kind, B, add, st, eq, paint, M) {
     reaper: { dash: [0, -0.05, -3.95, 0.7], pitot: [0.25, -0.35, -5.3], ae: [[0, 0.55, 3.0], [0, -0.95, -1.5]], bc: [[0, 1.4, -0.6], [0, -0.98, 0.5]], in: [0.5, 1.1, -1.25] },
     kestrel: { dash: [0, -0.3, -4.2, 1.7], pitot: [0.45, -0.4, -5.5], ae: [[0, 1.35, 3.6], [0, -1.35, -2.0]], bc: [[0, 1.86, 2.5], [0, -1.35, 1.5]], in: [0.85, 1.45, -1.0] },
     viper: { dash: [0, 0.0, -3.6, 0.6], pitot: [0.2, -0.3, -5.0], ae: [[0, 0.5, 3.2], [0, -0.95, -1.8]], bc: [[0, 1.15, -0.2], [0, -0.9, 0.3]], in: [0.45, 0.8, -0.6] },
+    huey: { dash: [0, -0.4, -3.4, 1.5], pitot: [0.3, 0.9, -3.4], ae: [[0, 1.2, 3.2], [0, -1.25, -1.5]], bc: [[0, 1.7, 0.6], [0, -1.25, 0.8]], in: [0.7, 1.32, -0.6] },
+    seaking: { dash: [0, -0.3, -4.9, 1.7], pitot: [0.5, -0.4, -5.9], ae: [[0, 1.42, 4.2], [0, -1.3, -2.5]], bc: [[0, 2.0, 2.6], [0, -1.32, 1.2]], in: [0.95, 1.6, -1.6] },
     mule: { dash: [0, -0.2, -7.0, 1.9], pitot: [0.7, -0.6, -7.5], ae: [[0, 1.42, 1.0], [0, -1.52, -3.0]], bc: [[0, 2.25, -5.2], [0, -1.55, 1.5]], in: [0.75, 2.35, 3.6] },
   }[kind];
   if (D) {
@@ -825,6 +917,8 @@ const BODIES = {
   reaper: [[0, -0.2, -1.2, 0.9], [0, -0.3, -3.8, 0.8], [0, 0.2, 3.4, 0.5], [0, 0.8, 6.4, 0.6], [0, 0.9, 0.2, 0.75]],
   kestrel: [[0, 0, -0.5, 1.45], [0, 0, 1.8, 1.45], [0, -0.3, -3.8, 1.1], [0, 0.5, 4.8, 0.6], [0, 0.65, 7.5, 0.45], [0, 1.5, 9.8, 0.6], [0, 1.6, 0, 0.9]],
   viper: [[0, -0.2, -1.0, 0.75], [0, -0.25, -3.6, 0.65], [0, 0.15, 3.4, 0.42], [0, 0.6, 6.4, 0.5], [0, 0.75, 0, 0.6]],
+  huey: [[0, 0, -2.8, 1.15], [0, 0, -0.4, 1.3], [0, 0.45, 3.4, 0.55], [0, 0.55, 6.0, 0.45], [0, 1.1, 8.1, 0.6], [0, 1.35, 0.3, 0.8]],
+  seaking: [[0, 0, -4.4, 1.35], [0, 0, -1.6, 1.4], [0, 0, 1.4, 1.4], [0, 0.4, 4.3, 1.0], [0, 0.8, 7.4, 0.55], [0, 1.5, 10.1, 0.6], [0, 1.75, 0, 0.9]],
   mule: [[0, 0, -5.4, 1.5], [0, 0, -2.0, 1.5], [0, 0, 1.4, 1.5], [0, 0.2, 4.8, 1.5], [0, 2.1, 4.8, 1.0]],
 };
 const SKIDSETS = {
@@ -833,9 +927,12 @@ const SKIDSETS = {
   reaper: [[-1.2, -1.92, -1.9], [1.2, -1.92, -1.9], [-0.2, -1.92, 5.4], [0.2, -1.92, 5.4]],
   kestrel: [[-1.46, -1.92, 0.9], [1.46, -1.92, 0.9], [-0.2, -1.92, -4.2], [0.2, -1.92, -4.2]],
   viper: [[-0.95, -1.92, -2.2], [0.95, -1.92, -2.2], [-0.95, -1.92, 1.2], [0.95, -1.92, 1.2]],
+  huey: [[-1.3, -1.92, -2.2], [1.3, -1.92, -2.2], [-1.3, -1.92, 1.6], [1.3, -1.92, 1.6]],
+  seaking: [[-1.62, -1.92, 0.3], [1.62, -1.92, 0.3], [-0.2, -1.92, -4.6], [0.2, -1.92, -4.6]],
   mule: [[-1.4, -1.92, -4.3], [1.4, -1.92, -4.3], [-1.4, -1.92, 3.6], [1.4, -1.92, 3.6]],
 };
 
+const WATER_TOP = { water: true, min: [-1e6, -1e4, -1e6], max: [1e6, WATER, 1e6] };
 export class Chopper {
   constructor() { this.reset([0, 0, 0], 0, {}); }
 
@@ -950,7 +1047,7 @@ export class Chopper {
     const up = this.up, lr = (S.lift || 1) / (S.mass || 1);
     // hover is always 1 g; the engine and weight decide how hard you can climb. Zombies on the skids drag you down.
     let c = ctl.coll;
-    if (assist && Math.abs(c) < 0.1) c = clamp(-this.vel[1] * 0.38, -0.45, 0.45);       // hold height
+    if ((assist || ctl.hold) && Math.abs(c) < 0.1) c = clamp(-this.vel[1] * (ctl.hold ? 0.8 : 0.38), -0.45, 0.45);       // hold height
     const comp = assist ? 1 / Math.max(0.62, up[1]) : 1 / Math.max(0.85, up[1]) * 0.35 + 0.65;
     // out of fuel: the rotor windmills (autorotation) and you sink slowly; S sinks faster, W slows it a little
     const T = ctl.noFuel && !this.dead ? G * comp * Math.min(1, this.rpm / 0.62) * (0.84 + 0.1 * ctl.coll - this.extraMass * 0.5)
@@ -967,6 +1064,8 @@ export class Chopper {
     const v = this.vel, sp = Math.hypot(v[0], v[1], v[2]);
     const kq = 0.0017 / ((S.speed || 1) * (S.speed || 1)) * (1 - this.boost * 0.6);
     for (let i = 0; i < 3; i++) a[i] -= v[i] * (0.06 + kq * sp);
+    // the autopilot's hover hold: kill the drift and level out
+    if (ctl.hold && !this.dead) { a[0] -= v[0] * 1.8; a[2] -= v[2] * 1.8; this.stickP = (this.stickP || 0) * Math.exp(-3 * dt); this.stickR = (this.stickR || 0) * Math.exp(-3 * dt); }
     a[1] -= v[1] * 0.45;
     for (let i = 0; i < 3; i++) { v[i] += a[i] * dt; this.pos[i] += v[i] * dt; }
 
@@ -979,7 +1078,8 @@ export class Chopper {
     // the skids: stand on whatever is under them
     for (const s of SKIDSETS[this.stats.kind] || SKIDSETS.warhorse) {
       const p = this.toWorld(s);
-      const b = world.firstOverlap([p[0] - 0.05, p[1] - 0.05, p[2] - 0.05], [p[0] + 0.05, p[1] + 0.05, p[2] + 0.05]);
+      const b = world.firstOverlap([p[0] - 0.05, p[1] - 0.05, p[2] - 0.05], [p[0] + 0.05, p[1] + 0.05, p[2] + 0.05])
+        || (this.stats.floats && p[1] < WATER + 0.05 ? WATER_TOP : null);
       if (!b) continue;
       const pen = b.max[1] - p[1];
       if (pen > 1.0) continue;              // that's a wall, not a floor: the body spheres deal with it

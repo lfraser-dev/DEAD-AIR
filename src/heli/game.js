@@ -33,7 +33,7 @@ const CAMS = {
   rotor: [0.8, 0.62, 19, [0, 2, 0.3]], door: [1.62, 0.08, 9, [1.1, 0, 0.6]], cabin: [-1.45, 0.12, 11, [-1, -0.2, 0.7]],
   fuel: [1.25, 0.05, 11, [1.2, -0.8, 0.4]], winch: [1.55, 0.1, 9, [1.2, 0, 0.6]], light: [0.4, -0.05, 7.5, [0, -1.3, -3.1]], turret: [0.9, -0.25, 8, [0, -1.6, 0.6]], medbay: [1.5, 0.05, 8, [1.2, 0.3, 1.2]],
   drops: [-1.5, -0.05, 8, [-1.5, -0.6, 0.6]], radio: [2.4, 0.25, 9, [0.25, 1.8, 4.2]], flir: [0.35, -0.02, 7.5, [0, -0.9, -3.4]],
-  speaker: [1.2, 0.08, 10, [0, -0.6, 0]], nose: [0.55, 0.05, 8, [0, -0.3, -3.2]], tailart: [2.0, 0.1, 10, [0, 0.6, 4.8]], drone: [0.9, 0.35, 12, [0, 1.5, 2]], ammo: [0.5, 0.05, 7, [0, -0.9, -2.6]], repair: [-0.9, 0.12, 9, [0, 0, 0.5]], suppress: [2.5, 0.35, 9, [0, 1.3, 1.2]], flares: [2.2, 0.15, 8, [0, 0.2, 3.6]], beacon: [-2.2, 0.1, 8, [-0.6, 0.4, 3.4]], skids: [1.45, -0.12, 10, [0, -1.6, 0]], pods: [1.1, 0.02, 10, [1.8, -0.7, -0.6]], sniper: [-1.5, 0.12, 8, [-0.9, 0, 1.4]], paint: [0.75, 0.22, 21, [0, 0.4, 1.5]],
+  speaker: [1.2, 0.08, 10, [0, -0.6, 0]], nose: [0.55, 0.05, 8, [0, -0.3, -3.2]], tailart: [2.0, 0.1, 10, [0, 0.6, 4.8]], drone: [0.9, 0.35, 12, [0, 1.5, 2]], ammo: [0.5, 0.05, 7, [0, -0.9, -2.6]], repair: [-0.9, 0.12, 9, [0, 0, 0.5]], suppress: [2.5, 0.35, 9, [0, 1.3, 1.2]], flares: [2.2, 0.15, 8, [0, 0.2, 3.6]], beacon: [-2.2, 0.1, 8, [-0.6, 0.4, 3.4]], skids: [1.45, -0.12, 10, [0, -1.6, 0]], pods: [1.1, 0.02, 10, [1.8, -0.7, -0.6]], cooling: [0.55, 0.02, 8.5, [0, -0.9, -3.6]], hover: [0.4, 0.3, 12, [0, 0, -2]], crash: [-1.45, 0.12, 11, [-1, -0.2, 0.7]], sniper: [-1.5, 0.12, 8, [-0.9, 0, 1.4]], paint: [0.75, 0.22, 21, [0, 0.4, 1.5]],
 };
 const FLIGHT = { easy: 'EASY', assist: 'ASSIST', pro: 'PRO' };
 const FRIEND_COLS = [[1, 0.8, 0.1], [0.3, 0.9, 1]];
@@ -352,7 +352,7 @@ export class HeliGame {
     if (s.refundMsg) {
       // a one-off note: the belly turret / tail gun / electric skids were taken out and paid back
       const n = s.refundMsg; delete s.refundMsg; saveSave(s);
-      setTimeout(() => this.flash(`+⚙ ${n.toLocaleString('en-GB')} REFUNDED FOR THE BELLY TURRET, TAIL GUN AND ELECTRIC SKIDS`, 7000), 400);
+      setTimeout(() => this.flash(`+⚙ ${n.toLocaleString('en-GB')} REFUNDED FOR UPGRADES THAT WERE TAKEN OUT (DRONES, BEACONS, FLASHBANGS, LOUDSPEAKER...)`, 7000), 400);
     }
     // a red dot on THE SPIRE when there's something new there (the next chapter, or something you can build)
     const canBuild = BASE.some((b) => { const nx = b.tiers[(s.base[b.id] || 0) + 1]; return nx && s.scrap >= nx.cost && this.population() >= nx.pop; });
@@ -546,8 +546,8 @@ export class HeliGame {
     const h = this.$('help');
     const mode = this.save.flight;
     h.innerHTML = mode === 'easy'
-      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>X</kbd> FLASH · <kbd>N</kbd> BEACON · <kbd>Z</kbd> NIGHT VISION · <kbd>L</kbd> LIGHT · <kbd>B</kbd> SUPPLIES · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
-      : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>V</kbd> SIREN · <kbd>X</kbd> FLASH · <kbd>N</kbd> BEACON · <kbd>Z</kbd> NIGHT VISION · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
+      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>Z</kbd> NIGHT VISION · <kbd>L</kbd> LIGHT · <kbd>B</kbd> SUPPLIES · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
+      : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>Z</kbd> NIGHT VISION · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
     this.helpT = on ? 22 : 0;
   }
 
@@ -581,6 +581,7 @@ export class HeliGame {
         mode: this.save.flight || 'easy', assist: this.save.flight !== 'pro', sens: this.save.sens, invert: this.save.invert,
         engineOn: this.mode !== 'down', noFuel: this.fuel <= 0,
       };
+      ctl.hold = this.holdOn(ctl);
       const grabbers = this.horde.list.filter((z) => z.alive && z.st === 'grab').length;
       H.extraMass = grabbers * 0.07 + (this.crate && this.crate.carried ? 0.12 : 0);
       for (const z of this.horde.list) if (z.alive && z.st === 'grab' && z.type === 'brute') H.extraMass += 0.14;
@@ -588,11 +589,12 @@ export class HeliGame {
       this.edge(dt);
       const easy = this.save.flight === 'easy';
       for (const ev of H.events) {
-        if (ev.type === 'impact') { this.hurt(ev.speed * (ev.hard ? 14 : 9) * (easy ? 0.5 : 1), ev.point); this.fx.sparks(ev.point, 12, [1, 0.8, 0.4], 7, 0.5, 0.05, 2); this.snd.meleeWall?.('smash'); this.shake = Math.max(this.shake, 0.5); }
+        if (ev.type === 'impact') { this.hurt(ev.speed * (ev.hard ? 14 : 9) * (easy ? 0.5 : 1) * (S.gpws ? 0.7 : 1), ev.point); this.fx.sparks(ev.point, 12, [1, 0.8, 0.4], 7, 0.5, 0.05, 2); this.snd.meleeWall?.('smash'); this.shake = Math.max(this.shake, 0.5); }
         else if (ev.type === 'rotor' && S.toughBlades) { this.rotorHitT = (this.rotorHitT || 0) - dt; this.fx.sparks(ev.point, 4, [1, 0.85, 0.5], 9, 0.3, 0.04, 1); if (this.rotorHitT <= 0) { this.rotorHitT = 0.3; this.hurt(easy ? 1.5 : 3, ev.point); } }
         else if (ev.type === 'rotor') { this.rotorHitT = (this.rotorHitT || 0) - dt; if (this.rotorHitT <= 0) { this.rotorHitT = 0.15; this.hurt(easy ? 7 : 14, ev.point); this.fx.sparks(ev.point, 10, [1, 0.85, 0.5], 9, 0.4, 0.04, 1); this.snd.click?.(3600, 0.4, 3); this.shake = Math.max(this.shake, 0.4); } }
       }
       H.events.length = 0;
+      this.gpwsTick(dt);
       if (H.dead && this.mode !== 'down' && (H.contacts || H.pos[1] < 1)) this.crash();
       this.burnFuel(dt, ctl);
       if (live && !H.dead && !this.panel) this.weapons(dt);
@@ -681,20 +683,23 @@ export class HeliGame {
 
   crash() {
     const p = this.heli.pos;
-    this.boom(p, 3);
-    for (let i = 0; i < 30; i++) this.fx.flame([p[0] + (Math.random() - 0.5) * 6, p[1], p[2] + (Math.random() - 0.5) * 6], [0, 2, 0], 4);
+    this.boom(p, this.S.crash === 2 ? 1 : 3);
+    if (this.S.crash !== 2) for (let i = 0; i < 30; i++) this.fx.flame([p[0] + (Math.random() - 0.5) * 6, p[1], p[2] + (Math.random() - 0.5) * 6], [0, 2, 0], 4);
     this.heli.vel = [0, 0, 0]; this.heli.rpm = 0;
     this.mode = 'down';
-    const lostR = this.riders; this.run.lost += lostR; this.riders = 0;
+    // crashworthy seats: the survivors aboard live, and the rescue team brings them home
+    const safe = this.S.crash ? this.riders : 0;
+    if (safe) { this.run.rescued += safe; this.save.rescued += safe; this.addScrap(25 * safe); this.storyHit('rescued', safe); }
+    const lostR = this.riders - safe; this.run.lost += lostR; this.riders = 0;
     if (this.crate && this.crate.carried) { this.crate.carried = false; this.crate.done = true; this.crate = null; }
     for (const z of this.horde.list) if (z.st === 'grab') { z.st = 'fall'; z.vel = [0, 2, 0]; }
-    const bill = Math.min(this.save.scrap, 150);
+    const bill = this.S.crash === 2 ? 0 : Math.min(this.save.scrap, 150);
     this.save.scrap -= bill; saveSave(this.save);
     if (document.pointerLockElement) { this.softUnlock = true; document.exitPointerLock(); }
     setTimeout(() => {
       if (this.mode !== 'down') return;
       const e = this.$('end');
-      e.innerHTML = `<h2 class="lose">SHOT DOWN</h2><p>${lostR ? `${lostR} survivor${lostR > 1 ? 's' : ''} didn't make it.` : 'You walked away from it.'} The rescue team pulled you out.</p>
+      e.innerHTML = `<h2 class="lose">SHOT DOWN</h2><p>${lostR ? `${lostR} survivor${lostR > 1 ? 's' : ''} didn't make it.` : safe ? `The crash seats worked: all ${safe} survivors aboard walked away.` : 'You walked away from it.'} The rescue team pulled you out.</p>
         <table><tr><td>REPAIR BILL</td><td>⚙ ${bill}</td></tr><tr><td>ZOMBIES KILLED</td><td>${this.run.kills}</td></tr><tr><td>SURVIVORS SAVED</td><td>${this.run.rescued}</td></tr><tr><td>SCRAP</td><td>⚙ ${this.save.scrap.toLocaleString('en-GB')}</td></tr></table>
         <div class="row"><button data-x="go" type="button">FLY AGAIN FROM ${this.nearestFob(p).name}</button><button class="alt" data-x="hangar" type="button">HANGAR</button></div>`;
       e.querySelector('[data-x=go]').onclick = () => this.respawn();
@@ -816,7 +821,7 @@ export class HeliGame {
 
   bore() {
     const H = this.heli, a = 0.13;
-    return { o: H.toWorld(mountAt(this.save.heli, 'gun', [0, -1.05, -5.0])), d: qrot(H.q, [0, -Math.sin(a), -Math.cos(a)]) };
+    return { o: H.toWorld(mountAt(this.save.heli, 'gun', [0, -1.0, -4.6])), d: qrot(H.q, [0, -Math.sin(a), -Math.cos(a)]) };
   }
   // the nearest thing a ray hits: a wall, a zombie or something you can shoot (a nest)
   rayHit(o, d, max) {
@@ -880,9 +885,6 @@ export class HeliGame {
     }
     if (this.hit('KeyC')) this.camMode = (this.camMode + 1) % 3;
     if (this.hit('KeyM')) { this.bigMap = !this.bigMap; this.$('bigmap').classList.toggle('hidden', !this.bigMap); }
-    if (this.hit('KeyV')) this.sirenOn();
-    if (this.hit('KeyX')) this.fireFlares();
-    if (this.hit('KeyN')) this.dropBeacon();
     if (this.hit('KeyZ') && S.nvg) { this.nvgOn = this.nvgOn === false; this.applyDay(); this.feed(this.nvgOn === false ? 'NIGHT VISION OFF' : 'NIGHT VISION ON', 'y'); }
     if (this.hit('KeyL') && this.S.light) { this.lightMode = this.lightMode === 'on' ? 'off' : this.lightMode === 'off' ? 'auto' : 'on'; this.feed(`SEARCHLIGHT: ${this.lightMode.toUpperCase()}`, 'y'); }
     if (this.hit('KeyB')) this.dropSupplies();
@@ -985,6 +987,24 @@ export class HeliGame {
     this.snd.grappleRelease?.(); this.feed('SUPPLIES AWAY', 'g');
   }
 
+  // HOVER HOLD: with nothing pressed and the stick back in the middle, the autopilot stops you and holds the spot
+  holdOn(ctl) {
+    const H = this.heli;
+    if (!this.S || !this.S.hover || H.dead) return false;
+    const idle = !ctl.coll && !ctl.yaw && !ctl.mx && !ctl.my && !ctl.pk && !ctl.rk && !ctl.boost && Math.abs(H.stickP || 0) < 0.07 && (ctl.mode === 'easy' || Math.abs(H.stickR || 0) < 0.07);
+    this.holdT = idle ? (this.holdT || 0) + 1 / 60 : 0;
+    return this.holdT > 0.4;
+  }
+  // GROUND PROXIMITY WARNING: look ahead along where you're going; if you'll hit something in under 2 seconds, say so
+  gpwsTick(dt) {
+    const H = this.heli, S = this.S;
+    this.gpT = Math.max(0, (this.gpT || 0) - dt);
+    if (!S || !S.gpws || H.dead) return;
+    const v = H.vel, sp = Math.hypot(v[0], v[1], v[2]);
+    if (sp < 12 || this.gpT > 0) return;
+    const h = this.world.raycast(H.pos, v.map((q) => q / sp), sp * 2);
+    if (h && h.t > 2) { this.gpT = 2.5; this.banner('PULL UP', 'TERRAIN AHEAD', 'bad', 1); this.snd.tone?.(700, 700, 0.12, 0.12, 'square'); setTimeout(() => this.snd.tone?.(700, 700, 0.12, 0.12, 'square'), 180); }
+  }
   podX() { const eq = capEq(this.save.eq, this.save.heli); return eq.rockets || eq.bombs ? 2.7 : 1.8; }
   podShot() {
     const H = this.heli, S = this.S, side = (this.podSide = -(this.podSide || 1));
@@ -1041,7 +1061,7 @@ export class HeliGame {
     const H = this.heli, G = this.S.gun;
     let { d } = this.bore();
     const x = G.barrels === 2 ? (this.gunSide = -(this.gunSide || 1)) * (G.cannon ? 0.52 : 0.42) : 0;
-    const o = H.toWorld(mountAt(this.save.heli, 'gun', [x, -1.05, -5.1]));
+    const o = H.toWorld(mountAt(this.save.heli, 'gun', [x * 0.78, -1.0, -4.7]));
     // a little aim help: on EASY, bullets bend towards a zombie just off the crosshair
     if (this.save.flight === 'easy') {
       let best = null, bc = Math.cos(0.06);
@@ -2557,15 +2577,17 @@ export class HeliGame {
       mode: this.save.flight || 'easy', assist: this.save.flight !== 'pro', sens: this.save.sens, invert: this.save.invert,
       engineOn: !this.wDown, noFuel: this.fuel <= 0,
     };
+    ctl.hold = this.holdOn(ctl);
     H.extraMass = 0;
     H.step(dt, ctl, this.world);
     this.edge(dt);
     const easy = this.save.flight === 'easy';
     for (const ev of H.events) {
-      if (ev.type === 'impact') { this.hurt(ev.speed * (ev.hard ? 14 : 9) * (easy ? 0.5 : 1), ev.point); this.fx.sparks(ev.point, 12, [1, 0.8, 0.4], 7, 0.5, 0.05, 2); this.snd.meleeWall?.('smash'); this.shake = Math.max(this.shake, 0.5); }
+      if (ev.type === 'impact') { this.hurt(ev.speed * (ev.hard ? 14 : 9) * (easy ? 0.5 : 1) * (S.gpws ? 0.7 : 1), ev.point); this.fx.sparks(ev.point, 12, [1, 0.8, 0.4], 7, 0.5, 0.05, 2); this.snd.meleeWall?.('smash'); this.shake = Math.max(this.shake, 0.5); }
       else if (ev.type === 'rotor') { this.rotorHitT = (this.rotorHitT || 0) - dt; if (this.rotorHitT <= 0) { this.rotorHitT = 0.15; this.hurt(S.toughBlades ? 2 : easy ? 7 : 14, ev.point); } }
     }
     H.events.length = 0;
+    this.gpwsTick(dt);
     if (H.dead && !this.wDown && (H.contacts || H.pos[1] < 1)) this.wingCrash();
     if (this.wDown) { this.wDown -= dt; if (this.wDown <= 0) this.wingRespawn(); }
     this.burnFuel(dt, ctl);
@@ -3223,7 +3245,7 @@ export class HeliGame {
     this.$('spd').textContent = `${Math.round(Math.hypot(...H.vel) * 3.6)} KM/H`;
     const team = this.save.team.filter((m) => m.aboard && !m.raid && m.hp > 0);
     const fr = this.coop ? this.coop.friends.size : 0;
-    this.$('right').innerHTML = `${S.rockets ? `<div><small>ROCKETS</small>${this.rockets} / ${S.rockets}</div>` : ''}${S.bombs ? `<div><small>BOMBS</small>${this.bombs} / ${S.bombs}</div>` : ''}${S.flares ? `<div><small>FLASH [X]</small>${this.flaresLeft} / ${S.flares}</div>` : ''}${S.beacons ? `<div><small>BEACONS [N]</small>${this.beaconsLeft} / ${S.beacons}</div>` : ''}${S.speaker ? `<div><small>SIREN [V]</small>${this.siren > 0 ? 'ON' : this.sirenCd > 0 ? `${Math.ceil(this.sirenCd)}s` : 'READY'}</div>` : ''}<div><small>SEATS</small>${team.length + this.riders} / ${S.seats}</div>${team.length ? `<div><small>TEAM</small>${team.map((m) => `<span style="color:rgb(${ROLES[m.role].col.map((v) => Math.round(v * 255))})">●</span>`).join('')}</div>` : ''}${this.riders ? `<div><small>SURVIVORS</small>${this.riders}</div>` : ''}${fr ? `<div><small>FRIENDS</small>${fr}</div>` : ''}<div><small>KILLS</small>${run.kills}</div><div><small>SCRAP</small>⚙ ${this.save.scrap.toLocaleString('en-GB')}</div>`;
+    this.$('right').innerHTML = `${this.holdT > 0.4 ? '<div style="color:#7dff9a"><small>AUTOPILOT</small>HOVER HOLD</div>' : ''}${S.rockets ? `<div><small>ROCKETS</small>${this.rockets} / ${S.rockets}</div>` : ''}${S.bombs ? `<div><small>BOMBS</small>${this.bombs} / ${S.bombs}</div>` : ''}${S.flares ? `<div><small>FLASH [X]</small>${this.flaresLeft} / ${S.flares}</div>` : ''}${S.beacons ? `<div><small>BEACONS [N]</small>${this.beaconsLeft} / ${S.beacons}</div>` : ''}${S.speaker ? `<div><small>SIREN [V]</small>${this.siren > 0 ? 'ON' : this.sirenCd > 0 ? `${Math.ceil(this.sirenCd)}s` : 'READY'}</div>` : ''}<div><small>SEATS</small>${team.length + this.riders} / ${S.seats}</div>${team.length ? `<div><small>TEAM</small>${team.map((m) => `<span style="color:rgb(${ROLES[m.role].col.map((v) => Math.round(v * 255))})">●</span>`).join('')}</div>` : ''}${this.riders ? `<div><small>SURVIVORS</small>${this.riders}</div>` : ''}${fr ? `<div><small>FRIENDS</small>${fr}</div>` : ''}<div><small>KILLS</small>${run.kills}</div><div><small>SCRAP</small>⚙ ${this.save.scrap.toLocaleString('en-GB')}</div>`;
     // actions you can take here (buttons you can click when the mouse is free)
     // rebuilt only when the set of buttons changes (so a click isn't lost); the labels update in place
     const acts = this.actions || [], sig = acts.map((a) => a[1]).join('|');

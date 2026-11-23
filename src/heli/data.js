@@ -75,11 +75,6 @@ export const SLOTS = [
     { n: 'THERMAL CAMERA', cost: 500, d: 'A camera ball under the nose: zombies show on the map from far away.' },
     { n: 'THERMAL + MARKERS', cost: 1300, d: 'Marks screamers and piles on screen, and how many zombies are inside buildings.' },
   ] },
-  { id: 'speaker', name: 'LOUDSPEAKER', icon: '♫', tiers: [
-    { n: 'NONE', cost: 0, d: 'No speakers.' },
-    { n: 'LOUDSPEAKER', cost: 450, d: 'Press V: a siren that drags every zombie nearby to where you are. Lead them away from your team!' },
-    { n: 'LRAD', cost: 1600, d: 'A long range acoustic device: the siren also knocks down zombies close under you and shakes them off the skids.' },
-  ] },
   { id: 'skids', name: 'SKIDS', icon: '⊥', tiers: [
     { n: 'PLAIN SKIDS', cost: 0, d: 'Easy to grab.' },
     { n: 'ANTI-CLIMB SKIDS', cost: 400, d: 'Spikes and greased bars: zombies can barely hang on.' },
@@ -104,25 +99,9 @@ export const SLOTS = [
     { n: 'LONG RANGE RADIO', cost: 400, d: 'A big aerial on the tail: hear SOS calls from twice as far, and see hordes coming on the map.' },
     { n: 'SATCOM', cost: 1500, d: 'A satellite dome on the tail: hear SOS calls from anywhere on the map.' },
   ] },
-  { id: 'flares', name: 'FLASHBANGS', icon: '✺', tiers: [
-    { n: 'NONE', cost: 0, d: 'Nothing to shake them off with.' },
-    { n: 'FLASHBANGS', cost: 700, d: 'Press X: a ring of flashbangs. Zombies within 25 m are stunned and anything on the skids lets go. 4 per refill.' },
-    { n: 'HEAVY FLASHBANGS', cost: 1900, d: '8 per refill, 50 m wide, and they stay stunned for longer.' },
-  ] },
-  { id: 'beacon', name: 'NOISE BEACONS', icon: '◬', tiers: [
-    { n: 'NONE', cost: 0, d: 'No beacons.' },
-    { n: 'NOISE BEACONS', cost: 600, d: 'Press N: drop a screaming beacon. Every zombie around walks to it for 25 seconds. 3 per refill.' },
-    { n: 'BOOM BEACONS', cost: 1700, d: '5 of them, and they blow up when they stop, right in the middle of the crowd.' },
-  ] },
   { id: 'nvg', name: 'NIGHT VISION', icon: '◐', tiers: [
     { n: 'NONE', cost: 0, d: 'At night you only see what\'s lit.' },
     { n: 'NIGHT VISION', cost: 900, d: 'Goggles for the crew and an infrared lamp on the nose: at night everything shows up bright and green. Z switches it on and off.' },
-  ] },
-  { id: 'drone', name: 'DRONES', icon: '✣', tiers: [
-    { n: 'NONE', cost: 0, d: 'Just you.' },
-    { n: 'SPOTTER DRONE', cost: 1200, d: 'A little quadcopter flies alongside: the minimap shows every zombie within 650 m, and the big ones stand out.' },
-    { n: 'ARMED DRONE', cost: 2600, d: 'The drone carries a gun: it picks off anything climbing at you or hanging off the skids.' },
-    { n: 'DRONE PAIR', cost: 4400, d: 'Two armed drones, one each side.' },
   ] },
   { id: 'ammo', name: 'AMMO', icon: '⁍', tiers: [
     { n: 'BALL', cost: 0, d: 'Ordinary rounds for the nose gun and the door guns.' },
@@ -137,6 +116,21 @@ export const SLOTS = [
   { id: 'suppress', name: 'FIRE SUPPRESSION', icon: '❄', tiers: [
     { n: 'NONE', cost: 0, d: 'When it\'s going down, it\'s going down.' },
     { n: 'ENGINE EXTINGUISHERS', cost: 1500, d: 'Once a sortie, a hit that would have brought you down puts the fire out instead: you keep flying on 20% health.' },
+  ] },
+  { id: 'cooling', name: 'BARREL COOLING', icon: '≋', tiers: [
+    { n: 'NONE', cost: 0, d: 'Hold the trigger too long and the gun overheats.' },
+    { n: 'COOLED BARRELS', cost: 700, d: 'Heavy fluted barrels with cooling jackets: the nose gun and gun pods heat up 40% slower.' },
+    { n: 'QUICK-CHANGE BARRELS', cost: 1800, d: 'Plus a spare barrel set: if it overheats it\'s firing again twice as fast, and it fires 10% quicker.' },
+  ] },
+  { id: 'hover', name: 'FLIGHT COMPUTER', icon: '⌬', tiers: [
+    { n: 'NONE', cost: 0, d: 'Let go and you drift.' },
+    { n: 'HOVER HOLD', cost: 600, d: 'An autopilot: let go of the controls and it stops dead and holds its spot. Perfect for winching and shooting.' },
+    { n: 'GROUND PROXIMITY WARNING', cost: 1500, d: 'Plus a radar altimeter that warns you before you fly into something, and bumps do 30% less damage.' },
+  ] },
+  { id: 'crash', name: 'CRASH SAFETY', icon: '⛨', tiers: [
+    { n: 'NONE', cost: 0, d: 'If you go down, so does everyone aboard.' },
+    { n: 'CRASHWORTHY SEATS', cost: 900, d: 'Seats that soak up a crash: if you\'re shot down, the survivors aboard live and the rescue team brings them home.' },
+    { n: 'CRASH-RESISTANT FUEL', cost: 2000, d: 'Plus self-sealing fuel tanks: no fireball when you go down, and no repair bill.' },
   ] },
   { id: 'pods', name: 'GUN PODS', icon: '⁑', tiers: [
     { n: 'NONE', cost: 0, d: 'Nothing on the wings but what you fit there.' },
@@ -168,14 +162,19 @@ export const HELIS = {
     hp: 0.9, mass: 0.85, lift: 1.12, speed: 1.4, agility: 1.4, fuel: 0.95, gunMul: 1.15, rocketMul: 1.25, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, drops: 1, sniper: 0 } },
   kestrel: { n: 'KESTREL', cost: 6500, d: 'A big three-engine utility helicopter: 12 to 24 seats, a quick cruise, tough as anything, and room for nearly every upgrade.', seats: [12, 16, 20, 24],
     hp: 1.45, mass: 1.35, lift: 1.42, speed: 1.08, agility: 0.8, fuel: 1.5, cap: { gun: 3 } },
+  huey: { n: 'HUEY', cost: 1000, d: 'The classic. A cheap, honest utility helicopter: big open doors, a two-blade rotor you can hear for miles, room for 6 to 14, and it fits almost everything.', seats: [6, 9, 12, 14],
+    hp: 0.95, mass: 0.95, lift: 1.04, speed: 1.02, agility: 1.08, fuel: 1.15, cap: { gun: 3, rockets: 2, armor: 3, rotor: 1 } },
+  seaking: { n: 'SEA KING', cost: 5500, d: 'A big search-and-rescue helicopter with a boat hull: it can land on water. A rescue hoist comes fitted, 14 to 26 seats, and it flies for ages.', seats: [14, 18, 22, 26],
+    hp: 1.55, mass: 1.45, lift: 1.52, speed: 0.98, agility: 0.74, fuel: 1.7, floats: true, min: { winch: 1 }, cap: { gun: 2, rockets: 2, pods: 1 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
     hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0, pods: 0 } },
 };
-export const HELI_IDS = Object.keys(HELIS);
+export const HELI_IDS = Object.keys(HELIS).sort((a, b) => HELIS[a].cost - HELIS[b].cost);
 // the upgrades that actually fit this helicopter
 export function capEq(eq, kind = 'warhorse') {
-  const cap = (HELIS[kind] || HELIS.warhorse).cap, out = {};
+  const HK = HELIS[kind] || HELIS.warhorse, cap = HK.cap, out = {};
   for (const k of Object.keys(eq)) out[k] = Math.min(eq[k], cap[k] ?? 99);
+  for (const k of Object.keys(HK.min || {})) out[k] = Math.max(out[k] || 0, HK.min[k]);      // kit that comes fitted
   return out;
 }
 
@@ -269,6 +268,15 @@ export function loadSave() {
     if (back > 0) { s.scrap = (s.scrap || 0) + back; s.refundMsg = back; }
     s.refundPending = true;
   }
+  // the loudspeaker, flashbangs, noise beacons and drones are gone too: everything spent on them comes back
+  if (!s.refund3) {
+    const spent = { speaker: [0, 450, 2050], flares: [0, 700, 2600], beacon: [0, 600, 2300], drone: [0, 1200, 3800, 8200] };
+    let back = 0;
+    for (const k of Object.keys(spent)) back += spent[k][Math.min(spent[k].length - 1, (s.own && s.own[k]) || 0)];
+    s.refund3 = true;
+    if (back > 0) { s.scrap = (s.scrap || 0) + back; s.refundMsg = (s.refundMsg || 0) + back; }
+    s.refundPending = true;
+  }
   for (const sl of SLOTS) {
     const top = sl.tiers.length - 1;
     s.own[sl.id] = Math.min(top, s.own[sl.id] ?? 0); s.eq[sl.id] = Math.min(s.own[sl.id], s.eq[sl.id] ?? 0);
@@ -288,11 +296,11 @@ export function saveSave(s) { try { localStorage.setItem(KEY, JSON.stringify(s))
 export function statsFor(eq0, kind = 'warhorse') {
   const HK = HELIS[kind] || HELIS.warhorse, eq = capEq(eq0, kind);
   const v = (k, max) => Math.min(eq[k] || 0, max);
-  const g = v('gun', 4), ar = v('armor', 4), en = v('engine', 4), ro = v('rotor', 3), rk = v('rockets', 4), bo = v('bombs', 4), fl = v('flares', 2), bc = v('beacon', 2);
+  const g = v('gun', 4), ar = v('armor', 4), en = v('engine', 4), ro = v('rotor', 3), rk = v('rockets', 4), bo = v('bombs', 4);
   const S = {
     kind,
     hp: Math.round(500 * [1, 1.6, 2.3, 3.2, 4][ar]),
-    mass: [1, 1.06, 1.14, 1.26, 1.1][ar] + rk * 0.02 + bo * 0.02 + v('cabin', 3) * 0.03 + v('fuel', 3) * 0.03 + v('winch', 3) * 0.02 + v('drone', 3) * 0.01,
+    mass: [1, 1.06, 1.14, 1.26, 1.1][ar] + rk * 0.02 + bo * 0.02 + v('cabin', 3) * 0.03 + v('fuel', 3) * 0.03 + v('winch', 3) * 0.02,
     lift: [1, 1.14, 1.28, 1.36, 1.5][en] * [1, 1.07, 1.12, 1.15][ro],
     speed: [1, 1.1, 1.2, 1.26, 1.45][en],
     agility: [1, 1.15, 1.35, 1.3][ro],
@@ -311,13 +319,16 @@ export function statsFor(eq0, kind = 'warhorse') {
     seats: [4, 8, 12, 16][v('cabin', 3)],
     fuel: [100, 160, 240, 330][v('fuel', 3)],
     winch: v('winch', 3), hook: v('winch', 3) >= 2, hoist: v('winch', 3) === 3,
-    flir: v('flir', 2), speaker: v('speaker', 2), lrad: v('speaker', 2) === 2, skidGuard: v('skids', 1) >= 1, zap: false,
+    flir: v('flir', 2), speaker: 0, lrad: false, skidGuard: v('skids', 1) >= 1, zap: false,
     light: v('light', 2), medbay: v('medbay', 2), drops: v('drops', 2), radio: v('radio', 2),
-    nvg: v('nvg', 1), racks: v('racks', 2), drones: v('drone', 3), ammo: v('ammo', 2), repair: v('repair', 2), suppress: v('suppress', 1), flares: [0, 4, 8][fl], megaFlare: fl === 2, beacons: [0, 3, 5][bc], beaconBoom: bc === 2,
+    nvg: v('nvg', 1), racks: v('racks', 2), drones: 0, ammo: v('ammo', 2), repair: v('repair', 2), suppress: v('suppress', 1), flares: 0, megaFlare: false, beacons: 0, beaconBoom: false,
+    cooling: v('cooling', 2), hover: v('hover', 2), gpws: v('hover', 2) === 2, crash: v('crash', 2),
     crewMax: [2, 3, 4, 4][v('cabin', 3)],
     pods: v('pods', 2), sniper: v('sniper', 2),
   };
+  if (S.cooling) S.gun = { ...S.gun, heat: S.gun.heat * 0.6, cool: S.gun.cool * (S.cooling === 2 ? 2 : 1), rate: S.gun.rate * (S.cooling === 2 ? 1.1 : 1) };
   // the airframe
+  S.floats = !!HK.floats;
   S.hp = Math.round(S.hp * HK.hp); S.mass *= HK.mass; S.lift *= HK.lift; S.speed *= HK.speed; S.agility *= HK.agility;
   S.fuel = Math.round(S.fuel * HK.fuel);
   S.seats = HK.seats[Math.min(HK.seats.length - 1, v('cabin', 3))];
