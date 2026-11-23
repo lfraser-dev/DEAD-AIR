@@ -40,7 +40,7 @@ export const SLOTS = [
     { n: 'EMERGENCY POWER', cost: 1900, d: 'Hold SHIFT to overboost the engines for a burst of speed.' },
     { n: 'UPRATED ENGINES', cost: 4200, d: 'Two big new turboshafts: much faster, much more lift, and a longer boost.' },
   ] },
-  { id: 'rotor', name: 'ROTOR', icon: '✳', tiers: [
+  { id: 'rotor', only: 'heli', name: 'ROTOR', icon: '✳', tiers: [
     { n: '4 BLADES', cost: 0, d: 'The standard rotor.' },
     { n: '5 BLADES', cost: 500, d: 'Longer blades. Better lift and quicker turns.' },
     { n: 'COAXIAL', cost: 1400, d: 'Two rotors stacked up. Turns on the spot.' },
@@ -65,7 +65,7 @@ export const SLOTS = [
     { n: '12 SEATS', cost: 900, d: 'Side pods bolted on. Carry 12.' },
     { n: '16 SEATS', cost: 2100, d: 'Bigger pods all the way back. Carry 16 (the Mule carries 40).' },
   ] },
-  { id: 'winch', name: 'WINCH', icon: '⚓', tiers: [
+  { id: 'winch', only: 'heli', name: 'WINCH', icon: '⚓', tiers: [
     { n: 'NONE', cost: 0, d: 'People climb a rope ladder: you have to hover low.' },
     { n: 'RESCUE WINCH', cost: 600, d: 'A winch arm on the door: pick people up from 30 m up, out of reach of the piles.' },
     { n: 'CARGO HOOK', cost: 1300, d: 'Also hooks crates from high up, and lowers your team onto roofs without landing.' },
@@ -76,7 +76,7 @@ export const SLOTS = [
     { n: 'THERMAL CAMERA', cost: 500, d: 'A camera ball under the nose: zombies show on the map from far away.' },
     { n: 'THERMAL + MARKERS', cost: 1300, d: 'Marks screamers and piles on screen, and how many zombies are inside buildings.' },
   ] },
-  { id: 'skids', name: 'SKIDS', icon: '⊥', tiers: [
+  { id: 'skids', only: 'heli', name: 'SKIDS', icon: '⊥', tiers: [
     { n: 'PLAIN SKIDS', cost: 0, d: 'Easy to grab.' },
     { n: 'ANTI-CLIMB SKIDS', cost: 400, d: 'Spikes and greased bars: zombies can barely hang on.' },
   ] },
@@ -85,7 +85,7 @@ export const SLOTS = [
     { n: 'SEARCHLIGHT', cost: 350, d: 'A big light under the nose that points where you fly. Comes on at night (L to switch).' },
     { n: 'NIGHTSUN', cost: 1100, d: 'The police searchlight: twin lamps, much brighter. Zombies caught in the beam stagger and stop.' },
   ] },
-  { id: 'medbay', name: 'MEDICAL BAY', icon: '✚', tiers: [
+  { id: 'medbay', only: 'heli', name: 'MEDICAL BAY', icon: '✚', tiers: [
     { n: 'NONE', cost: 0, d: 'A first aid kit somewhere.' },
     { n: 'MEDICAL BAY', cost: 600, d: 'Stretchers and a medic station: your team heals fast on board and gets +30 health on raids.' },
     { n: 'TRAUMA BAY', cost: 1800, d: 'A full trauma bay: heals 3x faster, +60 health on raids, and a bitten team member is saved once a raid.' },
@@ -123,7 +123,7 @@ export const SLOTS = [
     { n: 'COOLED BARRELS', cost: 700, d: 'Heavy fluted barrels with cooling jackets: the nose gun and gun pods heat up 40% slower.' },
     { n: 'QUICK-CHANGE BARRELS', cost: 1800, d: 'Plus a spare barrel set: if it overheats it\'s firing again twice as fast, and it fires 10% quicker.' },
   ] },
-  { id: 'hover', name: 'FLIGHT COMPUTER', icon: '⌬', tiers: [
+  { id: 'hover', only: 'heli', name: 'FLIGHT COMPUTER', icon: '⌬', tiers: [
     { n: 'NONE', cost: 0, d: 'Let go and you drift.' },
     { n: 'HOVER HOLD', cost: 600, d: 'An autopilot: let go of the controls and it stops dead and holds its spot. Perfect for winching and shooting.' },
     { n: 'GROUND PROXIMITY WARNING', cost: 1500, d: 'Plus a radar altimeter that warns you before you fly into something, and bumps do 30% less damage.' },
@@ -148,12 +148,36 @@ export const SLOTS = [
     { n: 'LASER DESIGNATOR', cost: 1400, d: 'A laser pod: every rocket steers to the exact spot under your crosshair.' },
     { n: 'SNIPER POD', cost: 3000, d: 'Plus a long-range camera: every zombie within 900 m shows on the map, and the big ones on screen.' },
   ] },
+  { id: 'flaps', only: 'plane', name: 'FLAPS', icon: '◿', tiers: [
+    { n: 'PLAIN WING', cost: 0, d: 'Slow down too much and you fall out of the sky.' },
+    { n: 'SLOTTED FLAPS', cost: 800, d: 'You can fly 20% slower before it stalls: easier take-offs and landings, tighter turns.' },
+    { n: 'FLAPS + SLATS', cost: 2000, d: 'Slats on the front of the wing too: stalls 35% slower, and it turns much tighter.' },
+  ] },
+  { id: 'airbrake', only: 'plane', name: 'AIRBRAKES', icon: '⏸', tiers: [
+    { n: 'NONE', cost: 0, d: 'To slow down, throttle back and wait.' },
+    { n: 'SPEED BRAKES', cost: 600, d: 'Hold S with the throttle right back: panels pop out and you slow down fast.' },
+    { n: 'THRUST REVERSERS', cost: 1500, d: 'Plus reversers on the engines: stop on the runway in a few seconds.' },
+  ] },
+  { id: 'reheat', only: 'plane', name: 'AFTERBURNER', icon: '♨', tiers: [
+    { n: 'NONE', cost: 0, d: 'Full throttle is as fast as it goes.' },
+    { n: 'AFTERBURNER', cost: 1500, d: 'Hold SHIFT: fuel sprayed into the exhaust, +60% thrust. Drinks fuel.' },
+    { n: 'BIG AFTERBURNER', cost: 3500, d: 'A longer, hotter burn: +110% thrust.' },
+  ] },
+  { id: 'gear', only: 'plane', name: 'LANDING GEAR', icon: '⊼', tiers: [
+    { n: 'STANDARD GEAR', cost: 0, d: 'Land gently.' },
+    { n: 'ROUGH-FIELD GEAR', cost: 700, d: 'Big tyres and long-travel legs: hard landings don\'t hurt.' },
+  ] },
+  { id: 'hardpoints', only: 'plane', name: 'WING HARDPOINTS', icon: '⫶', tiers: [
+    { n: 'STANDARD', cost: 0, d: 'The usual pylons.' },
+    { n: 'EXTRA PYLONS', cost: 1200, d: 'Two more pylons on each wing: +50% rockets and bombs.' },
+    { n: 'TRIPLE RACKS', cost: 2800, d: 'Triple ejector racks on every pylon: double rockets and bombs.' },
+  ] },
   { id: 'pods', name: 'GUN PODS', icon: '⁑', tiers: [
     { n: 'NONE', cost: 0, d: 'Nothing on the wings but what you fit there.' },
     { n: '.50 CAL PODS', cost: 1400, d: 'Two HMP-400 heavy machine gun pods on the wings. They fire with the nose gun.' },
     { n: '20 MM CANNON PODS', cost: 3200, d: 'Two 20 mm cannon pods: slower, but every shell bursts. They fire with the nose gun.' },
   ] },
-  { id: 'sniper', name: 'MARKSMAN', icon: '⌕', tiers: [
+  { id: 'sniper', only: 'heli', name: 'MARKSMAN', icon: '⌕', tiers: [
     { n: 'NONE', cost: 0, d: 'Nobody aiming carefully.' },
     { n: 'DESIGNATED MARKSMAN', cost: 1600, d: 'A sharpshooter in the cabin with a scoped rifle: picks off screamers and riot police first, one shot every second and a half.' },
     { n: 'ANTI-MATERIEL RIFLE', cost: 3600, d: 'A .50 calibre rifle: one shot drops a brute, and it goes through riot armour and the one behind.' },
@@ -182,22 +206,31 @@ export const HELIS = {
     hp: 0.95, mass: 0.95, lift: 1.04, speed: 1.02, agility: 1.08, fuel: 1.15, cap: { gun: 3, rockets: 2, armor: 3, rotor: 1 } },
   seaking: { n: 'SEA KING', cost: 5500, d: 'A big search-and-rescue helicopter with a boat hull: it can land on water. A rescue hoist comes fitted, 14 to 26 seats, and it flies for ages.', seats: [14, 18, 22, 26],
     hp: 1.55, mass: 1.45, lift: 1.52, speed: 0.98, agility: 0.74, fuel: 1.7, floats: true, min: { winch: 1 }, cap: { gun: 2, rockets: 2, pods: 1 } },
-  osprey: { n: 'OSPREY', cost: 8000, d: 'A tiltrotor: it takes off like a helicopter, then tips its rotors forward and flies like a plane. Very fast, 16 to 28 seats, huge range. Wide, so mind the buildings.', seats: [16, 20, 24, 28],
-    hp: 1.5, mass: 1.5, lift: 1.62, speed: 1.75, agility: 0.7, fuel: 2.0, tilt: true, cap: { rotor: 0, gun: 2, rockets: 2, pods: 1, bombs: 2 } },
-  harrier: { n: 'HARRIER', cost: 9500, d: 'A jump jet. Takes off straight up on four swivelling nozzles, then it\'s the fastest thing in the game by miles. Guns 20% harder, 50% more rockets. One seat.', seats: [1],
-    hp: 0.85, mass: 0.9, lift: 1.3, speed: 2.1, agility: 1.55, fuel: 0.9, gunMul: 1.2, rocketMul: 1.5, jet: true, cap: { rotor: 0, cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0, drops: 0, armor: 2 } },
+  osprey: { n: 'OSPREY', cost: 8000, d: 'A PLANE that can hover: press V to tip the rotors forward and fly like a plane, V again to hover like a helicopter. 16 to 28 seats, huge range. Wide, so mind the buildings.', seats: [16, 20, 24, 28],
+    hp: 1.5, mass: 1.5, lift: 1.62, speed: 1.2, agility: 0.7, fuel: 2.0, tilt: true, plane: true, vtol: true, stall: 30, vmax: 95, thrust: 9, cap: { rotor: 0, gun: 2, rockets: 2, pods: 1, bombs: 2 } },
+  harrier: { n: 'HARRIER', cost: 9500, d: 'A jump jet PLANE: hovers on four swivelling nozzles, then press V and it flies like a fighter, the fastest thing in the game. Guns 20% harder, 50% more rockets. One seat.', seats: [1],
+    hp: 0.85, mass: 0.9, lift: 1.3, speed: 1.3, agility: 1.55, fuel: 0.9, plane: true, vtol: true, stall: 34, vmax: 118, thrust: 11, gunMul: 1.2, rocketMul: 1.5, jet: true, cap: { rotor: 0, cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0, drops: 0, armor: 2 } },
   alligator: { n: 'ALLIGATOR', cost: 7000, d: 'A heavy attack helicopter with two rotors stacked on one mast (no tail rotor), two pilots side by side, and six pylons. Chin gun +25%, rockets +40%, armoured.', seats: [2],
     hp: 1.55, mass: 1.15, lift: 1.3, speed: 1.25, agility: 1.35, fuel: 1.05, gunMul: 1.25, rocketMul: 1.4, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0, rotor: 0 } },
-  skycrane: { n: 'SKYCRANE', cost: 6000, d: 'A flying crane: a cab, a skinny spine, giant legs and a people pod slung underneath. The strongest lifter there is: zombies on the skids barely slow it, and the cargo hook comes fitted.', seats: [10, 14, 18, 22],
-    hp: 1.25, mass: 1.3, lift: 1.9, speed: 0.95, agility: 0.72, fuel: 1.4, heavy: true, min: { winch: 2 }, cap: { gun: 2, rockets: 1, pods: 0, bombs: 2 } },
+  warthog: { n: 'WARTHOG', cost: 8500, d: 'A PLANE built around a gun: the GAU-8 30 mm cannon (+60% damage), armour round the pilot (+120% health), eleven pylons. Takes off from the runway, needs speed to stay up.', seats: [1],
+    hp: 2.2, mass: 1.2, lift: 1.2, speed: 1, agility: 1.0, fuel: 1.4, gunMul: 1.6, rocketMul: 1.5, plane: true, stall: 26, vmax: 82, thrust: 8, cap: { cabin: 0, door: 0 } },
+  spectre: { n: 'SPECTRE', cost: 11000, d: 'A flying gunship PLANE: four propellers and a row of guns sticking out of the left side. Fly circles round a crowd and the gunners (miniguns fitted) hose it down. Huge, tough, slow to turn.', seats: [4],
+    hp: 2.4, mass: 1.8, lift: 1.5, speed: 1, agility: 0.55, fuel: 2.2, plane: true, stall: 30, vmax: 70, thrust: 6.5, min: { door: 3 }, cap: { cabin: 0, rockets: 0, pods: 0 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
     hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0, pods: 0 } },
 };
+// is this upgrade one for helicopters, planes or both? (the VTOLs count as both)
+export function slotFits(id, kind) {
+  const sl = SLOT[id], HK = HELIS[kind] || HELIS.warhorse;
+  if (!sl || !sl.only) return true;
+  if (HK.vtol) return true;
+  return sl.only === (HK.plane ? 'plane' : 'heli');
+}
 export const HELI_IDS = Object.keys(HELIS).sort((a, b) => HELIS[a].cost - HELIS[b].cost);
 // the upgrades that actually fit this helicopter
 export function capEq(eq, kind = 'warhorse') {
   const HK = HELIS[kind] || HELIS.warhorse, cap = HK.cap, out = {};
-  for (const k of Object.keys(eq)) out[k] = Math.min(eq[k], cap[k] ?? 99);
+  for (const k of Object.keys(eq)) out[k] = Math.min(eq[k], slotFits(k, kind) ? (cap[k] ?? 99) : 0);
   for (const k of Object.keys(HK.min || {})) out[k] = Math.max(out[k] || 0, HK.min[k]);      // kit that comes fitted
   return out;
 }
@@ -349,6 +382,11 @@ export function loadSave() {
     if (back > 0) { s.scrap = (s.scrap || 0) + back; s.refundMsg = (s.refundMsg || 0) + back; }
     s.refundPending = true;
   }
+  // the Skycrane was taken out: if you bought it, you get the scrap back
+  if (!s.refund4) {
+    s.refund4 = true;
+    if ((s.helis || []).includes('skycrane')) { s.helis = s.helis.filter((k) => k !== 'skycrane'); s.scrap = (s.scrap || 0) + 6000; s.refundMsg = (s.refundMsg || 0) + 6000; s.refundPending = true; }
+  }
   for (const sl of SLOTS) {
     const top = sl.tiers.length - 1;
     s.own[sl.id] = Math.min(top, s.own[sl.id] ?? 0); s.eq[sl.id] = Math.min(s.own[sl.id], s.eq[sl.id] ?? 0);
@@ -396,6 +434,7 @@ export function statsFor(eq0, kind = 'warhorse') {
     light: v('light', 2), medbay: v('medbay', 2), drops: v('drops', 2), radio: v('radio', 2),
     nvg: v('nvg', 1), racks: v('racks', 2), drones: 0, ammo: v('ammo', 2), repair: v('repair', 2), suppress: v('suppress', 1), flares: 0, megaFlare: false, beacons: 0, beaconBoom: false,
     sight: v('sight', 2), quiet: v('quiet', 2), tpod: v('tpod', 2),
+    flaps: v('flaps', 2), airbrake: v('airbrake', 2), reheat: v('reheat', 2), gear: v('gear', 1), hardpoints: v('hardpoints', 2),
     cooling: v('cooling', 2), hover: v('hover', 2), gpws: v('hover', 2) === 2, crash: v('crash', 2),
     crewMax: [2, 3, 4, 4][v('cabin', 3)],
     pods: v('pods', 2), sniper: v('sniper', 2),
@@ -404,6 +443,13 @@ export function statsFor(eq0, kind = 'warhorse') {
   if (S.cooling) S.gun = { ...S.gun, heat: S.gun.heat * 0.6, cool: S.gun.cool * (S.cooling === 2 ? 2 : 1), rate: S.gun.rate * (S.cooling === 2 ? 1.1 : 1) };
   // the airframe
   S.floats = !!HK.floats; S.heavy = !!HK.heavy;
+  // planes: stall speed, top speed, thrust; flaps lower the stall, the afterburner is the boost
+  if (HK.plane) {
+    Object.assign(S, { plane: true, vtol: !!HK.vtol, stall: HK.stall * [1, 0.8, 0.65][S.flaps], vmax: HK.vmax * [1, 1.08, 1.16, 1.22, 1.32][en], thrust: HK.thrust * [1, 1.1, 1.2, 1.25, 1.35][en] });
+    S.boost = S.reheat > 0 || S.boost; S.boostMul = S.reheat ? [1, 1.6, 2.1][S.reheat] : S.boostMul;
+    const hm = [1, 1.5, 2][S.hardpoints];
+    S.rockets = Math.round(S.rockets * hm); S.bombs = Math.round(S.bombs * hm);
+  }
   S.hp = Math.round(S.hp * HK.hp); S.mass *= HK.mass; S.lift *= HK.lift; S.speed *= HK.speed; S.agility *= HK.agility;
   S.fuel = Math.round(S.fuel * HK.fuel);
   S.seats = HK.seats[Math.min(HK.seats.length - 1, v('cabin', 3))];

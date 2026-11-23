@@ -257,6 +257,23 @@ export function buildWorld(seed = 1337) {
     }
     if (b) { const y = flatTarget(b[0], b[1]); T.flatten(b[0], b[1], 150, y, 120); spots.push({ x: b[0], z: b[1], r: 140, kind: 'fort', y }); }
   }
+  // THE AIRFIELD: a long runway (east-west) on the flattest ground round the city, for the planes
+  { let bestA = null, bs = Infinity;
+    for (let t = 0; t < 400; t++) {
+      const a = Math.random() * 0 + R() * Math.PI * 2, d = 1300 + R() * 1900, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+      if (!free(x, z, 720, 120)) continue;
+      let lo = Infinity, hi = -Infinity, wetN = 0;
+      for (let i = -8; i <= 8; i++) for (const dz of [-90, 0, 90]) { const h = T.natural(x + i * 85, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); if (h < WATER + 2) wetN++; }
+      const sc = hi - lo + wetN * 50;
+      if (sc < bs) { bs = sc; bestA = [x, z]; }
+    }
+    if (bestA) {
+      const [x, z] = bestA; let sum = 0; for (let i = -8; i <= 8; i++) sum += T.natural(x + i * 85, z);
+      const y = Math.max(WATER + 6, sum / 17);
+      T.rect(x, z + 40, 720, 170, y, 160);
+      spots.push({ x, z, r: 720, kind: 'airfield', y });
+    }
+  }
   // ST MARY'S: a big hospital out of town, where everyone went when it started
   { let b = null;
     for (let tries = 0; tries < 24 && !b; tries++) {
@@ -883,7 +900,49 @@ export function buildWorld(seed = 1337) {
     }
   }
 
-  let spire = null, fort = null, hospital = null;
+  let spire = null, fort = null, hospital = null, airfield = null;
+  // THE AIRFIELD: a 1.3 km runway with markings and edge lights, a taxiway, an apron, two hangars, a control tower,
+  // fuel tanks and a windsock. Planes start here, and land here to refuel, repair and rearm.
+  function airfieldSite(s) {
+    const { x, z, y } = s, L = 650, W = 24, ASP = [0.16, 0.16, 0.17], WH = [0.93, 0.93, 0.9];
+    ground.town(x, z + 40, 700, 20);
+    const rw = add([x - L, y - 0.5, z - W], [x + L, y + 0.12, z + W], { color: ASP, tex: 7, tag: 'pad' });
+    // centre line, thresholds, touchdown marks
+    for (let k = -L + 60; k < L - 60; k += 30) add([x + k, y + 0.12, z - 0.5], [x + k + 16, y + 0.15, z + 0.5], { color: WH, solid: false, noShadow: true });
+    for (const sx of [-1, 1]) {
+      for (let j = 0; j < 8; j++) { const zz = z - W + 3 + j * 5.6; add([x + sx * (L - 28) - 12, y + 0.12, zz], [x + sx * (L - 28) + 12, y + 0.15, zz + 2.6], { color: WH, solid: false, noShadow: true }); }
+      for (const off of [150, 230]) for (const dz of [-9, 7]) add([x + sx * (L - off) - 14, y + 0.12, z + dz], [x + sx * (L - off) + 14, y + 0.15, z + dz + 2], { color: WH, solid: false, noShadow: true });
+      at(x + sx * (L - 2), y + 0.1, z, 2, 0.3, W * 2, { color: [0.2, 1, 0.3], emissive: 0.8, solid: false, noShadow: true });
+    }
+    for (let k = -L; k <= L; k += 60) for (const sz of [-1, 1]) at(x + k, y + 0.1, z + sz * (W + 1), 0.35, 0.35, 0.35, { color: [1, 0.92, 0.6], emissive: 1, solid: false, noShadow: true });
+    // a taxiway to the apron
+    add([x - 260, y - 0.5, z + W], [x - 230, y + 0.1, z + 70], { color: ASP, tex: 7 });
+    const apron = add([x - 330, y - 0.5, z + 70], [x + 70, y + 0.11, z + 150], { color: [0.4, 0.4, 0.39], tex: 4, tag: 'pad' });
+    for (let k = 0; k < 5; k++) add([x - 300 + k * 70, y + 0.11, z + 74], [x - 299 + k * 70, y + 0.14, z + 140], { color: [0.95, 0.75, 0.15], solid: false, noShadow: true });
+    // two hangars, doors open to the apron
+    for (const hx of [x - 250, x - 150]) {
+      const hx0 = hx - 38, hx1 = hx + 38, hz0 = z + 155, hz1 = z + 200, HH = 16, M = [0.5, 0.53, 0.56];
+      add([hx0, y - 0.5, hz0], [hx0 + 1, y + HH, hz1], { color: M, tex: 5, mat: 'metal' });
+      add([hx1 - 1, y - 0.5, hz0], [hx1, y + HH, hz1], { color: M, tex: 5, mat: 'metal' });
+      add([hx0, y - 0.5, hz1 - 1], [hx1, y + HH, hz1], { color: M, tex: 5, mat: 'metal' });
+      const rf = add([hx0 - 0.5, y + HH, hz0 - 0.5], [hx1 + 0.5, y + HH + 1.2, hz1 + 0.5], { color: [0.38, 0.4, 0.43], tex: 5, mat: 'metal' });
+      roofs.push({ box: rf, top: y + HH + 1.2, x: hx, z: (hz0 + hz1) / 2, sx: hx1 - hx0, sz: hz1 - hz0, h: HH + 1.2, base: y, door: [hx, y, hz0], stair: [hx0 + 4, y + HH + 1, hz1 - 4] });
+      for (const lx of [hx - 20, hx, hx + 20]) at(lx, y + HH - 0.6, (hz0 + hz1) / 2, 0.6, 0.3, 30, { color: [1, 0.96, 0.85], emissive: 1, noShadow: true, solid: false });
+    }
+    // the control tower
+    tower(x + 10, z + 160, x + 26, z + 176, y, 18, { style: 'office', lootChance: 0 });
+    at(x + 18, y + 18, z + 168, 18, 4, 18, { color: [0.15, 0.3, 0.38], mat: 'glass' });
+    at(x + 18, y + 22, z + 168, 19, 0.6, 19, { color: [0.2, 0.2, 0.22], mat: 'metal' });
+    at(x + 18, y + 22.6, z + 168, 0.3, 5, 0.3, { color: [0.6, 0.6, 0.62], mat: 'metal' });
+    at(x + 18, y + 27.6, z + 168, 0.6, 0.6, 0.6, { color: [1, 0.15, 0.1], emissive: 1, shape: 'sphere', noShadow: true });
+    // fuel farm, windsock, a couple of old wrecks
+    for (let k = 0; k < 3; k++) at(x + 80 + k * 14, y - 0.5, z + 185, 10, 8, 10, { color: [0.82, 0.82, 0.8], shape: 'cylY', mat: 'paint' });
+    at(x + 120, y - 0.5, z + 60, 0.2, 7, 0.2, { color: [0.7, 0.7, 0.7], mat: 'metal' });
+    at(x + 120, y + 6, z + 61.2, 0.9, 0.9, 2.6, { color: [1, 0.45, 0.1], shape: { taper: [1, 0.4] }, solid: false });
+    open.push([x - 100, z + 110, y], [x + 40, z + 110, y]);
+    const spawn = [x - L + 40, y + 0.12, z];
+    return { id: 'airfield', name: 'AIRFIELD', pos: [x, y, z], x, z, y, pad: rw, pads: [{ box: rw, at: spawn }, { box: apron, at: [x - 130, y + 0.11, z + 110] }], padAt: spawn, spawn, spawnYaw: -Math.PI / 2, hp: 1, max: 1, turrets: [], runway: { x0: x - L, x1: x + L, z0: z - W, z1: z + W, y } };
+  }
   const cities = [], masts = [];
   // FORT CALDER: a walled army base. Barracks and an armoury to raid, hangars, fuel, watchtowers, and two pads
   function fortress(s) {
@@ -996,6 +1055,7 @@ export function buildWorld(seed = 1337) {
     if (s.kind === 'borough') { borough(); cities.push(s); continue; }
     if (s.kind === 'port') continue;
     if (s.kind === 'fort') { fort = fortress(s); continue; }
+    if (s.kind === 'airfield') { airfield = airfieldSite(s); continue; }
     if (s.kind === 'hospital') { hospital = hospitalSite(s); continue; }
     if (s.kind === 'mast') { masts.push(mastSite(s, masts.length)); continue; }
     if (s.kind === 'bridgehead') { ground.town(s.x, s.z, s.r * 0.7, 20); continue; }
@@ -1117,7 +1177,7 @@ export function buildWorld(seed = 1337) {
   at(hx + 15, 0.1, hz + 14, 3, 1.1, 1.2, { color: [0.75, 0.15, 0.1], mat: 'paint', shape: 0.08 });
   for (let s = -9; s <= 9; s++) for (const zz of [-19.6, 19.6]) at(hx + s * 2, 0.12, hz + zz, 1, 0.02, 0.4, { color: s % 2 ? [0.95, 0.75, 0.1] : [0.08, 0.08, 0.08], noShadow: true, solid: false });
 
-  return { world, terrain: T, ground, roofs, burning, open, loot, roads, towns, cities, city: { x: cx, z: cz, r: CITY_R, y: cityY, iw: IW, il: IL, park: cityPark }, boro, bridges, grids, spire, fort, hospital, masts, fobs: [spire, fort].filter(Boolean) };
+  return { world, terrain: T, ground, roofs, burning, open, loot, roads, towns, cities, city: { x: cx, z: cz, r: CITY_R, y: cityY, iw: IW, il: IL, park: cityPark }, boro, bridges, grids, spire, fort, hospital, masts, airfield, fobs: [spire, fort, airfield].filter(Boolean) };
 }
 
 // THE SPIRE: a tower 170 m tall with a landing bay cut into one side 70 m up, and a big flight deck sticking out over

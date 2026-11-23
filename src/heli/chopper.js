@@ -121,6 +121,18 @@ export const AIRFRAMES = {
       cabin: [1.05, -0.1, 0.2], winch: [1.05, 0.1, 0.0], flir: [1, 0.25, -2.7], skids: [1.25, 0, 0], light: [1, 0.25, -2.7], medbay: [1.05, -0.1, 0.2], drops: [1.0, 0, 0],
       radio: [1, 0.5, 2.8], racks: [1.15, 0.05, -0.2], nvg: [1, 0.25, -2.7], suppress: [1.0, 0.3, -0.4], repair: [1.05, 0, 0], ammo: [1, 0.25, -2.7], sniper: [1.05, -0.1, 0.2] },
   },
+  warthog: {
+    hubs: [], tail: null, cam: 1.15,
+    off: { gun: [0.6, 0.3, -2.6], rockets: [1.7, 0.1, 0.2], bombs: [1.0, -0.15, 0.3], armor: [0.7, 0.05, -1.0], engine: [1.1, -0.2, 1.5], fuel: [1.6, 0.1, 0.2],
+      flir: [1, 0.35, -2.6], light: [1, 0.35, -2.6], drops: [0.7, 0, 0], radio: [1, -0.5, 1.5], racks: [1.7, 0.1, 0.2], nvg: [1, 0.35, -2.6], suppress: [0.7, -0.2, -0.5],
+      repair: [0.7, 0, -0.5], ammo: [0.6, 0.3, -2.6], pods: [1.7, 0.1, 0.2] },
+  },
+  spectre: {
+    hubs: [], tail: null, cam: 1.9,
+    off: { gun: [1, 0.2, -5.6], bombs: [1.3, -0.2, -0.5], armor: [1.4, 0.05, -1.0], engine: [1.3, 0.6, -1.0], door: [1.4, 0.0, -2.0], fuel: [1.4, 0.05, -0.5],
+      flir: [1, 0.2, -5.6], light: [1, 0.2, -5.6], drops: [1.2, 0, 1.5], radio: [1, 1.6, 2.0], racks: [1.4, 0, 0], nvg: [1, 0.2, -5.6], suppress: [1.3, 0.3, -1.0],
+      repair: [1.4, 0, -0.6], ammo: [1, 0.2, -5.6] },
+  },
   mule: {
     hubs: [[2.4, -5.2, 1.08, 3], [3.15, 4.8, 1.08, 3]], tail: null, cam: 1.5,
     off: { gun: [1, 0.25, -3.65], bombs: [1.2, 0.05, 0], armor: [1.28, 0.1, 0], engine: [2.95, 0.25, 2.6], door: [1.25, 0.1, -3.4], fuel: [1.3, 0.2, 0],
@@ -899,7 +911,7 @@ function hullFor(kind, B, add, st, eq, paint, M) {
     B([0, -1.25, -5.4], [0.1, 0.6, 0.1], GUNM, { mat: 'metal' });
     B([0, -1.62, -5.4], [0.2, 0.56, 0.56], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
     // the tilting nacelles and proprotors
-    const tilt = clamp(((st.vs || 0) - 8) / 32, 0, 1), th = -tilt * Math.PI / 2, ax = [0, Math.cos(th), Math.sin(th)];
+    const tilt = st.tk != null ? st.tk : clamp(((st.vs || 0) - 8) / 32, 0, 1), th = -tilt * Math.PI / 2, ax = [0, Math.cos(th), Math.sin(th)];
     for (const x of [-1, 1]) {
       const pv = [x * 7.1, 1.55, -0.2], at = (d) => [pv[0], pv[1] + ax[1] * d, pv[2] + ax[2] * d];
       B(at(0.6), [1.05, 3.2, 1.05], body, { r: [th, 0, 0], shape: { cap: [0.5, 0.42] }, tex: camo ? 80 + camo : 65 });
@@ -931,7 +943,7 @@ function hullFor(kind, B, add, st, eq, paint, M) {
       B([x * 4.62, 0.36, 0.9], [0.1, 0.1, 0.1], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
       B([x * 1.4, 0.45, 6.6], [2.2, 0.08, 1.1], trim, { r: [0, 0, x * -0.12], shape: 0.03 });                  // tail plane
       // the nozzles: pointing down when slow, back when fast
-      const tilt = clamp(((st.vs || 0) - 6) / 30, 0, 1), th = (1 - tilt) * Math.PI / 2;
+      const tilt = st.tk != null ? st.tk : clamp(((st.vs || 0) - 6) / 30, 0, 1), th = (1 - tilt) * Math.PI / 2;
       for (const z of [-0.9, 1.3]) {
         B([x * 1.05, -0.45, z], [0.5, 0.5, 0.8], GUNM, { r: [th, 0, 0], shape: 'cyl', mat: 'metal' });
         if ((st.rpm || 0) > 0.3) B([x * 1.05, -0.45 - Math.sin(th) * 0.5, z + Math.cos(th) * 0.5], [0.36, 0.36, 0.05], [1, 0.55, 0.2], { r: [th, 0, 0], shape: 'cyl', em: 0.5 + (st.rpm || 0) * 0.4 + (st.boost || 0) * 0.5 });
@@ -989,6 +1001,61 @@ function hullFor(kind, B, add, st, eq, paint, M) {
     tailRotor(0.32, 2.25, 9.65, 1.05);
     strobe([0, 2.7, 9.9]);
     if (paint.stripe) B([0, -0.35, 0.2], [2.43, 0.2, 4.0], paint.stripe, { em: glow ? 0.8 : 0 });
+  } else if (kind === 'warthog') {
+    // WARTHOG: a straight-winged attack plane: two big engines on pods high on the back, twin fins, the long cannon
+    // sticking out under the nose, wheels in fairings under the wing
+    M('h_warthog'); M('g_warthog_c', GLASS);
+    B([0, -0.35, 0.3], [15.2, 0.24, 2.4], body, { shape: 0.06, tex: camo ? 80 + camo : 65 });                    // the wing
+    for (const x of [-1, 1]) {
+      M('h_engine_pod', body, { p: [x * 1.35, 0.95, 3.1] });
+      B([x * 1.35, 0.95, 1.62], [0.9, 0.9, 0.06], DARK, { shape: 'cyl' });                                         // intake
+      for (let k = 0; k < 5; k++) B([x * 1.35, 0.95, 1.6], [0.05, 0.85, 0.05], GUNM, { r: [0, 0, (st.rotorA || 0) * 3 + k * 1.26], mat: 'metal' });   // fan blades
+      B([x * 1.35, 0.95, 4.62], [0.5, 0.5, 0.04], [1, 0.45, 0.15], { shape: 'cyl', em: 0.3 + (st.rpm || 0) * 0.3 + (st.boost || 0) * 0.6 });
+      B([x * 1.0, 0.55, 3.1], [0.18, 0.55, 1.2], body, { shape: 0.04 });                                          // pylon
+      B([x * 2.7, 1.2, 7.0], [0.14, 1.9, 1.3], body, { shape: 0.05, tex: camo ? 80 + camo : 65 });                 // twin fins
+      B([x * 3.0, -0.65, 0.4], [0.55, 0.75, 2.2], body, { shape: 0.3 });                                          // gear fairings
+      B([x * 3.0, -1.5, 0.2], [0.24, 0.6, 0.6], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+      for (const wx of [1.6, 3.8, 5.2, 6.4]) B([x * wx, -0.6, 0.4], [0.1, 0.24, 0.8], GUNM, { mat: 'metal' });
+      B([x * 7.6, -0.32, 0.3], [0.1, 0.1, 0.1], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
+    }
+    B([0, 0.6, 7.0], [5.6, 0.1, 1.4], trim, { shape: 0.03 });                                                       // tail plane
+    // the GAU-8: seven barrels poking out of the nose
+    B([0, -0.55, -6.9], [0.36, 0.36, 1.0], GUNM, { shape: 'cyl', mat: 'metal' });
+    for (let i = 0; i < 7; i++) { const a = (st.spin || 0) + i * 0.9; B([Math.cos(a) * 0.11, -0.55 + Math.sin(a) * 0.11, -7.45], [0.05, 0.05, 0.4], STEEL, { shape: 'cyl', mat: 'steel' }); }
+    B([0, -0.9, -4.6], [0.1, 0.8, 0.1], GUNM, { mat: 'metal' });
+    B([0, -1.62, -4.6], [0.2, 0.55, 0.55], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+    strobe([0, 2.2, 7.3]);
+    if (paint.stripe) B([0, 0.4, 2.0], [0.03, 0.2, 6.0], paint.stripe, { em: glow ? 0.8 : 0 });
+  } else if (kind === 'spectre') {
+    // SPECTRE: a four-engine gunship: a high wing with four propellers, a tall swept fin, sponsons for the wheels,
+    // and a row of guns pointing out of the left side
+    M('h_spectre'); M('g_spectre', GLASS);
+    B([0, 1.7, -1.0], [30, 0.36, 3.0], body, { shape: 0.06, tex: camo ? 80 + camo : 65 });                       // the wing
+    B([0, 1.65, -1.0], [3.2, 0.5, 3.6], body, { shape: 0.3 });
+    for (const x of [-1, 1]) {
+      for (const ex of [4.6, 9.2]) {
+        const ex2 = x * ex;
+        B([ex2, 1.35, -1.8], [0.9, 1.0, 4.2], body, { shape: { cap: [0.45, 0.4] }, tex: camo ? 80 + camo : 65 });   // engine nacelle
+        B([ex2, 1.35, -3.95], [0.42, 0.42, 0.42], STEEL, { shape: 'sphere', mat: 'steel' });                          // spinner
+        if ((st.rpm || 0) > 0.3) B([ex2, 1.35, -4.0], [4.0, 4.0, 0.03], [0.15, 0.15, 0.15], { shape: 'cyl', alpha: 0.12 * st.rpm });
+        for (let k = 0; k < 2; k++) B([ex2, 1.35, -4.0], [0.28, 3.8, 0.06], DARK, { r: [0, 0, (st.rotorA || 0) * x + k * Math.PI / 2 + ex], mat: 'metal' });
+      }
+      B([x * 1.85, -1.0, 0.4], [0.7, 1.0, 4.2], body, { shape: 0.3, tex: camo ? 80 + camo : 65 });               // wheel sponsons
+      B([x * 1.85, -1.6, -0.6], [0.28, 0.6, 0.6], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+      B([x * 1.85, -1.6, 1.2], [0.28, 0.6, 0.6], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+      B([x * 15.0, 1.7, -1.0], [0.12, 0.12, 0.12], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
+    }
+    B([0, 3.6, 9.4], [0.2, 3.8, 2.4], body, { r: [-0.4, 0, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });         // the tall fin
+    B([0, 2.0, 9.6], [10, 0.14, 2.0], trim, { shape: 0.03 });
+    B([0, -1.25, -7.0], [0.1, 0.6, 0.1], GUNM, { mat: 'metal' });
+    B([0, -1.62, -7.0], [0.22, 0.6, 0.6], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+    // the gunship's guns: two cannons and a howitzer sticking out of the left side
+    for (const [z, r, L] of [[-4.6, 0.1, 1.4], [-2.6, 0.14, 1.8], [2.2, 0.26, 2.6]]) {
+      B([-1.72, -0.2, z], [0.6, r * 3, r * 3], GUNM, { mat: 'metal', shape: 0.05 });
+      B([-1.72 - L / 2, -0.2, z], [L, r, r], STEEL, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'steel' });
+    }
+    strobe([0, 5.5, 10.4]);
+    if (paint.stripe) for (const x of [-1.71, 1.71]) B([x, 0.4, -1.0], [0.03, 0.25, 11], paint.stripe, { em: glow ? 0.8 : 0 });
   } else if (kind === 'kestrel') {
     // KESTREL: a big three-engine utility helicopter: long cabin, wheels in sponsons, a tall swept fin
     M('h_kestrel'); M('h_kestrel_cowl'); M('g_kestrel', GLASS);
@@ -1045,6 +1112,8 @@ function hullFor(kind, B, add, st, eq, paint, M) {
     harrier: { dash: [0, 0.3, -4.2, 0.6], pitot: [0.2, -0.2, -6.0], ae: [[0, 0.75, 1.5], [0, -0.75, 0.0]], bc: [[0, 0.8, 3.0], [0, -0.72, 0.5]], in: [0.3, 0.75, 0.5] },
     alligator: { dash: [0, -0.05, -3.9, 1.2], pitot: [0.3, -0.35, -5.0], ae: [[0, 0.55, 3.0], [0, -0.95, -1.5]], bc: [[0, 1.2, 1.0], [0, -0.98, 0.5]], in: [0.75, 0.75, -0.6] },
     skycrane: { dash: [0, -0.3, -5.2, 1.5], pitot: [0.45, -0.3, -6.0], ae: [[0, 1.2, 4.5], [0, -1.3, -1.0]], bc: [[0, 1.8, 2.8], [0, -1.32, 1.2]], in: [0.75, 1.5, -1.2] },
+    warthog: { dash: [0, 0.35, -4.4, 0.7], pitot: [0.35, -0.2, -6.3], ae: [[0, 0.95, 1.0], [0, -0.85, -1.0]], bc: [[0, 0.88, 2.0], [0, -0.86, 1.0]], in: [0.6, 0.3, -1.5] },
+    spectre: { dash: [0, -0.2, -8.2, 2.0], pitot: [0.8, -0.3, -9.0], ae: [[0, 1.75, 3.0], [0, -1.6, -3.0]], bc: [[0, 1.9, 2.5], [0, -1.62, 1.5]], in: [1.0, 1.4, -5.0] },
     mule: { dash: [0, -0.2, -7.0, 1.9], pitot: [0.7, -0.6, -7.5], ae: [[0, 1.42, 1.0], [0, -1.52, -3.0]], bc: [[0, 2.25, -5.2], [0, -1.55, 1.5]], in: [0.75, 2.35, 3.6] },
   }[kind];
   if (D) {
@@ -1085,6 +1154,8 @@ const BODIES = {
   harrier: [[0, 0, -4.2, 0.75], [0, 0, -1.5, 0.95], [0, 0.1, 1.5, 0.9], [0, 0.3, 4.4, 0.6], [0, 1.0, 6.4, 0.6], [-3.6, 0.45, 0.8, 0.5], [3.6, 0.45, 0.8, 0.5]],
   alligator: [[0, -0.2, -1.2, 0.95], [0, -0.3, -3.6, 0.85], [0, 0.2, 3.4, 0.5], [0, 0.6, 6.4, 0.6], [0, 0.9, 0.2, 0.75], [-2.4, -0.15, -0.6, 0.4], [2.4, -0.15, -0.6, 0.4]],
   skycrane: [[0, 0, -4.8, 1.2], [0, -0.35, 0.2, 1.4], [0, 1.1, 0.6, 0.9], [0, 0.8, 4.6, 0.5], [0, 1.0, 7.2, 0.45], [0, 1.6, 9.4, 0.6]],
+  warthog: [[0, 0, -4.4, 0.8], [0, 0, -1.4, 0.9], [0, 0.1, 1.8, 0.85], [0, 0.3, 5.0, 0.6], [0, 1.0, 7.0, 0.7], [-6.0, -0.35, 0.3, 0.5], [6.0, -0.35, 0.3, 0.5], [-3.0, -0.35, 0.3, 0.5], [3.0, -0.35, 0.3, 0.5]],
+  spectre: [[0, 0, -7.0, 1.6], [0, 0, -3.5, 1.7], [0, 0, 0, 1.7], [0, 0.1, 3.5, 1.7], [0, 0.8, 7.5, 1.1], [0, 3.0, 9.6, 1.0], [-12, 1.7, -1.0, 0.8], [12, 1.7, -1.0, 0.8], [-6.5, 1.7, -1.0, 0.8], [6.5, 1.7, -1.0, 0.8]],
   mule: [[0, 0, -5.4, 1.5], [0, 0, -2.0, 1.5], [0, 0, 1.4, 1.5], [0, 0.2, 4.8, 1.5], [0, 2.1, 4.8, 1.0]],
 };
 const SKIDSETS = {
@@ -1099,6 +1170,8 @@ const SKIDSETS = {
   harrier: [[-4.5, -1.92, 1.0], [4.5, -1.92, 1.0], [-0.2, -1.92, -2.8], [0.2, -1.92, 2.45]],
   alligator: [[-0.95, -1.92, -1.0], [0.95, -1.92, -1.0], [-0.2, -1.92, 5.8], [0.2, -1.92, 5.8]],
   skycrane: [[-2.15, -1.92, -3.0], [2.15, -1.92, -3.0], [-2.15, -1.92, 3.3], [2.15, -1.92, 3.3]],
+  warthog: [[-3.0, -1.92, 0.2], [3.0, -1.92, 0.2], [-0.2, -1.92, -4.6], [0.2, -1.92, -4.6]],
+  spectre: [[-1.85, -1.92, -0.6], [1.85, -1.92, 1.2], [-0.2, -1.92, -7.0], [0.2, -1.92, -7.0]],
   mule: [[-1.4, -1.92, -4.3], [1.4, -1.92, -4.3], [-1.4, -1.92, 3.6], [1.4, -1.92, 3.6]],
 };
 
@@ -1117,6 +1190,8 @@ export class Chopper {
     this.landed = null;     // the box it's sitting on
     this.contacts = 0;
     this.boostT = 1;        // afterburner fuel
+    this.thr = 0;           // a plane's throttle
+    this.planeMode = !!(stats && stats.plane && !stats.vtol); this.tiltK = this.planeMode ? 1 : 0;
     this.boost = 0;
     this.stickP = 0; this.stickR = 0;
     this.dead = false;
@@ -1146,6 +1221,9 @@ export class Chopper {
 
   sub(dt, ctl, world, first) {
     const S = this.stats, ag = S.agility || 1;
+    // planes fly on their wings. A VTOL (Harrier, Osprey) switches between that and hovering like a helicopter (V)
+    if (S.vtol) this.tiltK = clamp((this.tiltK || 0) + ((this.planeMode ? 1 : 0) - (this.tiltK || 0) > 0 ? 1 : -1) * dt * 0.3, 0, 1);
+    if (S.plane && (!S.vtol || this.planeMode)) { this.planeSub(dt, ctl, world, first); return; }
     const assist = ctl.assist || ctl.mode === 'easy';
     // rotor spin
     const want = this.dead ? 0.55 : ctl.noFuel ? 0.62 : ctl.engineOn ? 1 : 0;
@@ -1242,6 +1320,77 @@ export class Chopper {
     this.collide(dt, world);
   }
 
+  // ---- fixed-wing flight. W / S set the throttle; the mouse pitches and rolls (in EASY it banks you into turns and
+  // levels out when you let go); A / D is the rudder. The wings only lift with speed: below the stall speed the nose
+  // drops and you sink. The plane flies where it's pointed, and turns by banking.
+  planeSub(dt, ctl, world, first) {
+    const S = this.stats, ag = S.agility || 1, v = this.vel, w = this.w;
+    const want = this.dead ? 0.3 : ctl.noFuel ? 0 : ctl.engineOn ? 1 : 0;
+    this.rpm += (want - this.rpm) * damp(1.2, dt);
+    this.rotorA += this.rpm * 30 * dt; this.tailA += this.rpm * 70 * dt;
+    this.thr = clamp((this.thr ?? 0) + (this.dead ? -1 : ctl.coll) * 0.55 * dt, 0, 1);
+    const fwd = this.fwd, up = this.up, right = this.right, sp = Math.hypot(v[0], v[1], v[2]);
+    const vf = v[0] * fwd[0] + v[1] * fwd[1] + v[2] * fwd[2], stall = S.stall || 30;
+    const k = clamp(vf / stall, 0, 2), auth = clamp(k, 0.2, 1.1), onGround = this.contacts >= 2;
+    const easy = ctl.mode === 'easy', assist = ctl.assist || easy, inv = ctl.invert ? -1 : 1;
+    // the stick
+    if (first) {
+      const ks = 0.0026 * (ctl.sens || 1);
+      this.stickP = clamp((this.stickP || 0) + ctl.my * ks * inv, -1, 1);
+      this.stickR = clamp((this.stickR || 0) - ctl.mx * ks * (easy ? 1.2 : 1), -1, 1);
+    }
+    this.stickP = clamp(this.stickP + ctl.pk * 1.4 * dt, -1, 1);
+    this.stickR = clamp(this.stickR - ctl.rk * 1.6 * dt, -1, 1);
+    const roll = this.rollL;
+    if (assist) {
+      // the stick sets a climb / dive angle and a bank angle; the bank eases back to level when you let go, and the
+      // plane turns the way it's banked
+      this.stickP *= Math.exp(-0.25 * dt); this.stickR *= Math.exp(-(ctl.mx || ctl.rk ? 0.2 : 0.9) * dt);
+      const bank = this.stickR * 1.3, pitchT = clamp(this.stickP * 1.1, -1.1, 1.1) + Math.abs(Math.sin(roll)) * 0.12;
+      w[2] += ((bank - roll) * 3.2 * ag * auth - w[2]) * damp(8, dt);
+      w[0] += ((pitchT - this.pitch) * 2.6 * ag * auth - w[0]) * damp(8, dt);
+    } else {
+      this.stickP *= Math.exp(-3 * dt); this.stickR *= Math.exp(-3 * dt);
+      w[2] += (this.stickR * 2.6 * ag * auth - w[2]) * damp(8, dt);
+      w[0] += (this.stickP * 1.6 * ag * auth - w[0]) * damp(8, dt);
+    }
+    // rudder, and the nose weathervaning into the airflow (that's what makes it turn when it banks)
+    let wy = ctl.yaw * 0.7 * auth;
+    if (sp > 4 && !onGround) {
+      const l = qrot([-this.q[0], -this.q[1], -this.q[2], this.q[3]], v);
+      wy -= (l[0] / sp) * 3.2 * clamp(sp / stall, 0, 1.5);
+      if (assist) wy += roll * 0.9 * clamp(k, 0, 1.2) * ag;       // a coordinated turn
+    }
+    if (onGround) wy = ctl.yaw * 0.9;                      // steer the nose wheel
+    w[1] += (wy - w[1]) * damp(6, dt);
+    // stalled: the nose drops
+    if (!onGround && vf < stall * 0.9 && (!S.vtol || this.tiltK > 0.97)) w[0] -= (1 - vf / (stall * 0.9)) * 2.2 * dt * 8;
+    if (this.dead) { w[2] += 2 * dt; w[0] -= 0.6 * dt; }
+    w[0] = clamp(w[0], -2.5, 2.5); w[1] = clamp(w[1], -2, 2); w[2] = clamp(w[2], -3.5, 3.5);
+    const wl = Math.hypot(w[0], w[1], w[2]);
+    if (wl > 1e-6) this.q = qnorm(qmul(this.q, qaxis([w[0] / wl, w[1] / wl, w[2] / wl], wl * dt)));
+    // forces: thrust along the nose, lift off the wings (with speed), drag, and the wings resisting moving sideways
+    // or up and down through the air
+    this.boost += ((ctl.boost && S.boost && this.boostT > 0 && !this.dead ? 1 : 0) - this.boost) * damp(5, dt);
+    if (this.boost > 0.05) this.boostT = Math.max(0, this.boostT - dt * 0.12 * this.boost); else this.boostT = Math.min(1, this.boostT + dt * 0.08);
+    const T = (S.thrust || 8) * this.thr * this.rpm * (1 + ((S.boostMul || 1) - 1) * this.boost);
+    let lift = G * Math.min(1, k * k) * clamp((S.lift || 1) / (S.mass || 1), 0.85, 1.05);
+    if (S.vtol) lift = Math.max(lift, G * (1 - (this.tiltK || 0)) * 1.06 + lift * (this.tiltK || 0));     // the nozzles / rotors still holding it up mid-change
+    const vr = v[0] * right[0] + v[1] * right[1] + v[2] * right[2], vu = v[0] * up[0] + v[1] * up[1] + v[2] * up[2];
+    const a = [0, -G, 0];
+    const kq = (S.thrust || 8) / ((S.vmax || 80) * (S.vmax || 80));
+    let brake = 0;
+    if (ctl.coll < 0 && this.thr <= 0.01 && S.airbrake) brake = onGround && S.airbrake === 2 ? 1.6 : 0.5;
+    for (let i = 0; i < 3; i++) {
+      a[i] += fwd[i] * T + up[i] * lift;
+      a[i] -= v[i] * (kq * sp + 0.01 + brake);
+      a[i] -= right[i] * vr * 1.6 * Math.min(1, k + (onGround ? 3 : 0));
+      a[i] -= up[i] * vu * 0.9 * Math.min(1, k);
+    }
+    for (let i = 0; i < 3; i++) { v[i] += a[i] * dt; this.pos[i] += v[i] * dt; }
+    this.collide(dt, world);
+  }
+
   collide(dt, world) {
     const v = this.vel;
     this.contacts = 0; let on = null;
@@ -1256,11 +1405,19 @@ export class Chopper {
       if (pen > 0) this.pos[1] += pen * 0.5;
       this.contacts++; on = b;
       if (v[1] < 0) {
-        if (-v[1] > 7.5) this.events.push({ type: 'impact', speed: -v[1] - 7.5, point: p, hard: true });
+        const lim = this.stats.gear ? 12 : 7.5;
+        if (-v[1] > lim) this.events.push({ type: 'impact', speed: -v[1] - lim, point: p, hard: true });
         v[1] = 0;
       }
     }
-    if (this.contacts) {
+    const rolling = this.stats.plane && (!this.stats.vtol || this.planeMode);
+    if (this.contacts && rolling) {
+      const f = Math.exp(-(this.thr <= 0.01 ? 0.9 : 0.04) * dt);
+      v[0] *= f; v[2] *= f;
+      this.w[0] *= Math.exp(-8 * dt); this.w[2] *= Math.exp(-8 * dt);
+      this.w[2] -= this.rollL * 6 * dt;
+      if (this.pitch < -0.05) this.w[0] -= this.pitch * 6 * dt;
+    } else if (this.contacts) {
       const f = Math.exp(-5 * dt);
       v[0] *= f; v[2] *= f;
       this.w[0] *= Math.exp(-8 * dt); this.w[2] *= Math.exp(-8 * dt);

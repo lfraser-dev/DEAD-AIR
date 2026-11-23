@@ -18,7 +18,7 @@ import { Forest } from './trees.js';
 import { Horde, TYPES, pickType } from './horde.js';
 import { hullGeometries } from './hulls.js';
 import { mountAt, AIRFRAMES, Chopper, chopperParts, qrot, qmat, droneParts } from './chopper.js';
-import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, TIPS, TRIMS, TINTS, BASE, BEDS, baseCut } from './data.js';
+import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, slotFits, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, TIPS, TRIMS, TINTS, BASE, BEDS, baseCut } from './data.js';
 import { Story, CHAPTERS } from './story.js';
 import { Director, crateParts, wreckParts, convoyParts } from './events.js';
 import { ROLES, ROLE_IDS, WEAPONS, ARMORS, ITEMS, newMember, recruitCost, Raid, HAIR, randName } from './team.js';
@@ -361,8 +361,9 @@ export class HeliGame {
     const canBuild = BASE.some((b) => { const nx = b.tiers[(s.base[b.id] || 0) + 1]; return nx && s.scrap >= nx.cost && this.population() >= nx.pop; });
     this.$('spirebtn').classList.toggle('new', canBuild || s.story.seen !== s.story.ch);
     const slots = this.$('slots'); slots.replaceChildren();
-    const HK = HELIS[s.heli], cap = (id) => HK.cap[id] ?? 99;
-    for (const sl of [{ id: 'heli', name: 'HELICOPTER', icon: '✈' }, ...SLOTS, { id: 'paint', name: 'PAINT JOB', icon: '◆' }, ...Object.entries(DECOR).map(([id, d]) => ({ id, name: d.name, icon: d.icon, decor: true }))]) {
+    const HK = HELIS[s.heli], cap = (id) => (slotFits(id, s.heli) ? HK.cap[id] ?? 99 : 0);
+    // only the upgrades for this kind of aircraft (helicopter or plane) are listed
+    for (const sl of [{ id: 'heli', name: 'AIRCRAFT', icon: '✈' }, ...SLOTS.filter((q) => slotFits(q.id, s.heli)), { id: 'paint', name: 'PAINT JOB', icon: '◆' }, ...Object.entries(DECOR).map(([id, d]) => ({ id, name: d.name, icon: d.icon, decor: true }))]) {
       const cur = sl.id === 'heli' ? HK.n : sl.id === 'paint' ? PAINT[s.paint].n : sl.decor ? (DECOR[sl.id].list.find((q) => q.id === s[DECOR[sl.id].cur]) || DECOR[sl.id].list[0]).n + (sl.id === 'tailart' && s.tailArt === 'number' ? ` ${String(s.num).padStart(2, '0')}` : '') : cap(sl.id) === 0 ? "DOESN'T FIT" : sl.tiers[Math.min(s.eq[sl.id], cap(sl.id), sl.tiers.length - 1)].n;
       const canBuy = sl.id === 'heli' ? HELI_IDS.some((k) => !s.helis.includes(k) && s.scrap >= this.price(HELIS[k].cost, true)) : sl.id !== 'paint' && !sl.decor && s.own[sl.id] < sl.tiers.length - 1 && s.scrap >= this.price(sl.tiers[s.own[sl.id] + 1].cost);
       const pips = sl.tiers ? `<u>${sl.tiers.slice(1).map((_, j) => `<q class="${j + 1 <= s.eq[sl.id] ? 'f' : j + 1 <= s.own[sl.id] ? 'o' : ''}" style="--r:${RARITY[Math.min(RARITY.length - 1, Math.round(((j + 1) / (sl.tiers.length - 1)) * (RARITY.length - 1)))]}"></q>`).join('')}</u>` : '';
@@ -383,7 +384,7 @@ export class HeliGame {
         } catch (e) { console.error(e); }
         // compact cards so all the helicopters fit at once; the full description shows for the one you're flying
         const hc = this.price(h.cost, true);
-        const b = el(`<button class="da-tier${eq ? ' eq' : own ? '' : s.scrap >= hc ? ' buy' : ' poor'}" type="button" title="${h.d.replace(/"/g, '')}"><b>${h.n}</b><p>${eq ? `${h.d}<br>` : ''}<small>${facts}</small></p><span>${eq ? 'FLYING THIS' : own ? 'FLY THIS' : `BUY ⚙ ${hc.toLocaleString('en-GB')}`}</span></button>`);
+        const b = el(`<button class="da-tier${eq ? ' eq' : own ? '' : s.scrap >= hc ? ' buy' : ' poor'}" type="button" title="${h.d.replace(/"/g, '')}"><b>${h.plane ? (h.vtol ? '✈ ' : '✈ ') : ''}${h.n}</b><small style="display:block;color:${h.plane ? '#5ab4ff' : '#9aa'};font:900 10px var(--font);letter-spacing:.12em">${h.plane ? (h.vtol ? 'PLANE · CAN HOVER' : 'PLANE · NEEDS THE RUNWAY') : 'HELICOPTER'}</small><p>${eq ? `${h.d}<br>` : ''}<small>${facts}</small></p><span>${eq ? 'FLYING THIS' : own ? 'FLY THIS' : `BUY ⚙ ${hc.toLocaleString('en-GB')}`}</span></button>`);
         b.onclick = () => {
           if (!own) { if (s.scrap < hc) { this.snd.fail?.(); this.flash('NOT ENOUGH SCRAP'); return; } s.scrap -= hc; s.helis.push(k); this.snd.coins?.(); this.flash(`${h.n} BOUGHT`); }
           if (s.heli !== k) { s.heli = k; this.session = this.session ? { ...this.session } : null; this.snd.bolt?.(); this.toHangar(); }
@@ -510,7 +511,7 @@ export class HeliGame {
       this.run = { t: 0, kills: 0, rescued: 0, lost: 0, scrap: 0 };
       this.fx.clear(); this.horde.clear(); this.director.clear();
       for (const f of this.fobs) { f.hp = f.max; f.wrecked = false; }
-      this.heli.reset([fob.padAt[0], fob.padAt[1] + 1.93, fob.padAt[2]], 0, S);
+      { const sp0 = this.spawnFor(S); this.heli.reset(sp0.pos, sp0.yaw, S); }
       this.tod = 0.3;
       this.director.start(this);
       this.story = new Story(this.save, this.map);
@@ -524,7 +525,7 @@ export class HeliGame {
     } else {
       // back out of the hangar at the same base, fixed up and refuelled
       this.heli.stats = S;
-      this.heli.reset([fob.padAt[0], fob.padAt[1] + 1.93, fob.padAt[2]], this.heli.heading, S);
+      { const sp0 = this.spawnFor(S); this.heli.reset(sp0.pos, S.plane && !S.vtol ? sp0.yaw : this.heli.heading, S); }
     }
     this.hp = S.hp; this.fuel = Math.max(this.fuel ?? S.fuel, S.fuel);
     this.heat = 0; this.overT = 0; this.gunT = 0; this.spinV = 0; this.flashT = 0;
@@ -544,10 +545,22 @@ export class HeliGame {
     this.startAudio();
     this.lock();
   }
+  // where you start: planes on the end of the runway pointing down it, everything else on the Spire's pad
+  spawnFor(S, wingPad) {
+    const af = this.map.airfield, sp = this.map.spire;
+    if (S.plane && !S.vtol && af) { const p = af.spawn; return { pos: [p[0] + (wingPad != null ? 40 + wingPad * 40 : 0), p[1] + 1.93, p[2]], yaw: af.spawnYaw }; }
+    const P = wingPad != null ? (sp.spawns || [])[wingPad] || sp.padAt : sp.padAt;
+    return { pos: [P[0], P[1] + 1.93, P[2]], yaw: 0 };
+  }
   faceCity(f) { return Math.atan2(f.padAt[0], f.padAt[2]); }    // heading that points the nose at the city centre
   help(on) {
     const h = this.$('help');
-    const mode = this.save.flight;
+    const mode = this.save.flight, S = this.S || {};
+    if (S.plane) {
+      h.innerHTML = `<b>YOU'RE FLYING A PLANE</b> · <kbd>W</kbd><kbd>S</kbd> THROTTLE · <kbd>MOUSE</kbd> PITCH AND ROLL (BANK TO TURN) · <kbd>A</kbd><kbd>D</kbd> RUDDER${S.vtol ? ' · <kbd>V</kbd> HOVER / FLY LIKE A PLANE' : ''}<br>KEEP YOUR SPEED UP OR IT STALLS · ${S.vtol ? 'HOVER TO LAND ANYWHERE' : 'FULL THROTTLE DOWN THE RUNWAY, THEN PULL BACK ON THE MOUSE TO TAKE OFF · LAND AND STOP ON THE RUNWAY TO REFUEL'} · <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>M</kbd> MAP`;
+      this.helpT = on ? 22 : 0;
+      return;
+    }
     h.innerHTML = mode === 'easy'
       ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>Z</kbd> NIGHT VISION · <kbd>L</kbd> LIGHT · <kbd>B</kbd> SUPPLIES · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
       : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>Z</kbd> NIGHT VISION · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
@@ -888,6 +901,13 @@ export class HeliGame {
       } else if (this.bombs <= 0) this.feed('OUT OF BOMBS · LAND AT A BASE', 'y');
     }
     if (this.hit('KeyC')) this.camMode = (this.camMode + 1) % 3;
+    if (this.hit('KeyV') && S.vtol && !this.heli.dead) {
+      const H = this.heli;
+      H.planeMode = !H.planeMode;
+      if (H.planeMode) H.thr = 1;
+      this.banner(H.planeMode ? 'PLANE MODE' : 'HOVER MODE', H.planeMode ? 'KEEP YOUR SPEED UP · W / S THROTTLE' : 'FLIES LIKE A HELICOPTER', '', 1.4);
+      this.snd.bolt?.();
+    }
     if (this.hit('KeyM')) { this.bigMap = !this.bigMap; this.$('bigmap').classList.toggle('hidden', !this.bigMap); }
     if (this.hit('KeyZ') && S.nvg) { this.nvgOn = this.nvgOn === false; this.applyDay(); this.feed(this.nvgOn === false ? 'NIGHT VISION OFF' : 'NIGHT VISION ON', 'y'); }
     if (this.hit('KeyL') && this.S.light) { this.lightMode = this.lightMode === 'on' ? 'off' : this.lightMode === 'off' ? 'auto' : 'on'; this.feed(`SEARCHLIGHT: ${this.lightMode.toUpperCase()}`, 'y'); }
@@ -2529,9 +2549,9 @@ export class HeliGame {
     cl.wing = true; cl.pad = pad;
     this.root.classList.remove('da-gunner'); this.root.classList.add('da-wing');
     S.rotorTier = s.eq.rotor; this.S = S;
-    const sp = this.map.spire, P = (sp.spawns || [])[pad] || sp.padAt;
+    const sp0 = this.spawnFor(S, pad);
     this.heli = new Chopper();
-    this.heli.reset([P[0], P[1] + 1.93, P[2]], 0, S);
+    this.heli.reset(sp0.pos, sp0.yaw, S);
     this.run = { t: 0, kills: 0, rescued: 0, lost: 0, scrap: 0 };
     this.session = { fob: sp };
     this.story = null;
@@ -2653,9 +2673,9 @@ export class HeliGame {
   }
   wingRespawn() {
     this.wDown = 0;
-    const S = this.S, sp = this.map.spire, P = (sp.spawns || [])[this.client.pad || 0] || sp.padAt;
+    const S = this.S, sp0 = this.spawnFor(S, this.client.pad || 0);
     this.heli = new Chopper();
-    this.heli.reset([P[0], P[1] + 1.93, P[2]], 0, S);
+    this.heli.reset(sp0.pos, sp0.yaw, S);
     this.hp = S.hp; this.fuel = S.fuel; this.rockets = S.rockets; this.bombs = S.bombs; this.suppressUsed = false; this.camEye = null;
     this.feed('BACK ON THE PAD · GOOD AS NEW', 'g');
   }
@@ -2739,7 +2759,7 @@ export class HeliGame {
     if (this.shake > 0) eye = eye.map((c) => c + (Math.random() - 0.5) * this.shake * 0.4);
     this.eye = eye;
     const st = {
-      rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), spin: hs ? hs.sp : 0, t: this.t, riders: hs ? hs.rd : 0, boost: H.boost,
+      rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), tk: H.stats && H.stats.vtol ? H.tiltK : null, spin: hs ? hs.sp : 0, t: this.t, riders: hs ? hs.rd : 0, boost: H.boost,
       crew: hs ? hs.cr.map((r) => ({ col: (ROLES[ROLE_IDS[r]] || ROLES.rifleman).col })) : [],
       doorAim: [0, 1].map((sd) => (sd === cl.seat ? cl.aim : hs && hs.da[sd] ? hs.da[sd] : [sd === 0 ? -1.57 : 1.57, -0.3])),
       doorFlash: [0, 1].map((sd) => (sd === cl.seat ? cl.flash : hs ? hs.df[sd] * 0.05 : 0)),
@@ -2810,7 +2830,7 @@ export class HeliGame {
     const S = this.S, s = this.save;
     const fr = this.coop ? [...this.coop.friends.values()] : [];
     const st = {
-      rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), spin: (this.spin = (this.spin || 0) + this.spinV * dt * 40), t: this.t, install: null, riders: this.riders,
+      rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), tk: H.stats && H.stats.vtol ? H.tiltK : null, spin: (this.spin = (this.spin || 0) + this.spinV * dt * 40), t: this.t, install: null, riders: this.riders,
       crew: s.team.filter((m) => m.aboard && !m.raid && m.hp > 0).slice(0, 4).map((m) => ({ col: ROLES[m.role].col })),
       rockets: this.rockets, rocketMax: S.rockets, bombs: this.bombs, bombMax: S.bombs, boost: H.boost, doorAim: this.doorAim, doorFlash: this.doorFlash, flash: this.flashT,
       shieldK: S.shield ? this.shield / S.shield : 0, shieldHit: this.shieldHit, flares: S.flares ? this.flaresLeft / S.flares : 0,
@@ -2972,7 +2992,7 @@ export class HeliGame {
     const s = this.save, flying = this.client ? null : s.heli;
     const wings = !!((this.coop && [...this.coop.friends.values()].some((f) => f.pilot)) || (this.client && this.client.wing));
     const spots = sp.parking.filter((p) => !(wings && p.pad));
-    const list = HELI_IDS.filter((k) => s.helis.includes(k) && k !== flying).slice(0, spots.length);
+    const list = HELI_IDS.filter((k) => s.helis.includes(k) && k !== flying && !(HELIS[k].plane && !HELIS[k].vtol)).slice(0, spots.length);
     const key = `${list.join(',')}|${spots.length}|${JSON.stringify(s.eq)}|${s.paint}|${s.camo}|${s.nose}|${s.tailArt}`;
     if (!this.parkC || this.parkC.key !== key) {
       const parts = [];
@@ -2992,7 +3012,7 @@ export class HeliGame {
     if (cl && cl.wing && cl.heli && cl.hs && cl.hs.m === 'f') {
       try {
         const H = cl.heli, hs = cl.hs;
-        const st = { rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), spin: hs.sp || 0, t: this.t, riders: hs.rd || 0, crew: (hs.cr || []).map((r) => ({ col: (ROLES[ROLE_IDS[r]] || ROLES.rifleman).col })), boost: H.boost,
+        const st = { rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), tk: H.stats && H.stats.vtol ? H.tiltK : null, spin: hs.sp || 0, t: this.t, riders: hs.rd || 0, crew: (hs.cr || []).map((r) => ({ col: (ROLES[ROLE_IDS[r]] || ROLES.rifleman).col })), boost: H.boost,
           doorAim: [0, 1].map((sd) => (hs.da && hs.da[sd]) || [sd === 0 ? -1.57 : 1.57, -0.3]), doorFlash: [0, 1].map((sd) => (hs.df ? hs.df[sd] * 0.05 : 0)), flash: hs.fl ? 0.04 : 0,
           rockets: hs.rk || 0, rocketMax: statsFor(cl.eq, cl.hk).rockets, bombs: hs.bm || 0, bombMax: statsFor(cl.eq, cl.hk).bombs };
         for (const p of chopperParts(capEq(cl.eq, cl.hk), cl.dc ? { ...(PAINT[cl.paint] || PAINT.olive), ...cl.dc, camo: (CAMO[cl.dc.camo] || {}).k || 0 } : PAINT[cl.paint] || PAINT.olive, st, H.H, cl.hk)) out.push(p);
@@ -3133,6 +3153,7 @@ export class HeliGame {
       for (const t of this.map.towns) label(t.name, X(t.x), Z(t.z) - 7, t.kind === 'town' ? 11 : 9.5, t.kind === 'town' ? '#ffe9b0' : 'rgba(255,255,255,.8)');
       const M = this.map;
       if (M.fort) label(`★ FORT CALDER${M.fort.locked ? '' : ' (OURS)'}`, X(M.fort.x), Z(M.fort.z), 12, M.fort.locked ? '#ff9a6a' : '#c8ff5a');
+      if (M.airfield) label('✈ AIRFIELD', X(M.airfield.x), Z(M.airfield.z), 12, '#5ab4ff');
       if (M.hospital) label("✚ ST MARY'S", X(M.hospital.x), Z(M.hospital.z), 11, '#ff9ac0');
       for (const m of M.masts || []) label(`${m.on ? '◉' : '○'} ${m.name}`, X(m.x), Z(m.z), 10, m.on ? '#7dff9a' : '#ffd23a');
       // north arrow and a 1 km bar
@@ -3206,6 +3227,8 @@ export class HeliGame {
     const list = this.client ? this.client.evs.map((e) => e.mk).filter(Boolean) : this.director.list.map((e) => e.marker(this));
     const sp = this.map.spire;
     if (this.map.fort && !this.map.fort.locked) list.push({ p: [this.map.fort.padAt[0], this.map.fort.padAt[1] + 6, this.map.fort.padAt[2]], col: '#c8ff5a', icon: 'H', text: 'FORT CALDER', sub: '', fob: true });
+    const af = this.map.airfield;
+    if (af) list.push({ p: [af.x, af.y + 8, af.z], col: '#5ab4ff', icon: '✈', text: 'AIRFIELD', sub: S.plane && !S.vtol && this.fuel / S.fuel < 0.35 ? 'FUEL HERE' : '', fob: true });
     list.push({ p: [sp.padAt[0], sp.padAt[1] + 6, sp.padAt[2]], col: '#5ab4ff', icon: 'H', text: sp.name, sub: this.riders ? `DROP OFF ${this.riders}` : this.fuel / S.fuel < 0.35 ? 'FUEL HERE' : '', fob: true });
     // buildings your team can raid (the signs), and where the team is now
     const loots = [];
@@ -3254,7 +3277,10 @@ export class HeliGame {
     this.$('spd').textContent = `${Math.round(Math.hypot(...H.vel) * 3.6)} KM/H`;
     const team = this.save.team.filter((m) => m.aboard && !m.raid && m.hp > 0);
     const fr = this.coop ? this.coop.friends.size : 0;
-    this.$('right').innerHTML = `${this.holdT > 0.4 ? '<div style="color:#7dff9a"><small>AUTOPILOT</small>HOVER HOLD</div>' : ''}${S.rockets ? `<div><small>ROCKETS</small>${this.rockets} / ${S.rockets}</div>` : ''}${S.bombs ? `<div><small>BOMBS</small>${this.bombs} / ${S.bombs}</div>` : ''}${S.flares ? `<div><small>FLASH [X]</small>${this.flaresLeft} / ${S.flares}</div>` : ''}${S.beacons ? `<div><small>BEACONS [N]</small>${this.beaconsLeft} / ${S.beacons}</div>` : ''}${S.speaker ? `<div><small>SIREN [V]</small>${this.siren > 0 ? 'ON' : this.sirenCd > 0 ? `${Math.ceil(this.sirenCd)}s` : 'READY'}</div>` : ''}<div><small>SEATS</small>${team.length + this.riders} / ${S.seats}</div>${team.length ? `<div><small>TEAM</small>${team.map((m) => `<span style="color:rgb(${ROLES[m.role].col.map((v) => Math.round(v * 255))})">●</span>`).join('')}</div>` : ''}${this.riders ? `<div><small>SURVIVORS</small>${this.riders}</div>` : ''}${fr ? `<div><small>FRIENDS</small>${fr}</div>` : ''}<div><small>KILLS</small>${run.kills}</div><div><small>SCRAP</small>⚙ ${this.save.scrap.toLocaleString('en-GB')}</div>`;
+    const Hp = this.heli, isPlane = S.plane && (!S.vtol || Hp.planeMode);
+    const pv = Hp.vel[0] * Hp.fwd[0] + Hp.vel[1] * Hp.fwd[1] + Hp.vel[2] * Hp.fwd[2], stalled = isPlane && Hp.contacts < 2 && pv < S.stall * 0.95;
+    const planeHud = isPlane ? `<div style="color:${stalled ? '#ff5a4a' : '#fff'}"><small>THROTTLE · SPEED</small>${Math.round((Hp.thr || 0) * 100)}% · ${Math.round(pv * 3.6)} KM/H${stalled ? ' · STALL!' : ''}</div>` : S.vtol ? '<div><small>V</small>HOVER MODE</div>' : '';
+    this.$('right').innerHTML = `${planeHud}${this.holdT > 0.4 ? '<div style="color:#7dff9a"><small>AUTOPILOT</small>HOVER HOLD</div>' : ''}${S.rockets ? `<div><small>ROCKETS</small>${this.rockets} / ${S.rockets}</div>` : ''}${S.bombs ? `<div><small>BOMBS</small>${this.bombs} / ${S.bombs}</div>` : ''}${S.flares ? `<div><small>FLASH [X]</small>${this.flaresLeft} / ${S.flares}</div>` : ''}${S.beacons ? `<div><small>BEACONS [N]</small>${this.beaconsLeft} / ${S.beacons}</div>` : ''}${S.speaker ? `<div><small>SIREN [V]</small>${this.siren > 0 ? 'ON' : this.sirenCd > 0 ? `${Math.ceil(this.sirenCd)}s` : 'READY'}</div>` : ''}<div><small>SEATS</small>${team.length + this.riders} / ${S.seats}</div>${team.length ? `<div><small>TEAM</small>${team.map((m) => `<span style="color:rgb(${ROLES[m.role].col.map((v) => Math.round(v * 255))})">●</span>`).join('')}</div>` : ''}${this.riders ? `<div><small>SURVIVORS</small>${this.riders}</div>` : ''}${fr ? `<div><small>FRIENDS</small>${fr}</div>` : ''}<div><small>KILLS</small>${run.kills}</div><div><small>SCRAP</small>⚙ ${this.save.scrap.toLocaleString('en-GB')}</div>`;
     // actions you can take here (buttons you can click when the mouse is free)
     // rebuilt only when the set of buttons changes (so a click isn't lost); the labels update in place
     const acts = this.actions || [], sig = acts.map((a) => a[1]).join('|');
