@@ -23,7 +23,12 @@ export const TYPES = {
   brute: { hp: 320, spd: [1.3, 1.9], s: 1.32, scrap: 18 },        // huge, tough, can't be knocked over; three of them on the skids is a lot
   bloater: { hp: 50, spd: [0.9, 1.4], s: 1.06, scrap: 7 },        // swollen up: bursts when it dies and takes the ones round it too
   riot: { hp: 110, spd: [1.7, 2.5], s: 1.0, scrap: 8 },           // riot police: helmet and vest shrug off bullets (explosives work)
+  // BOSSES: giants, each with its own trick (see BossEv in events.js)
+  goliath: { hp: 9000, spd: [3.4, 3.6], s: 11, scrap: 0, boss: true },   // throws cars
+  spitter: { hp: 6000, spd: [2.8, 3.0], s: 8, scrap: 0, boss: true },   // spits acid at anything flying
+  mother: { hp: 7500, spd: [2.2, 2.4], s: 9, scrap: 0, boss: true },    // keeps giving birth to runners
 };
+export const BOSS_TYPES = ['goliath', 'spitter', 'mother'];
 // what turns up: mostly walkers, more runners at night and later on, the odd special
 const SMALL_ARMS = new Set(['gun', 'door', 'turret', 'team', 'tail', 'drone', 'pod']);
 export function pickType(night = 0, t = 0, city = false) {
@@ -112,6 +117,12 @@ export class Horde {
     if (type === 'brute') { zb.skin = [0.46, 0.5, 0.43]; zb.shirt = [0.3, 0.27, 0.24]; zb.pants = [0.22, 0.24, 0.28]; zb.torn = true; }
     if (type === 'bloater') { zb.skin = [0.58, 0.62, 0.36]; zb.shirt = [0.55, 0.5, 0.4]; }
     if (type === 'riot') { zb.shirt = [0.08, 0.1, 0.16]; zb.pants = [0.07, 0.09, 0.14]; zb.torn = false; }
+    if (T.boss) {
+      zb.boss = true; zb.s = T.s; zb.keep = true; zb.torn = true; zb.hunch = 0.15;
+      if (type === 'goliath') { zb.skin = [0.5, 0.47, 0.42]; zb.shirt = [0.25, 0.2, 0.17]; zb.pants = [0.2, 0.22, 0.26]; }
+      if (type === 'spitter') { zb.skin = [0.45, 0.55, 0.32]; zb.shirt = [0.35, 0.4, 0.25]; zb.pants = [0.2, 0.2, 0.18]; }
+      if (type === 'mother') { zb.skin = [0.6, 0.48, 0.48]; zb.shirt = [0.5, 0.32, 0.34]; zb.pants = [0.28, 0.2, 0.22]; }
+    }
     this.list.push(zb);
     return zb;
   }
@@ -194,6 +205,7 @@ export class Horde {
       if (!z.alive) continue;
       z.hitT = Math.max(0, z.hitT - dt);
       z.cd -= dt;
+      if (z.boss) { this.bossMove(z, dt); continue; }
       if (z.st === 'mag') continue;
       if (z.stun > 0 && z.st === 'walk') { z.stun -= dt; z.ph += dt * 3; continue; }
       if (z.st === 'walk') {
@@ -401,6 +413,28 @@ export class Horde {
     }
   }
 
+  // a giant: walks straight for where it's going, steps round buildings when it can, walks through them when it can't
+  bossMove(z, dt) {
+    z.st = 'walk';
+    const G = z.goal;
+    if (z.stomp > 0) { z.stomp -= dt; z.ph += dt * 2; return; }
+    if (!G) { z.ph += dt * 0.5; return; }
+    const dx = G.x - z.x, dz = G.z - z.z, d = Math.hypot(dx, dz);
+    if (d < 4) { z.ph += dt * 0.5; return; }
+    const a0 = Math.atan2(dz, dx), step = z.spd * dt;
+    let a = a0;
+    for (const off of [0, 0.7, -0.7, 1.4, -1.4]) {
+      const aa = a0 + off * (z.side > 0 ? 1 : -1), nx = z.x + Math.cos(aa) * z.s * 1.5, nz = z.z + Math.sin(aa) * z.s * 1.5;
+      if (!this.blockedAt(nx, nz)) { a = aa; break; }
+    }
+    z.x += Math.cos(a) * step; z.z += Math.sin(a) * step;
+    z.y = this.groundAt(z.x, z.z);
+    const want = Math.atan2(-Math.cos(a), -Math.sin(a));
+    let dy = want - z.yaw; while (dy > Math.PI) dy -= 6.283; while (dy < -Math.PI) dy += 6.283;
+    z.yaw += dy * Math.min(1, dt * 2);
+    z.ph += dt * z.spd * 2.4 / z.s;
+  }
+
   // jump for the skids (or reach them from the top of the heap)
   tryGrab(z, H, n, fromPile) {
     if (H.dead || z.type === 'crawler') return false;
@@ -437,6 +471,7 @@ export class Horde {
 
   damage(z, dmg, push, cause) {
     if (!z.alive) return false;
+    if (z.boss && cause === 'boss') return false;
     if (z.type === 'riot' && SMALL_ARMS.has(cause)) dmg *= 0.4;
     z.hp -= dmg; z.hitT = 0.1;
     if (z.hp <= 0) { this.kill(z, push, cause); return true; }
@@ -469,7 +504,7 @@ export class Horde {
       const k = 1 - clamp(d / (r + 0.01), 0, 0.85), dl = d || 1;
       const push = [(dx / dl) * force * k, force * 0.7 * k + 3, (dz / dl) * force * k];
       if (this.damage(z, dmg * k, push, cause)) n++;
-      else if (z.st !== 'grab' && z.type !== 'brute') { this.leavePile(z); z.st = 'fall'; z.vel = push; }
+      else if (z.st !== 'grab' && z.type !== 'brute' && !z.boss) { this.leavePile(z); z.st = 'fall'; z.vel = push; }
     }
     return n;
   }
@@ -521,7 +556,7 @@ export class Horde {
       P(sd * 0.13, 0.85 - 0.425 * Math.cos(a), -0.425 * Math.sin(a), a, 0.22, 0.88, 0.22, z.pants, 0, 'cylY');
       P(sd * 0.13, 0.85 - 0.85 * Math.cos(a) + 0.05, -0.85 * Math.sin(a) - 0.06, 0, 0.22, 0.1, 0.34, [0.12, 0.1, 0.09]);
     }
-    const fat = z.type === 'brute' ? 1.4 : z.type === 'bloater' ? 1.2 : 1;
+    const fat = z.type === 'brute' || z.type === 'goliath' ? 1.4 : z.type === 'bloater' || z.type === 'mother' ? 1.2 : 1;
     const tw = (run ? 0.44 : 0.48) * fat, td = 0.28 * fat, tl = Math.sin(lean);
     P(0, 1.18, -0.33 * tl, lean, tw, 0.66, td, z.shirt);
     P(0, 1.48, -0.5 * tl, lean, tw * 1.05, 0.16, td * 1.1, z.shirt.map((v) => v * 0.8));
@@ -539,6 +574,21 @@ export class Horde {
       P(0, 1.3, -0.33 * tl - td * 0.66, lean, tw * 0.7, 0.07, 0.02, [0.9, 0.9, 0.85]);
       P(0, 1.73, -0.62 * tl - 0.05, lean * 0.6 + 0.2, 0.38, 0.32, 0.38, [0.07, 0.09, 0.15], 0, 'sphere');
       P(0, 1.67, -0.62 * tl - 0.22, lean * 0.6 + 0.2, 0.3, 0.16, 0.03, [0.25, 0.3, 0.35]);
+    }
+    if (z.type === 'goliath') {
+      // bone spurs down the back, and a slab of a jaw
+      for (let k = 0; k < 4; k++) P(0, 1.05 + k * 0.14, 0.1 + td * 0.5 - 0.33 * tl, lean - 0.6, 0.07, 0.2, 0.07, [0.85, 0.82, 0.7], 0, 'cylY');
+      P(0, 1.55, -0.62 * tl - 0.17, lean * 0.6 + 0.2, 0.26, 0.12, 0.2, z.skin.map((v) => v * 0.8));
+    }
+    if (z.type === 'spitter') {
+      // a swollen, glowing throat sac
+      P(0, 1.5, -0.6 * tl - 0.2, lean, 0.34, 0.3, 0.3, [0.55, 0.95, 0.2], z.spit > 0 ? 1 : 0.45, 'sphere');
+      for (const sd of [-1, 1]) P(sd * 0.2, 1.25, -0.33 * tl - td * 0.5, lean, 0.1, 0.1, 0.06, [0.6, 1, 0.25], 0.6, 'sphere');
+    }
+    if (z.type === 'mother') {
+      // the brood: glowing egg sacs all over the back and belly
+      P(0, 1.1, -0.33 * tl - 0.16, lean, 0.7, 0.7, 0.62, z.skin, 0, 'sphere');
+      for (let k = 0; k < 6; k++) { const a = k * 1.05; P(Math.cos(a) * 0.3, 1.0 + Math.sin(a) * 0.25 + 0.15, 0.12 + td * 0.4 - 0.33 * tl, lean, 0.16, 0.16, 0.14, [1, 0.55, 0.3], 0.7, 'sphere'); }
     }
     P(0, 1.67, -0.62 * tl - 0.05, lean * 0.6 + 0.2, 0.3, 0.34, 0.3, z.skin, 0, 'sphere');
     P(0, 1.6, -0.62 * tl - 0.2, lean * 0.6 + 0.2, z.type === 'screamer' && z.screamed ? 0.2 : 0.16, z.type === 'screamer' && z.screamed ? 0.14 : 0.06, 0.06, [0.2, 0.05, 0.04]);
@@ -575,15 +625,16 @@ export class Horde {
       const al = dx * fwd[0] + dy * fwd[1] + dz * fwd[2], rr = 2 * z.s;
       if (al < -rr) continue;
       if (Math.sqrt(Math.max(0, d2 - al * al)) > al * kf + rr) continue;
-      if (d2 > 600 * 600) continue;
-      if (d2 > 170 * 170) {
+      const bf = z.boss ? 16 : 1;
+      if (d2 > 600 * 600 * bf) continue;
+      if (d2 > 170 * 170 * bf) {
         // in the distance: one box
         const crawl = z.type === 'crawler' && z.st === 'walk';
         put({ pos: [z.x, z.y + (crawl ? 0.25 : 0.85) * z.s, z.z], rot: [0, z.yaw, 0], size: crawl ? [0.5, 0.5, 1.2] : [0.5 * z.s, 1.75 * z.s, 0.32 * z.s], col: z.shirt, mesh: 'box' });
         continue;
       }
       tmp.length = 0;
-      this.parts(z, tmp, d2 > 55 * 55 ? 0 : 1);
+      this.parts(z, tmp, d2 > 55 * 55 * bf ? 0 : 1);
       for (const p of tmp) put(p);
     }
     // the piles: bodies that didn't make it (and the ones underneath) fill out the heap between the climbers

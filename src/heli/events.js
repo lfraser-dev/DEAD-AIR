@@ -13,7 +13,7 @@
 // A scenario's zombies only turn up when you're near it, so nothing goes wrong far away while you're busy.
 import { WATER } from './terrain.js';
 import { WORLD } from './map.js';
-import { pickType } from './horde.js';
+import { pickType, BOSS_TYPES } from './horde.js';
 
 const NEAR = 320;
 const dist2 = (a, x, z) => Math.hypot(a.x - x, a.z - z);
@@ -527,9 +527,105 @@ export class GreatHorde extends HordeEv {
   marker() { const m = super.marker(); return { ...m, col: '#b02aff', text: `THE GREAT HORDE · ${this.n}`, story: true }; }
 }
 
+// BOSSES: a giant walking for a town. Each has its own trick, and they all swat anything that comes too close.
+export const BOSSES = {
+  goliath: { n: 'GOLIATH', sub: 'THROWS CARS · STAY MOVING', col: '#ff4a2a', scrap: 1500 },
+  spitter: { n: 'THE SPITTER', sub: 'SPITS ACID AT ANYTHING FLYING', col: '#9aff3a', scrap: 1200 },
+  mother: { n: 'THE BROODMOTHER', sub: 'KEEPS MAKING MORE OF THEM', col: '#ff8a6a', scrap: 1300 },
+};
+export const CARS = [[0.6, 0.12, 0.1], [0.15, 0.25, 0.5], [0.75, 0.75, 0.72], [0.12, 0.12, 0.13], [0.8, 0.65, 0.15]];
+export class BossEv extends Ev {
+  constructor(bk, x, z, town) {
+    super('boss', BOSSES[bk].n, x, z);
+    this.bk = bk; this.town = town; this.atkT = 4; this.swipeT = 0; this.spawnT = 3; this.shots = []; this.z0 = null; this.y = 0; this.saidT = 0;
+  }
+  update(dt, g) {
+    if (!this.z0) {
+      const Z = this.z0 = g.horde.spawn(this.bk, this.x, this.z);
+      Z.ev = this.id; Z.side = Math.random() < 0.5 ? 1 : -1;
+      if (this.town) Z.goal = { x: this.town.x, z: this.town.z };
+    }
+    const Z = this.z0, B = BOSSES[this.bk];
+    this.x = Z.x; this.z = Z.z; this.y = Z.y;
+    // what it's thrown or spat, flying
+    for (let i = this.shots.length - 1; i >= 0; i--) {
+      const sh = this.shots[i];
+      sh.t += dt; sh.v[1] -= (sh.k === 'r' ? 9.8 : 5) * dt;
+      for (let k = 0; k < 3; k++) sh.p[k] += sh.v[k] * dt;
+      sh.spin += dt * 4;
+      let hit = false;
+      for (const P of g.pilots()) {
+        if (Math.hypot(P.pos[0] - sh.p[0], P.pos[1] - sh.p[1], P.pos[2] - sh.p[2]) < (sh.k === 'r' ? 5.5 : 4.5)) { P.hurt(sh.k === 'r' ? 90 : 40, sh.p); hit = true; break; }
+      }
+      if (hit || sh.t > 9 || sh.p[1] < g.groundAt(sh.p[0], sh.p[2])) {
+        if (sh.k === 'r') { g.boom?.(sh.p, 1.6); g.horde.blast(sh.p, 8, 200, 10, 'boss'); }
+        else { g.boom?.(sh.p, 0.6); g.horde.blast(sh.p, 5, 60, 3, 'boss'); }
+        this.shots.splice(i, 1);
+      }
+    }
+    if (!Z.alive) {
+      this.done = true;
+      g.addScrap(B.scrap); g.save.events = (g.save.events || 0) + 1; g.save.bosses = (g.save.bosses || 0) + 1;
+      g.banner(`${B.n} IS DOWN`, `+⚙${B.scrap.toLocaleString('en-GB')}`, 'good', 4);
+      g.snd?.finish?.();
+      const p = [Z.x, Z.y + Z.s, Z.z];
+      for (let i = 0; i < 6; i++) setTimeout(() => g.boom?.([p[0] + (Math.random() - 0.5) * 14, p[1] + Math.random() * 6, p[2] + (Math.random() - 0.5) * 14], 2.2), i * 200);
+      g.storyHit?.('boss', 1);
+      for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.ev = null; }
+      return;
+    }
+    // it reached the town: it tears through it, then turns for the next one
+    if (this.town && Math.hypot(Z.x - this.town.x, Z.z - this.town.z) < Math.max(25, this.town.r * 0.5)) {
+      g.banner(`${B.n} TORE THROUGH ${this.town.name}`, 'IT\'S HEADING FOR THE NEXT TOWN', 'r', 3);
+      const nx = (g.map.towns || []).filter((t) => t !== this.town).sort((a, b) => Math.hypot(a.x - Z.x, a.z - Z.z) - Math.hypot(b.x - Z.x, b.z - Z.z))[0];
+      this.town = nx || null; Z.goal = nx ? { x: nx.x, z: nx.z } : null;
+    }
+    // attacks: only when someone's in reach
+    const P = g.pilots().map((q) => ({ ...q, d: Math.hypot(q.pos[0] - Z.x, q.pos[2] - Z.z) })).sort((a, b) => a.d - b.d)[0];
+    if (!P || P.d > 650) return;
+    const rage = Z.hp < Z.max * 0.4 ? 0.6 : 1;
+    if (rage < 1 && !this.raged) { this.raged = true; g.feed(`${B.n} IS ENRAGED`, 'r'); }
+    this.atkT -= dt; this.swipeT -= dt; this.spawnT -= dt;
+    const h = P.pos[1] - Z.y;
+    // too close: it swats you
+    if (this.swipeT <= 0 && P.d < Z.s * 3.2 && h < Z.s * 2.8) { this.swipeT = 2.5; Z.stomp = 0.7; P.hurt(120, P.pos); g.feed(`${B.n} SWATTED YOU`, 'r'); }
+    const hand = [Z.x, Z.y + Z.s * 2, Z.z];
+    const throwAt = (spd, grav, kind) => {
+      const T = Math.min(4.5, Math.max(1, P.d / spd));
+      const tg = [P.pos[0] + (P.vel[0] || 0) * T, P.pos[1] + (P.vel[1] || 0) * T * 0.5, P.pos[2] + (P.vel[2] || 0) * T];
+      const v = [(tg[0] - hand[0]) / T, (tg[1] - hand[1]) / T + 0.5 * grav * T, (tg[2] - hand[2]) / T];
+      this.shots.push({ k: kind, p: [...hand], v, t: 0, spin: 0, c: CARS[Math.floor(Math.random() * CARS.length)] });
+      Z.yaw = Math.atan2(-(P.pos[0] - Z.x), -(P.pos[2] - Z.z));
+    };
+    if (this.bk === 'goliath' && this.atkT <= 0 && P.d < 260) { this.atkT = 4.5 * rage; Z.stomp = 0.6; throwAt(42, 9.8, 'r'); }
+    if (this.bk === 'spitter' && this.atkT <= 0 && P.d < 300) { this.atkT = 1.7 * rage; Z.spit = 0.4; throwAt(60, 5, 'a'); }
+    if (Z.spit > 0) Z.spit -= dt;
+    if (this.bk === 'mother' && this.spawnT <= 0 && P.d < 500) {
+      this.spawnT = 3.5 * rage;
+      const kids = g.horde.list.filter((z) => z.alive && z.ev === this.id && !z.boss).length;
+      if (kids < 45) for (let k = 0; k < 3; k++) { const a = Math.random() * 6.28, x = Z.x + Math.cos(a) * Z.s * 1.5, zz = Z.z + Math.sin(a) * Z.s * 1.5; if (g.horde.blockedAt(x, zz)) continue; const kz = g.horde.spawn('runner', x, zz); kz.ev = this.id; kz.keep = true; kz.angry = 20; }
+    }
+  }
+  marker() {
+    const B = BOSSES[this.bk], Z = this.z0;
+    const pct = Z ? Math.max(1, Math.round(Z.hp / Z.max * 100)) : 100;
+    return { p: [this.x, (this.y || 10) + (Z ? Z.s * 2.3 : 10) + 8, this.z], col: B.col, icon: '☠', text: `${B.n} · ${pct}%`, sub: this.town ? `HEADING FOR ${this.town.name}` : B.sub, boss: true };
+  }
+  parts(P) {
+    for (const sh of this.shots) {
+      if (sh.k === 'r') P(sh.p, [sh.spin, sh.spin * 0.7, 0], [2.0, 1.4, 4.2], sh.c, { shape: 0.15, mat: 'paint' });
+      else P(sh.p, [0, 0, 0], [1.3, 1.3, 1.3], [0.55, 1, 0.2], { em: 1, shape: 'sphere' });
+    }
+  }
+  net() {
+    const Z = this.z0, r = (v) => Math.round(v * 10) / 10;
+    return { k: 'boss', x: this.x, z: this.z, b: this.bk, h: Z ? Math.round(Z.hp) : 1, m: Z ? Z.max : 1, p: this.shots.map((s) => [s.k, r(s.p[0]), r(s.p[1]), r(s.p[2]), r(s.spin), CARS.indexOf(s.c), r(s.v[0]), r(s.v[1]), r(s.v[2])]) };
+  }
+}
+
 export class Director {
   constructor() { this.list = []; this.newT = 6; }
-  clear() { this.list.length = 0; this.newT = 6; }
+  clear() { this.list.length = 0; this.newT = 6; this.bossT = 420; }
   start(g) { this.add(g, 'rescue'); this.add(g, 'rescue'); this.add(g, 'crate'); this.add(g, 'convoy'); this.hordeT = 70; this.add(g, 'horde'); }
   add(g, kind) {
     const H = g.heli.pos, map = g.map;
@@ -578,6 +674,17 @@ export class Director {
         }
         if (L > 700) { ev = new Convoy(path); g.feed('RADIO: SURVIVORS ARE MAKING A RUN FOR IT · ESCORT THE CONVOY', 'y'); }
       }
+    } else if (kind === 'boss') {
+      const bk = BOSS_TYPES[Math.floor(Math.random() * BOSS_TYPES.length)];
+      const towns = (map.towns || []).filter((t) => Math.hypot(t.x - H[0], t.z - H[2]) > 300).sort((a, b) => Math.hypot(a.x - H[0], a.z - H[2]) - Math.hypot(b.x - H[0], b.z - H[2])).slice(0, 6);
+      for (let tries = 0; tries < 30 && !ev && towns.length; tries++) {
+        const t = towns[Math.floor(Math.random() * towns.length)], a = Math.random() * 6.28, d = 800 + Math.random() * 400;
+        const x = t.x + Math.cos(a) * d, z = t.z + Math.sin(a) * d;
+        if (Math.abs(x) > WORLD - 200 || Math.abs(z) > WORLD - 200 || g.horde.blockedAt(x, z) || g.groundAt(x, z) < WATER + 1) continue;
+        ev = new BossEv(bk, x, z, t);
+        g.feed(`RADIO: SOMETHING HUGE IS WALKING TOWARDS ${t.name}`, 'r');
+        g.radio?.(`Pilot, the masts are picking up something big. Really big. It's heading for ${t.name}. ${BOSSES[bk].n}, they're calling it. Bring everything you've got.`, 9);
+      }
     } else if (kind === 'crate') {
       const spots = map.open.filter(([x, z]) => Math.hypot(x - H[0], z - H[2]) > 160 && Math.hypot(x - H[0], z - H[2]) < 1000 && !this.list.some((e) => Math.hypot(e.x - x, e.z - z) < 80) && g.groundAt(x, z) > WATER + 1);
       if (spots.length) { const [x, z] = spots[Math.floor(Math.random() * spots.length)]; ev = new Crate(x + (Math.random() - 0.5) * 8, z + (Math.random() - 0.5) * 8); }
@@ -598,6 +705,9 @@ export class Director {
       const has = (k) => this.list.some((e) => e.kind === k);
       this.add(g, r < 0.1 && !this.list.some((e) => e.br) ? 'bridge' : r < 0.2 && !this.list.some((e) => e.crash) ? 'crash' : r < 0.3 && !has('outbreak') ? 'outbreak' : r < 0.4 && !has('convoy') ? 'convoy' : r < 0.78 ? 'rescue' : 'crate');
     }
+    // a boss every so often (not in the first few minutes)
+    this.bossT = (this.bossT ?? 420) - dt;
+    if (this.bossT <= 0) { this.bossT = 480 + Math.random() * 300; if (!this.list.some((e) => e.kind === 'boss')) this.add(g, 'boss'); }
     this.hordeT = (this.hordeT ?? 200) - dt;
     if (this.hordeT <= 0 && this.list.filter((e) => e.kind === 'horde' && !e.story).length < 2) { this.hordeT = 200 + Math.random() * 160; this.add(g, 'horde'); }
   }

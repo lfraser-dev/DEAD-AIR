@@ -21,7 +21,7 @@ import { mountAt, AIRFRAMES, Chopper, chopperParts, qrot, qmat, droneParts } fro
 import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, slotFits, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, TIPS, TRIMS, TINTS, BASE, BEDS, baseCut } from './data.js';
 import { Story, CHAPTERS } from './story.js';
 import { Music } from './music.js';
-import { Director, crateParts, wreckParts, convoyParts } from './events.js';
+import { Director, crateParts, wreckParts, convoyParts, BOSSES, CARS } from './events.js';
 import { ROLES, ROLE_IDS, WEAPONS, ARMORS, ITEMS, newMember, recruitCost, Raid, HAIR, randName } from './team.js';
 import { makeTransport, code5, ZT, ZS, q1, q2, listServers } from './coop.js';
 import { CSS } from './ui.js';
@@ -2387,7 +2387,7 @@ export class HeliGame {
       let q = S2 ? S2.q : T.q; if (q[0] * w.q[0] + q[1] * w.q[1] + q[2] * w.q[2] + q[3] * w.q[3] < 0) q = q.map((v) => -v);
       w.q = norm4(w.q.map((v, i) => v + (q[i] - v) * k));
       qmat(w.H, w.q, w.pos);
-      w.rpm = T.r; w.rotorA += w.rpm * 26 * dt; w.tailA += w.rpm * 70 * dt; w.fire = T.f && !T.dead; w.dead = T.dead; w.rd = T.rd; w.vs = Math.hypot(T.v[0], T.v[2]);
+      w.rpm = T.r; w.rotorA += w.rpm * 26 * dt; w.tailA += w.rpm * 70 * dt; w.fire = T.f && !T.dead; w.dead = T.dead; w.rd = T.rd; w.vs = Math.hypot(T.v[0], T.v[2]); w.v = T.v;
       if (w.fire) {
         f.trT -= dt;
         if (f.trT <= 0) { f.trT = 0.08; const o = qrot(w.q, [0, -1.05, -5]).map((c, i) => c + w.pos[i]); this.tracer(o, T.d, 150, 10 + f.slot); }
@@ -2417,6 +2417,13 @@ export class HeliGame {
     let d = Math.hypot(x - this.heli.pos[0], z - this.heli.pos[2]);
     if (this.coop) for (const f of this.coop.friends.values()) if (f.pilot && f.wh && !f.wh.dead) d = Math.min(d, Math.hypot(x - f.wh.pos[0], z - f.wh.pos[2]));
     return d;
+  }
+  // everyone flying who a boss can throw things at: you, and friends flying their own aircraft
+  pilots() {
+    const out = [];
+    if (this.heli && !this.heli.dead && (this.mode === 'fly' || this.mode === 'pause')) out.push({ pos: this.heli.pos, vel: this.heli.vel, hurt: (d, at) => this.hurt(d, at) });
+    if (this.coop) for (const f of this.coop.friends.values()) if (f.pilot && f.wh && !f.wh.dead) out.push({ pos: f.wh.pos, vel: f.wh.v || [0, 0, 0], hurt: (d) => this.coop.tr.sendTo(f.id, { k: 'hurt', d: Math.round(d) }) });
+    return out;
   }
   wingSpots() { return this.coop ? [...this.coop.friends.values()].filter((f) => f.pilot && f.wh && !f.wh.dead).map((f) => [f.wh.pos[0], f.wh.pos[2], f.wh.pos[1]]) : []; }
   stopCoop() {
@@ -2475,7 +2482,10 @@ export class HeliGame {
           if (!z.nid) { z.nid = (this.nidN = (this.nidN || 0) + 1); this.nidMap.set(z.nid, z); }
           out.push(z.nid, Math.round(z.x * 10), Math.round(z.y * 10), Math.round(z.z * 10), Math.round(z.yaw * 100), ZT.indexOf(z.type), ZS.indexOf(z.st), z.hitT > 0 ? 1 : 0);
         }
-        if (this.titanEv()) { const T = this.titanEv().z0; out.push(-1, Math.round(T.hp), Math.round(T.max)); }
+        for (const z of all) if (z.boss && !near.includes(z) && dd(z) < 1800) {
+          if (!z.nid) { z.nid = (this.nidN = (this.nidN || 0) + 1); this.nidMap.set(z.nid, z); }
+          out.push(z.nid, Math.round(z.x * 10), Math.round(z.y * 10), Math.round(z.z * 10), Math.round(z.yaw * 100), ZT.indexOf(z.type), ZS.indexOf(z.st), z.hitT > 0 ? 1 : 0);
+        }
         const msg = { k: 'zs', t: Math.round(performance.now()), z: out };
         for (const id of ids) C.tr.sendTo(id, msg);
       }
@@ -2488,7 +2498,21 @@ export class HeliGame {
     }
     if (this.nfx && this.nfx.length && C.fxT <= 0) { C.fxT = 1 / 10; send({ k: 'fx', f: this.nfx.splice(0, 80) }); this.nfx.length = 0; }
   }
-  titanEv() { return this.director.list.find((e) => e.kind === 'titan' && e.z0.alive); }
+  titanEv() { const P = this.heli.pos; return this.director.list.filter((e) => e.kind === 'boss' && e.z0 && e.z0.alive).sort((a, b) => Math.hypot(a.x - P[0], a.z - P[2]) - Math.hypot(b.x - P[0], b.z - P[2]))[0]; }
+  // the nearest boss (if one's close): its name and health
+  bossNear(P) {
+    const L = this.client ? (this.client.evs || []).filter((e) => e.k === 'boss').map((e) => ({ x: e.x, z: e.z, n: BOSSES[e.b] ? BOSSES[e.b].n : 'BOSS', h: e.h, m: e.m }))
+      : this.director.list.filter((e) => e.kind === 'boss' && e.z0 && e.z0.alive).map((e) => ({ x: e.x, z: e.z, n: BOSSES[e.bk].n, h: e.z0.hp, m: e.z0.max }));
+    return L.filter((b) => Math.hypot(b.x - P[0], b.z - P[2]) < 900).sort((a, b) => Math.hypot(a.x - P[0], a.z - P[2]) - Math.hypot(b.x - P[0], b.z - P[2]))[0] || null;
+  }
+  // the boss health bar at the top of the screen
+  bossBar(b) {
+    const el = this.$('boss');
+    el.classList.toggle('hidden', !b);
+    if (!b) return;
+    if (el.dataset.n !== b.n) { el.dataset.n = b.n; el.firstChild.textContent = b.n; }
+    el.style.setProperty('--p', clamp(b.h / b.m, 0, 1).toFixed(3));
+  }
 
   // ---------------------------------------------------------------- online: a friend's side
   // the JOIN screen: the public servers that are on right now, or a code; and whether to ride in a door or fly
@@ -2592,7 +2616,7 @@ export class HeliGame {
       const seen = new Set(), z = m.z;
       let i = 0;
       while (i < z.length) {
-        if (z[i] === -1) { cl.titan = [z[i + 1], z[i + 2]]; i += 3; continue; }
+        if (z[i] === -1) { i += 3; continue; }
         const id = z[i];
         let p = cl.zs.get(id);
         const type = ZT[z[i + 5]] || 'walker';
@@ -2609,7 +2633,7 @@ export class HeliGame {
       }
       for (const [id, p] of cl.zs) if (!seen.has(id)) { p.alive = false; cl.zs.delete(id); }
       this.horde.list = this.horde.list.filter((q) => q.alive);
-    } else if (m.k === 'ev') { cl.evs = m.e || []; cl.shots = m.sh || []; cl.dos = Array.isArray(m.do) ? m.do.slice(0, 6) : []; }
+    } else if (m.k === 'ev') { cl.evAt = this.t; cl.evs = m.e || []; cl.shots = m.sh || []; cl.dos = Array.isArray(m.do) ? m.do.slice(0, 6) : []; }
     else if (m.k === 'fx') {
       for (const f of m.f || []) {
         if (f[0] === 't') { if (f[8] !== (cl.wing ? 10 + (cl.pad || 0) : cl.seat)) this.tracers.push({ from: [f[1], f[2], f[3]], dir: [f[4], f[5], f[6]], len: f[7], d: 0 }); }
@@ -2955,10 +2979,7 @@ export class HeliGame {
     this.markers([...cl.evs.map((e) => e.mk), ...fm, ...this.dustMarks()], cl.heli.pos);
     this.minimap(cl.heli.pos, cl.heli.heading, [...cl.evs.map((e) => e.mk), ...fm], [...cl.zs.values()]);
     this.eventsList(cl.evs.map((e) => e.mk), cl.heli.pos);
-    const boss = this.$('boss');
-    boss.classList.toggle('hidden', !cl.titan);
-    if (cl.titan) boss.style.setProperty('--p', (cl.titan[0] / cl.titan[1]).toFixed(3));
-    cl.titan = null;
+    this.bossBar(this.bossNear(cl.heli.pos));
   }
 
   // ---------------------------------------------------------------- camera, HUD, sound
@@ -3052,6 +3073,15 @@ export class HeliGame {
           for (let i = 0; i < e.n; i++) { const a = (e.s - e.n + i) * 2.1 + e.w; person(e.x + Math.cos(a) * 1.8, e.y, e.z + Math.sin(a) * 1.8, -a, true, i); }
           if (e.n > 0) P([e.x + 2.2, e.y + 45, e.z - 2.2], [0, 0, 0], [1.8, 90, 1.8], [0.3, 1, 0.35], { em: 1, shape: 'cylY', alpha: 0.18 });
         } else if (e.k === 'crate') crateParts(P, e.x, e.y, e.z, e.l, e.c, this.t, cl.heli);
+        else if (e.k === 'boss' && Array.isArray(e.p)) {
+          // what the boss threw, carried on from where the host last saw it
+          const a = Math.min(0.5, this.t - (cl.evAt || this.t));
+          for (const q of e.p.slice(0, 20)) {
+            const gr = q[0] === 'r' ? 9.8 : 5, pos = [q[1] + q[6] * a, q[2] + q[7] * a - 0.5 * gr * a * a, q[3] + q[8] * a];
+            if (q[0] === 'r') P(pos, [q[4] + a * 4, (q[4] + a * 4) * 0.7, 0], [2.0, 1.4, 4.2], CARS[q[5]] || CARS[0], { shape: 0.15, mat: 'paint' });
+            else P(pos, [0, 0, 0], [1.3, 1.3, 1.3], [0.55, 1, 0.2], { em: 1, shape: 'sphere' });
+          }
+        }
       }
       for (const s of cl.shots) {
         const v = norm([s[4], s[5], s[6]]), ang = [Math.asin(clamp(v[1], -1, 1)), Math.atan2(-v[0], -v[2]), 0];
@@ -3503,7 +3533,7 @@ export class HeliGame {
     this.eventsList(list.filter((m) => !m.fob), H.pos);
     const zr = Math.max([150, 450, 600][S.flir || 0], S.drones ? 650 : 0, S.tpod === 2 ? 900 : 0);
     this.minimap(H.pos, H.heading, [...list, ...loots.filter((m) => m.text !== 'RAIDED')], this.horde.list.filter((z) => Math.abs(z.x - H.pos[0]) < zr && Math.abs(z.z - H.pos[2]) < zr));
-    this.$('boss').classList.add('hidden');
+    this.bossBar(this.bossNear(H.pos));
     this.raidPanel();
     const setM = (id, p, hot) => { const m = this.$(id); m.style.setProperty('--p', clamp(p, 0, 1).toFixed(3)); m.classList.toggle('hot', !!hot); };
     setM('fuelm', this.fuel / S.fuel, this.fuel / S.fuel < 0.2);

@@ -34,14 +34,14 @@ export const CHAPTERS = [
     brief: "People are trapped on the bridges, walking for the city when the dead came at them from both ends. Get them off. And thin the dead out while you're at it: the more you kill, the safer the roads.",
     goals: [{ k: 'bridge', n: 2, t: 'SAVE THE PEOPLE ON 2 BRIDGES' }, { k: 'kills', n: 300, t: 'KILL 300 ZOMBIES' }] },
   { n: 'MAYDAY', reward: 4500,
-    brief: "We're not the only ones flying. Other crews heard us and came looking, and some of them didn't make it. Find the crash sites, get the crews out, and bring in supplies for the new arrivals.",
-    goals: [{ k: 'crash', n: 2, t: 'RESCUE 2 DOWNED CREWS' }, { k: 'crate', n: 2, t: 'BRING BACK 2 SUPPLY CRATES' }] },
+    brief: "We're not the only ones flying. Other crews heard us and came looking, and some of them didn't make it. Find the crash sites, get the crews out, and bring in supplies for the new arrivals. And pilot... one of the crews saw something walking. Something huge.",
+    goals: [{ k: 'crash', n: 2, t: 'RESCUE 2 DOWNED CREWS' }, { k: 'crate', n: 2, t: 'BRING BACK 2 SUPPLY CRATES' }, { k: 'boss', n: 1, t: 'BRING DOWN A GIANT' }] },
   { n: 'THE LONG NIGHT', reward: 5500,
     brief: "All those new people... and all that noise. They've heard us. Everything left in the city is coming for the Spire again, more than last time. Rearm, and get back over the doors.",
     goals: [{ k: 'siege', n: 1, t: 'HOLD THE SPIRE AGAIN · 6 WAVES' }] },
   { n: 'THE TIDE', reward: 8000,
     brief: "This is it, pilot. The masts can see all of them now: the last great horde, every one of the dead left in the country, and smaller packs feeding into it. Break the packs, then break the tide. End this.",
-    goals: [{ k: 'horde', n: 2, t: 'BREAK UP 2 HORDES' }, { k: 'great', n: 1, t: 'BREAK THE LAST GREAT HORDE' }] },
+    goals: [{ k: 'horde', n: 2, t: 'BREAK UP 2 HORDES' }, { k: 'boss', n: 1, t: 'KILL THE GIANT LEADING THE TIDE' }, { k: 'great', n: 1, t: 'BREAK THE LAST GREAT HORDE' }] },
 ];
 export const ENDING = "Pilot... it's quiet. Properly quiet. The Spire, the fort, the other cities: all lit up, all talking. There'll always be stragglers out there, but the dead don't own this country any more. We do. Thank you. Keep flying.";
 const ENDING1 = "That's it. They're broken. The Spire's safe, Fort Calder's running, and the radio hasn't stopped: people coming in from everywhere. You did that. There are always more of them out there, though. Keep flying.";
@@ -89,20 +89,21 @@ export class Story {
     const ch = this.ch, D = game.director, map = game.map;
     if (!ch || !D) return;
     const has = (k) => D.list.some((e) => e.kind === k || (k === 'evac' && e.evac) || (k === 'great' && e.great));
-    const k = ch.goals[0].k;
-    if (k === 'mast') for (const m of map.masts || []) {
+    const want = (k) => ch.goals.some((g) => g.k === k && this.have(g) < g.n);
+    if (want('mast')) for (const m of map.masts || []) {
       if (this.s.masts.includes(m.n) || D.list.some((e) => e.mast === m)) continue;
       const e = new MastEv(m); e.story = true; D.list.push(e);
     }
-    if (k === 'fort' && map.fort && map.fort.locked && !has('fort')) { const e = new FortEv(map.fort); e.story = true; D.list.push(e); }
+    if (want('fort') && map.fort && map.fort.locked && !has('fort')) { const e = new FortEv(map.fort); e.story = true; D.list.push(e); }
     if (ch.goals.some((g) => g.k === 'convoy') && this.have(ch.goals.find((g) => g.k === 'convoy')) < 2 && !D.list.some((e) => e.kind === 'convoy')) D.add(game, 'convoy');
     if (ch.goals.some((g) => g.k === 'horde') && !D.list.some((e) => e.kind === 'horde' && !e.story)) D.add(game, 'horde');
     if (ch.goals.some((g) => g.k === 'crate') && !D.list.some((e) => e.kind === 'crate')) D.add(game, 'crate');
     if (ch.goals.some((g) => g.k === 'outbreak') && !D.list.some((e) => e.kind === 'outbreak')) D.add(game, 'outbreak');
     if (ch.goals.some((g) => g.k === 'bridge') && !D.list.some((e) => e.br)) D.add(game, 'bridge');
     if (ch.goals.some((g) => g.k === 'crash') && !D.list.some((e) => e.crash)) D.add(game, 'crash');
-    if (k === 'evac' && map.hospital && !has('evac')) { const e = new Evac(map.hospital); e.story = true; D.list.push(e); }
-    if (k === 'great' && !has('great')) {
+    if (ch.goals.some((g) => g.k === 'boss') && this.have(ch.goals.find((g) => g.k === 'boss')) < 1 && !D.list.some((e) => e.kind === 'boss')) { const e = D.add(game, 'boss'); if (e) e.story = true; }
+    if (want('evac') && map.hospital && !has('evac')) { const e = new Evac(map.hospital); e.story = true; D.list.push(e); }
+    if (want('great') && !has('great')) {
       const B = map.boro, town = { x: B.x, z: B.z, r: 260, name: 'THE BOROUGH', y: 10 };
       let x = 0, z = 0;
       for (let t = 0; t < 30; t++) { const a = Math.random() * 6.28; x = B.x + Math.cos(a) * 2200; z = B.z + Math.sin(a) * 2200; if (Math.abs(x) < 5400 && Math.abs(z) < 5400 && !game.horde.blockedAt(x, z)) break; }
