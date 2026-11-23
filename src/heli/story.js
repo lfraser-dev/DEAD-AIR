@@ -26,17 +26,35 @@ export const CHAPTERS = [
   { n: 'THE GREAT HORDE', reward: 6000,
     brief: "That was only the city. The masts are picking up something huge: every zombie in the country, walking on the Borough. Break it up before it gets there.",
     goals: [{ k: 'great', n: 1, t: 'BREAK THE GREAT HORDE' }] },
+  // ---- ACT TWO: the world is bigger than the city
+  { n: 'THE OTHER CITIES', reward: 3500,
+    brief: "Pilot, you broke the Great Horde. The radio hasn't stopped since. It's not just our city: the other towns out there are full of people hiding. Go and get them, and stamp out any outbreak before it spreads.",
+    goals: [{ k: 'rescued', n: 25, t: 'BRING 25 MORE SURVIVORS HOME' }, { k: 'outbreak', n: 1, t: 'CLEAR AN OUTBREAK' }] },
+  { n: 'BURNING BRIDGES', reward: 4000,
+    brief: "People are trapped on the bridges, walking for the city when the dead came at them from both ends. Get them off. And thin the dead out while you're at it: the more you kill, the safer the roads.",
+    goals: [{ k: 'bridge', n: 2, t: 'SAVE THE PEOPLE ON 2 BRIDGES' }, { k: 'kills', n: 300, t: 'KILL 300 ZOMBIES' }] },
+  { n: 'MAYDAY', reward: 4500,
+    brief: "We're not the only ones flying. Other crews heard us and came looking, and some of them didn't make it. Find the crash sites, get the crews out, and bring in supplies for the new arrivals.",
+    goals: [{ k: 'crash', n: 2, t: 'RESCUE 2 DOWNED CREWS' }, { k: 'crate', n: 2, t: 'BRING BACK 2 SUPPLY CRATES' }] },
+  { n: 'THE LONG NIGHT', reward: 5500,
+    brief: "All those new people... and all that noise. They've heard us. Everything left in the city is coming for the Spire again, more than last time. Rearm, and get back over the doors.",
+    goals: [{ k: 'siege', n: 1, t: 'HOLD THE SPIRE AGAIN · 6 WAVES' }] },
+  { n: 'THE TIDE', reward: 8000,
+    brief: "This is it, pilot. The masts can see all of them now: the last great horde, every one of the dead left in the country, and smaller packs feeding into it. Break the packs, then break the tide. End this.",
+    goals: [{ k: 'horde', n: 2, t: 'BREAK UP 2 HORDES' }, { k: 'great', n: 1, t: 'BREAK THE LAST GREAT HORDE' }] },
 ];
-export const ENDING = "That's it. They're broken. The Spire's safe, Fort Calder's running, and the radio hasn't stopped: people coming in from everywhere. You did that. There are always more of them out there, though. Keep flying.";
+export const ENDING = "Pilot... it's quiet. Properly quiet. The Spire, the fort, the other cities: all lit up, all talking. There'll always be stragglers out there, but the dead don't own this country any more. We do. Thank you. Keep flying.";
+const ENDING1 = "That's it. They're broken. The Spire's safe, Fort Calder's running, and the radio hasn't stopped: people coming in from everywhere. You did that. There are always more of them out there, though. Keep flying.";
 
 export class Story {
-  constructor(save, map) { this.s = save.story; this.armT = 0; this.nMasts = map && map.masts ? map.masts.length : 3; }
+  constructor(save, map) { this.s = save.story; this.armT = 0; this.nMasts = map && map.masts ? map.masts.length : 3; this.nBridges = map && map.bridges ? map.bridges.length : 2; }
   get ch() { return CHAPTERS[this.s.ch] || null; }
   get done() { return this.s.ch >= CHAPTERS.length; }
   // how far along a goal is
   have(g) {
     if (g.k === 'mast') return this.s.masts.length + Math.max(0, 3 - this.nMasts);
     if (g.k === 'fort') return this.s.fort ? 1 : 0;
+    if (g.k === 'bridge') return (this.s.prog.bridge || 0) + Math.max(0, 2 - this.nBridges);
     return this.s.prog[g.k] || 0;
   }
   // something happened in the world that a goal might want
@@ -56,7 +74,8 @@ export class Story {
     this.s.ch++; this.s.prog = {};
     game.saveNow?.();
     if (this.done) { this.s.done = true; setTimeout(() => game.radio(ENDING, 16), 4500); }
-    else setTimeout(() => this.brief(game), 4500);
+    else if (this.s.ch === 7) setTimeout(() => game.radio(ENDING1, 10), 4500);
+    if (!this.done) setTimeout(() => this.brief(game), this.s.ch === 7 ? 15000 : 4500);
   }
   brief(game) {
     const ch = this.ch; if (!ch) return;
@@ -79,11 +98,14 @@ export class Story {
     if (ch.goals.some((g) => g.k === 'convoy') && this.have(ch.goals.find((g) => g.k === 'convoy')) < 2 && !D.list.some((e) => e.kind === 'convoy')) D.add(game, 'convoy');
     if (ch.goals.some((g) => g.k === 'horde') && !D.list.some((e) => e.kind === 'horde' && !e.story)) D.add(game, 'horde');
     if (ch.goals.some((g) => g.k === 'crate') && !D.list.some((e) => e.kind === 'crate')) D.add(game, 'crate');
+    if (ch.goals.some((g) => g.k === 'outbreak') && !D.list.some((e) => e.kind === 'outbreak')) D.add(game, 'outbreak');
+    if (ch.goals.some((g) => g.k === 'bridge') && !D.list.some((e) => e.br)) D.add(game, 'bridge');
+    if (ch.goals.some((g) => g.k === 'crash') && !D.list.some((e) => e.crash)) D.add(game, 'crash');
     if (k === 'evac' && map.hospital && !has('evac')) { const e = new Evac(map.hospital); e.story = true; D.list.push(e); }
     if (k === 'great' && !has('great')) {
       const B = map.boro, town = { x: B.x, z: B.z, r: 260, name: 'THE BOROUGH', y: 10 };
       let x = 0, z = 0;
-      for (let t = 0; t < 30; t++) { const a = Math.random() * 6.28; x = B.x + Math.cos(a) * 2200; z = B.z + Math.sin(a) * 2200; if (Math.abs(x) < 4300 && Math.abs(z) < 4300 && !game.horde.blockedAt(x, z)) break; }
+      for (let t = 0; t < 30; t++) { const a = Math.random() * 6.28; x = B.x + Math.cos(a) * 2200; z = B.z + Math.sin(a) * 2200; if (Math.abs(x) < 5400 && Math.abs(z) < 5400 && !game.horde.blockedAt(x, z)) break; }
       const e = new GreatHorde(town, x, z, 1500); e.story = true; D.list.push(e);
       game.feed('RADIO: THE GREAT HORDE IS ON THE MOVE · HEADING FOR THE BOROUGH', 'r');
     }

@@ -20,6 +20,7 @@ import { hullGeometries } from './hulls.js';
 import { mountAt, AIRFRAMES, Chopper, chopperParts, qrot, qmat, droneParts } from './chopper.js';
 import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, slotFits, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, TIPS, TRIMS, TINTS, BASE, BEDS, baseCut } from './data.js';
 import { Story, CHAPTERS } from './story.js';
+import { Music } from './music.js';
 import { Director, crateParts, wreckParts, convoyParts } from './events.js';
 import { ROLES, ROLE_IDS, WEAPONS, ARMORS, ITEMS, newMember, recruitCost, Raid, HAIR, randName } from './team.js';
 import { makeTransport, code5, ZT, ZS, q1, q2, listServers } from './coop.js';
@@ -62,6 +63,18 @@ function paintFor(s) {
   const p = PAINT[s.paint] || PAINT.olive, tip = TIPS.find((q) => q.id === s.tips), trim = TRIMS.find((q) => q.id === s.trimCol), tint = TINTS.find((q) => q.id === s.tint);
   return { ...p, glass: tint && tint.col ? tint.col : null, trim: trim && trim.col ? trim.col : p.trim, tips: tip ? tip.col : null, tips2: tip ? tip.col2 : null, camo: (CAMO[s.camo] || {}).k || 0, nose: s.nose && s.nose !== 'none' ? s.nose : p.shark ? 'shark' : 'none', tailArt: s.tailArt || 'none', num: s.num };
 }
+// where the pilot's eyes are in each aircraft (for the cockpit camera)
+const SEATS = { warhorse: [0.3, 0.25, -2.6], hornet: [0, 0.15, -0.9], reaper: [0, 0.65, -3.0], kestrel: [0.42, 0.45, -3.2], viper: [0, 0.75, -2.6], huey: [0.4, 0.35, -2.4], seaking: [0.42, 0.45, -3.9], osprey: [0.42, 0.45, -4.8], harrier: [0, 0.95, -3.3], alligator: [0, 0.65, -2.9], warthog: [0, 1.0, -3.5], spectre: [0.5, 0.5, -7.2], mule: [0.5, 0.45, -6.0] };
+const seatFor = (id) => SEATS[id] || SEATS.warhorse;
+// which tab of the hangar each upgrade is on
+const TABS = {
+  weapons: ['gun', 'rockets', 'bombs', 'pods', 'sniper', 'racks', 'hardpoints', 'door', 'ammo', 'cooling', 'sight', 'tpod'],
+  armour: ['armor', 'crash', 'repair', 'suppress', 'quiet', 'skids', 'flares'],
+  flight: ['engine', 'rotor', 'fuel', 'hover', 'flaps', 'airbrake', 'reheat', 'gear', 'radio'],
+  kit: ['cabin', 'winch', 'medbay', 'drops', 'flir', 'light', 'nvg'],
+  looks: [],
+};
+const TABNAME = { weapons: '🔫 GUNS', armour: '🛡 ARMOUR', flight: '✈ FLIGHT', kit: '⛑ CREW', looks: '🎨 LOOKS' };
 const DECOR = {
   camo: { list: CAMOS, own: 'camos', cur: 'camo', name: 'CAMO', icon: '▦' },
   nose: { list: NOSEART, own: 'noses', cur: 'nose', name: 'NOSE ART', icon: '☠' },
@@ -289,7 +302,7 @@ export class HeliGame {
         <button class="da-deploy" data-da="deploy" type="button">TAKE OFF ▶</button>
       </div>
       <div class="da-hud hidden" data-da="hud">
-        <div class="da-dmg" data-da="dmg"></div><div class="da-white" data-da="white"></div>
+        <canvas class="da-pit hidden" data-da="pit"></canvas><div class="da-dmg" data-da="dmg"></div><div class="da-white" data-da="white"></div>
         <div data-da="marks"></div>
         <div class="da-cross" data-da="cross"></div><div class="da-hit" data-da="hit"></div>
         <div class="da-evs" data-da="evs"></div>
@@ -302,6 +315,7 @@ export class HeliGame {
         <div class="da-feed" data-da="feed"></div>
         <div class="da-radio hidden" data-da="radio"></div>
         <div class="da-help" data-da="help"></div>
+        <div class="da-tut hidden" data-da="tut"></div>
         <div class="da-left">
           <div class="da-meter fuel" data-da="fuelm" style="--c:#ff9f3a">FUEL <b data-da="fueltxt"></b><i></i></div>
           <div class="da-meter hidden" data-da="shm" style="--c:#5ad8ff">SHIELD<i></i></div>
@@ -363,13 +377,22 @@ export class HeliGame {
     const slots = this.$('slots'); slots.replaceChildren();
     const HK = HELIS[s.heli], cap = (id) => (slotFits(id, s.heli) ? HK.cap[id] ?? 99 : 0);
     // only the upgrades for this kind of aircraft (helicopter or plane) are listed
-    for (const sl of [{ id: 'heli', name: 'AIRCRAFT', icon: '✈' }, ...SLOTS.filter((q) => slotFits(q.id, s.heli)), { id: 'paint', name: 'PAINT JOB', icon: '◆' }, ...Object.entries(DECOR).map(([id, d]) => ({ id, name: d.name, icon: d.icon, decor: true }))]) {
+    // the upgrades are split into tabs so the list isn't a mile long
+    const all = [...SLOTS.filter((q) => slotFits(q.id, s.heli)), { id: 'paint', name: 'PAINT JOB', icon: '◆' }, ...Object.entries(DECOR).map(([id, d]) => ({ id, name: d.name, icon: d.icon, decor: true }))];
+    const tabOf = (id) => Object.keys(TABS).find((k) => TABS[k].includes(id)) || (id === 'paint' || DECOR[id] ? 'looks' : 'kit');
+    if (this.sel && this.sel !== 'all' && this.sel !== 'heli') this.tab = tabOf(this.sel);
+    if (!this.tab) this.tab = 'weapons';
+    const tabRow = el(`<div class="da-tabs">${Object.keys(TABNAME).map((k) => `<button type="button" data-t="${k}" class="${this.tab === k ? 'on' : ''}">${TABNAME[k]}</button>`).join('')}</div>`);
+    for (const tb of tabRow.querySelectorAll('button')) tb.onclick = () => { this.snd.click?.(2600, 0.2); this.tab = tb.dataset.t; if (this.sel !== 'heli') this.sel = 'all'; this.renderHangar(); };
+    let tabbed = false;
+    for (const sl of [{ id: 'heli', name: 'AIRCRAFT', icon: '✈' }, ...all.filter((q) => tabOf(q.id) === this.tab)]) {
       const cur = sl.id === 'heli' ? HK.n : sl.id === 'paint' ? PAINT[s.paint].n : sl.decor ? (DECOR[sl.id].list.find((q) => q.id === s[DECOR[sl.id].cur]) || DECOR[sl.id].list[0]).n + (sl.id === 'tailart' && s.tailArt === 'number' ? ` ${String(s.num).padStart(2, '0')}` : '') : cap(sl.id) === 0 ? "DOESN'T FIT" : sl.tiers[Math.min(s.eq[sl.id], cap(sl.id), sl.tiers.length - 1)].n;
       const canBuy = sl.id === 'heli' ? HELI_IDS.some((k) => !s.helis.includes(k) && s.scrap >= this.price(HELIS[k].cost, true)) : sl.id !== 'paint' && !sl.decor && s.own[sl.id] < sl.tiers.length - 1 && s.scrap >= this.price(sl.tiers[s.own[sl.id] + 1].cost);
       const pips = sl.tiers ? `<u>${sl.tiers.slice(1).map((_, j) => `<q class="${j + 1 <= s.eq[sl.id] ? 'f' : j + 1 <= s.own[sl.id] ? 'o' : ''}" style="--r:${RARITY[Math.min(RARITY.length - 1, Math.round(((j + 1) / (sl.tiers.length - 1)) * (RARITY.length - 1)))]}"></q>`).join('')}</u>` : '';
       const b = el(`<button class="da-slot${this.sel === sl.id ? ' on' : ''}${sl.id !== 'heli' && sl.id !== 'paint' && cap(sl.id) === 0 ? ' off' : ''}" type="button"><i>${sl.icon}</i><span><b>${sl.name}</b><small>${cur}</small>${pips}</span>${canBuy ? '<em>NEW</em>' : ''}</button>`);
       b.onclick = () => { this.snd.click?.(2400, 0.2); this.sel = this.sel === sl.id ? 'all' : sl.id; this.renderHangar(); };
       slots.append(b);
+      if (!tabbed) { slots.append(tabRow); tabbed = true; }
     }
     const tiers = this.$('tiers'); tiers.replaceChildren(); tiers.classList.toggle('compact', this.sel === 'heli');
     if (this.sel === 'heli') {
@@ -454,6 +477,8 @@ export class HeliGame {
     opt('FLYING', FLIGHT[s.flight] || 'EASY', () => { s.flight = s.flight === 'easy' ? 'assist' : s.flight === 'assist' ? 'pro' : 'easy'; });
     opt('INVERT MOUSE', s.invert ? 'ON' : 'OFF', () => { s.invert = !s.invert; });
     opt('GRAPHICS', s.gfx === 'low' ? 'LOW (FAST)' : 'AUTO', () => { s.gfx = s.gfx === 'low' ? 'auto' : 'low'; if (s.gfx !== 'low') { this.r.resScale = 1; this.noShadow = false; } });
+    opt('MUSIC', s.music === false ? 'OFF' : ['QUIET', 'MEDIUM', 'LOUD'][Math.round((s.musicVol ?? 0.5) * 2 - 0.5) || 0] || 'MEDIUM', () => { if (s.music === false) { s.music = true; s.musicVol = 0.25; } else if ((s.musicVol ?? 0.5) < 0.4) s.musicVol = 0.5; else if (s.musicVol < 0.9) s.musicVol = 1; else s.music = false; });
+    opt('TUTORIAL', this.tutAsk ? 'ON NEXT FLIGHT ✔' : 'PLAY IT AGAIN', () => { this.tutAsk = !this.tutAsk; });
     opt('MOUSE SPEED', `${s.sens.toFixed(1)}×`, () => { s.sens = s.sens >= 2 ? 0.5 : Math.round((s.sens + 0.25) * 100) / 100; });
     const nw = el(`<button class="da-opt" type="button">WORLD<b>${this.sureNew ? 'SURE? CLICK AGAIN' : 'NEW WORLD ▶'}</b></button>`);
     nw.onclick = () => {
@@ -520,6 +545,9 @@ export class HeliGame {
       this.banner('DEAD AIR', this.story.done ? 'THE SPIRE · FREE FLIGHT · HELP WHO YOU CAN' : `THE SPIRE · CHAPTER ${this.save.story.ch + 1}: ${CHAPTERS[this.save.story.ch].n}`, '', 3);
       for (const m of this.save.team) { m.raid = false; }
       this.help(true);
+      // brand new pilots (or anyone who asked for it in the hangar) get the guided first flight
+      this.tut = (!this.save.tutDone && (this.save.rescued || 0) < 5) || this.tutAsk ? { i: 0, t: 0, n: 0 } : null; this.tutAsk = false;
+      if (this.tut) this.helpT = 0;
       this.riders = 0; this.fuel = S.fuel;
       this.shots = []; this.tracers = []; this.blasts = []; this.fires = []; this.runners = [];
     } else {
@@ -553,6 +581,39 @@ export class HeliGame {
     return { pos: [P[0], P[1] + 1.93, P[2]], yaw: 0 };
   }
   faceCity(f) { return Math.atan2(f.padAt[0], f.padAt[2]); }    // heading that points the nose at the city centre
+  // the guided first flight: one step at a time, each ticks off when you've done it
+  tutSteps() {
+    const S = this.S, H = this.heli, plane = S.plane && (!S.vtol || H.planeMode), sp = Math.hypot(H.vel[0], H.vel[2]);
+    const st = [];
+    if (plane) {
+      st.push({ t: 'HOLD <kbd>W</kbd> FOR FULL THROTTLE AND ROLL DOWN THE RUNWAY', ok: () => sp > S.stall * 0.85 || this.agl > 8 });
+      st.push({ t: 'PULL BACK ON THE <kbd>MOUSE</kbd> TO LIFT THE NOSE AND TAKE OFF', ok: () => this.agl > 15 });
+      st.push({ t: 'MOVE THE <kbd>MOUSE</kbd> SIDEWAYS TO BANK AND TURN · KEEP YOUR SPEED UP OR YOU STALL', ok: (d) => Math.abs(H.rollL) > 0.35 && (d.n += 1) > 40 });
+    } else {
+      st.push({ t: 'HOLD <kbd>W</kbd> TO LIFT OFF THE PAD', ok: () => this.agl > 10 });
+      st.push({ t: this.save.flight === 'easy' ? 'PUSH THE <kbd>MOUSE</kbd> FORWARD TO FLY · SIDEWAYS TO TURN · <kbd>S</kbd> TO GO DOWN' : 'TILT WITH THE <kbd>MOUSE</kbd> TO FLY · <kbd>A</kbd> <kbd>D</kbd> TO TURN · <kbd>S</kbd> TO GO DOWN', ok: (d) => sp > 12 && (d.n += 1) > 90 });
+    }
+    st.push({ t: '<kbd>CLICK</kbd> TO FIRE THE GUN', ok: (d) => this.flashT > 0 && (d.n += 1) > 15 });
+    if (S.rockets) st.push({ t: '<kbd>RIGHT CLICK</kbd> FIRES ROCKETS · GOOD FOR CROWDS', ok: () => this.rockets < S.rockets });
+    if (plane) st.push({ t: 'FIND A GREEN <b style="color:#7dff9a">SOS</b> MARKER · FLY NEAR IT AND PRESS <kbd>E</kbd> TO CALL A DUSTOFF', ok: () => (this.dustoffs || []).length > 0 });
+    else {
+      st.push({ t: 'FIND A GREEN <b style="color:#7dff9a">SOS</b> MARKER · LAND ON THAT ROOF AND PRESS <kbd>E</kbd> TO PICK THEM UP', ok: () => this.riders > 0 });
+      st.push({ t: 'FLY BACK TO THE <b style="color:#5ab4ff">SPIRE</b> (THE BLUE H) AND LAND ON THE PAD TO DROP THEM OFF', ok: () => (this.run?.rescued || 0) > 0 });
+    }
+    st.push({ t: 'NICE FLYING! <kbd>C</kbd> CAMERA (TRY THE COCKPIT) · <kbd>M</kbd> MAP · LAND AT THE SPIRE FOR THE <b>HANGAR</b> AND UPGRADES', ok: (d) => (d.n += 1) > 600 });
+    return st;
+  }
+  tutTick() {
+    const T = this.tut, el = this.$('tut');
+    if (!T || this.mode !== 'fly' || this.client) { el.classList.add('hidden'); return; }
+    if (this.hit('KeyT')) { this.tut = null; this.save.tutDone = true; saveSave(this.save); el.classList.add('hidden'); this.flash('TUTORIAL SKIPPED · REPLAY IT FROM THE HANGAR', 2500); return; }
+    const st = this.tutSteps(), cur = st[T.i];
+    if (!cur) { this.tut = null; this.save.tutDone = true; saveSave(this.save); el.classList.add('hidden'); return; }
+    if (cur.ok(T)) { T.i++; T.n = 0; this.snd.click?.(2600, 0.3); if (T.i < st.length) this.snd.checkpoint?.(); }
+    const html = `<small>FLIGHT SCHOOL · ${Math.min(T.i + 1, st.length)} / ${st.length}</small><div>${(st[T.i] || cur).t}</div><i>T TO SKIP</i>`;
+    if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+    el.classList.remove('hidden');
+  }
   help(on) {
     const h = this.$('help');
     const mode = this.save.flight, S = this.S || {};
@@ -579,6 +640,7 @@ export class HeliGame {
       const v = [C.x - eye[0], C.y + 40 - eye[1], C.z - eye[2]], l = Math.hypot(...v);
       this.draw(eye, v.map((c) => c / l), 0, [], [], [C.x, 0, C.z], 0.0032);
     }
+    this.musicTick(dt);
     this.hitKeys.clear(); this.clk.clear(); this.mx = 0; this.my = 0;
   }
 
@@ -901,7 +963,7 @@ export class HeliGame {
         this.snd.grappleRelease?.();
       } else if (this.bombs <= 0) this.feed('OUT OF BOMBS · LAND AT A BASE', 'y');
     }
-    if (this.hit('KeyC')) this.camMode = (this.camMode + 1) % 3;
+    if (this.hit('KeyC')) { this.camMode = (this.camMode + 1) % 4; this.camEye = null; this.camLook = null; this.flash(['CHASE CAMERA', 'FAR CAMERA', 'NOSE CAMERA', 'COCKPIT'][this.camMode], 1200); }
     if (this.hit('KeyV') && S.vtol && !this.heli.dead) {
       const H = this.heli;
       H.planeMode = !H.planeMode;
@@ -1820,12 +1882,12 @@ export class HeliGame {
     const mast = D.find((e) => e.kind === 'mast' && !e.working && hd(e) < 260 && P[1] - e.mast.y < 300);
     if (mast) acts.push(['KeyE', 'E', `PARACHUTE THE ENGINEER IN AT ${mast.name}`, () => { mast.start(this); this.feed('ENGINEER AWAY · CHUTE OPEN', 'g'); }]);
   }
-  callDustoff(ev) {
+  callDustoff(ev, who) {
     const sp = this.map.spire, n = (this.dustoffs || []).length;
     if (n >= 3) { this.feed('ALL THREE DUSTOFFS ARE OUT · WAIT FOR ONE TO COME BACK', 'y'); return; }
     this.dustoffs = this.dustoffs || [];
     this.dustoffs.push({ ev, pos: [sp.padAt[0], sp.padAt[1] + 2, sp.padAt[2]], yaw: 0, phase: 'in', riders: 0, t: 0, rotorA: 0, hotT: 0, H: mat4() });
-    this.feed(`DUSTOFF ${n + 1} LAUNCHING FROM THE SPIRE · KEEP THE ${ev.kind === 'crate' ? 'DROP' : 'ROOF'} CLEAR`, 'g');
+    this.feed(`${who ? `${who} CALLED A DUSTOFF · ` : ''}DUSTOFF ${n + 1} LAUNCHING FROM THE SPIRE · KEEP THE ${ev.kind === 'crate' ? 'DROP' : 'ROOF'} CLEAR`, 'g');
     this.radio(ev.kind === 'crate' ? 'Dustoff launching for the supply drop. Keep them off it till we\'ve got it hooked.' : 'Dustoff launching. We\'ll get them off that roof, pilot, you keep the dead off it.', 6);
     this.snd.checkpoint?.();
   }
@@ -1870,8 +1932,20 @@ export class HeliGame {
       else L.splice(i, 1);
     }
   }
+  // the dustoffs to draw: the host's own, or (for friends) the ones the host told us about
+  dustList() {
+    if (!this.client) return this.dustoffs || [];
+    const cl = this.client;
+    return (cl.dos || []).map((q, i) => {
+      const d = (cl.doH || (cl.doH = []))[i] || (cl.doH[i] = { H: mat4() });
+      return Object.assign(d, { pos: [q[0], q[1], q[2]], yaw: q[3] / 100, riders: q[4], phase: ['in', 'load', 'out'][q[5]] || 'in', crate: !!q[6], id: q[7], rotorA: this.t * 26 });
+    });
+  }
+  dustMarks() {
+    return this.dustList().map((d) => ({ p: [d.pos[0], d.pos[1] + 4, d.pos[2]], col: '#7dff9a', icon: '✚', text: 'DUSTOFF', sub: d.phase === 'load' ? ((d.ev ? d.ev.kind === 'crate' : d.crate) ? 'HOOKING THE CRATE' : `LOADING · ${d.riders} ABOARD`) : d.phase === 'out' ? `HEADING HOME${d.riders ? ` · ${d.riders} ABOARD` : ''}` : 'ON ITS WAY' }));
+  }
   dustoffParts(out) {
-    const L = this.dustoffs, e = this.eye; if (!L || !L.length || !e) return;
+    const L = this.dustList(), e = this.eye; if (!L.length || !e) return;
     for (const d of L) {
       if (Math.hypot(d.pos[0] - e[0], d.pos[2] - e[2]) > 1600) continue;
       qmat(d.H, [0, Math.sin(d.yaw / 2), 0, Math.cos(d.yaw / 2)], d.pos);
@@ -1906,6 +1980,7 @@ export class HeliGame {
     for (const ev of this.horde.events) {
       if (ev.type === 'kill') {
         run.kills++;
+        this.storyHit('kills', 1);
         if (ev.z.type === 'bloater') this.burst([ev.z.x, ev.z.y + 1.1, ev.z.z]);
         this.splat([ev.z.x, ev.z.y, ev.z.z], true);
         const T = TYPES[ev.z.type];
@@ -2211,6 +2286,14 @@ export class HeliGame {
       else if (m.k === 'board' && f.pilot) {
         const e = this.director.list.find((q) => q.id === m.id && q.kind === 'rescue' && q.roof.active && q.roof.count > 0);
         if (e) { e.roof.count--; tr.sendTo(id, { k: 'boarded', id: m.id }); if (e.roof.count <= 0) { e.roof.active = false; this.feed(`${f.name} CLEARED A ROOF`, 'g'); } }
+      } else if (m.k === 'dust' && f.pilot) {
+        // a friend in a plane called a dustoff
+        const e = this.director.list.find((q) => q.id === m.id);
+        if (e && !(this.dustoffs || []).some((d) => d.ev === e) && (((e.kind === 'rescue' || e.kind === 'crash') && e.roof && e.roof.active && e.roof.count > 0) || (e.kind === 'crate' && e.landed && !e.carried && !e.dust && !e.done))) this.callDustoff(e, f.name);
+        else tr.sendTo(id, { k: 'cr' });
+      } else if (m.k === 'mast' && f.pilot) {
+        const e = this.director.list.find((q) => q.id === m.id && q.kind === 'mast' && !q.working);
+        if (e) { e.start(this); this.feed(`${f.name}'S ENGINEER IS ON THE WAY DOWN`, 'g'); }
       } else if (m.k === 'drop' && f.pilot) {
         const n = clamp(Math.round(+m.n || 0), 0, 40); if (!n) return;
         if (this.run) this.run.rescued += n; this.save.rescued += n; this.addScrap(25 * n); this.storyHit('rescued', n);
@@ -2401,7 +2484,7 @@ export class HeliGame {
     }
     if (C.evT <= 0 && this.mode !== 'hangar') {
       C.evT = 1 / 4;
-      send({ k: 'ev', e: this.director.list.map((e) => ({ ...e.net(), id: e.id, mk: e.marker(this) })), sh: this.shots.filter((s) => s.kind === 'rocket' || s.kind === 'bomb' || s.kind === 'plasma').map((s) => [s.kind[0], ...s.pos.map(q1), ...s.vel.map(q1)]) });
+      send({ k: 'ev', do: (this.dustoffs || []).map((d) => [...d.pos.map(q1), Math.round(d.yaw * 100), d.riders, ['in', 'load', 'out'].indexOf(d.phase), d.ev.kind === 'crate' ? 1 : 0, d.ev.id]), e: this.director.list.map((e) => ({ ...e.net(), id: e.id, mk: e.marker(this) })), sh: this.shots.filter((s) => s.kind === 'rocket' || s.kind === 'bomb' || s.kind === 'plasma').map((s) => [s.kind[0], ...s.pos.map(q1), ...s.vel.map(q1)]) });
     }
     if (this.nfx && this.nfx.length && C.fxT <= 0) { C.fxT = 1 / 10; send({ k: 'fx', f: this.nfx.splice(0, 80) }); this.nfx.length = 0; }
   }
@@ -2526,7 +2609,7 @@ export class HeliGame {
       }
       for (const [id, p] of cl.zs) if (!seen.has(id)) { p.alive = false; cl.zs.delete(id); }
       this.horde.list = this.horde.list.filter((q) => q.alive);
-    } else if (m.k === 'ev') { cl.evs = m.e || []; cl.shots = m.sh || []; }
+    } else if (m.k === 'ev') { cl.evs = m.e || []; cl.shots = m.sh || []; cl.dos = Array.isArray(m.do) ? m.do.slice(0, 6) : []; }
     else if (m.k === 'fx') {
       for (const f of m.f || []) {
         if (f[0] === 't') { if (f[8] !== (cl.wing ? 10 + (cl.pad || 0) : cl.seat)) this.tracers.push({ from: [f[1], f[2], f[3]], dir: [f[4], f[5], f[6]], len: f[7], d: 0 }); }
@@ -2625,7 +2708,7 @@ export class HeliGame {
     this.heli = new Chopper();
     this.heli.reset(sp0.pos, sp0.yaw, S);
     this.run = { t: 0, kills: 0, rescued: 0, lost: 0, scrap: 0 };
-    this.session = { fob: sp };
+    this.session = { fob: this.map.spire };
     this.story = null;
     this.hp = S.hp; this.fuel = S.fuel;
     this.heat = 0; this.overT = 0; this.gunT = 0; this.spinV = 0; this.flashT = 0;
@@ -2764,6 +2847,14 @@ export class HeliGame {
     const seatsFree = S.seats - this.riders;
     const acts = [];
     if (roof) acts.push(['KeyE', 'E', this.boarding ? `LOADING… ${roof.n} LEFT` : seatsFree <= 0 ? 'CABIN FULL' : `PICK UP ${roof.n}`, () => { this.boarding = true; }]);
+    // planes: call the host's dustoffs, and drop engineers on the masts, just like the host can
+    if (ok && S.plane && !S.vtol) {
+      const P = H.pos, hd = (e) => Math.hypot(e.x - P[0], e.z - P[2]), busy = new Set((cl.dos || []).map((q) => q[7]));
+      const job = cl.evs.filter((e) => (((e.k === 'rescue' || e.k === 'crash') && e.n > 0) || (e.k === 'crate' && e.l && !e.c && !e.dz && !e.dn)) && !busy.has(e.id) && hd(e) < 800).sort((a, b) => hd(a) - hd(b))[0];
+      if (job && (cl.dustAsk || 0) < this.t) acts.push(['KeyE', 'E', (cl.dos || []).length >= 3 ? 'ALL THREE DUSTOFFS ARE OUT' : `CALL A DUSTOFF TO THE ${job.k === 'crate' ? 'SUPPLY DROP' : 'SURVIVORS'} (${Math.round(hd(job))} M)`, () => { cl.tr.send({ k: 'dust', id: job.id }); cl.dustAsk = this.t + 3; this.feed('DUSTOFF REQUESTED', 'g'); this.snd.checkpoint?.(); }, (cl.dos || []).length >= 3]);
+      const mast = cl.evs.find((e) => e.k === 'mast' && !e.wk && hd(e) < 260 && P[1] - (e.my || 0) < 300);
+      if (mast && (cl.mastAsk || 0) < this.t) acts.push(['KeyE', 'E', `PARACHUTE THE ENGINEER IN AT ${mast.nm || 'THE MAST'}`, () => { cl.tr.send({ k: 'mast', id: mast.id }); cl.mastAsk = this.t + 5; this.feed('ENGINEER AWAY · CHUTE OPEN', 'g'); }]);
+    }
     const f = this.atFob;
     if (f && !f.wrecked) {
       if (this.riders > 0) acts.push(['KeyE', 'E', `DROP OFF ${this.riders}`, () => { cl.tr.send({ k: 'drop', n: this.riders }); this.feed(`${this.riders} SURVIVORS SAFE`, 'g'); this.riders = 0; this.snd.coins?.(); }]);
@@ -2861,7 +2952,7 @@ export class HeliGame {
     this.$('acts').replaceChildren(); this.$('status').textContent = '';
     this.$('warn').classList.toggle('hidden', hs.m !== 'h'); this.$('warn').textContent = hs.m === 'h' ? 'THE PILOT IS IN THE HANGAR' : '';
     const fm = this.friendMarks();
-    this.markers([...cl.evs.map((e) => e.mk), ...fm], cl.heli.pos);
+    this.markers([...cl.evs.map((e) => e.mk), ...fm, ...this.dustMarks()], cl.heli.pos);
     this.minimap(cl.heli.pos, cl.heli.heading, [...cl.evs.map((e) => e.mk), ...fm], [...cl.zs.values()]);
     this.eventsList(cl.evs.map((e) => e.mk), cl.heli.pos);
     const boss = this.$('boss');
@@ -2876,7 +2967,12 @@ export class HeliGame {
     const f = H.fwd, fl = Math.hypot(f[0], f[2]) || 1, ff = [f[0] / fl, 0, f[2] / fl];
     const sp = Math.hypot(...H.vel);
     let eye, look;
-    if (this.camMode === 2) { eye = H.toWorld([0, -0.2, -3.9]); look = this.bore().d; }
+    if (this.camMode === 3) {
+      // in the pilot's seat: look out along the nose; the dash and the canopy frame are drawn over the top
+      eye = H.toWorld(seatFor(this.save.heli));
+      const nf = H.toWorld([0, -0.12, -10]);
+      look = norm([nf[0] - eye[0], nf[1] - eye[1], nf[2] - eye[2]]);
+    } else if (this.camMode === 2) { eye = H.toWorld([0, -0.2, -3.9]); look = this.bore().d; }
     else {
       const far = this.camMode === 1;
       const dive = Math.max(0, -H.pitch);
@@ -2898,7 +2994,7 @@ export class HeliGame {
     }
     if (this.shake > 0) { const s = this.shake * 0.5; eye = eye.map((c) => c + (Math.random() - 0.5) * s); }
     this.eye = eye;
-    const roll = this.camMode === 2 ? -H.rollL : -H.rollL * 0.3;
+    const roll = this.camMode >= 2 ? -H.rollL : -H.rollL * 0.3;
     const S = this.S, s = this.save;
     const fr = this.coop ? [...this.coop.friends.values()] : [];
     const st = {
@@ -2913,7 +3009,7 @@ export class HeliGame {
       podFlash: this.podFlash || 0, podSide: this.podSideNow, snipeAim: this.snipeAim, snipeFlash: this.snipeFlash || 0,
       doorFriend: [0, 1].map((sd) => { const f = fr.find((q) => q.seat === sd); if (f) return { col: f.col }; const rf = s.team.filter((m) => m.aboard && !m.raid && m.hp > 0 && m.role === 'rifleman'); return sd >= (S.gunners || 0) && rf.length > sd - (S.gunners || 0) ? { col: ROLES.rifleman.col } : null; }),
     };
-    const parts = this.mode === 'down' ? [] : chopperParts(capEq(s.eq, s.heli), paintFor(s), st, H.H, s.heli);
+    const parts = this.mode === 'down' || this.camMode === 3 ? [] : chopperParts(capEq(s.eq, s.heli), paintFor(s), st, H.H, s.heli);
     this.lastParts = parts;
     this.draw(eye, look, roll, parts, this.extraParts(false), H.pos, 0.0038);
   }
@@ -3033,7 +3129,7 @@ export class HeliGame {
     }
     this.parkedParts(out);
     this.wingParts(out);
-    if (!client) this.dustoffParts(out);
+    this.dustoffParts(out);
     for (const b of this.blasts || []) {
       const k = b.t / 0.5;
       if (b.ring) { const s = (3 + k * 16) * b.size; P(b.pos, [0, 0, 0], [s, 0.15, s], [1, 0.85, 0.6], { em: 1, shape: 'cylY', alpha: (1 - k) * 0.35 }); continue; }
@@ -3285,9 +3381,82 @@ export class HeliGame {
     this.raidUpT = 0; this.snd.radio?.();
   }
 
+  // the cockpit: canopy frame, dashboard and dials, drawn on a canvas over the 3D view
+  cockpit() {
+    const cv = this.$('pit'), on = this.camMode === 3 && (this.mode === 'fly' || this.mode === 'wing') && !this.heli.dead;
+    cv.classList.toggle('hidden', !on);
+    if (!on) return;
+    const W = this.canvas.clientWidth || innerWidth, Hh = this.canvas.clientHeight || innerHeight;
+    if (cv.width !== W || cv.height !== Hh) { cv.width = W; cv.height = Hh; }
+    const c = cv.getContext('2d'), H = this.heli, S = this.S, id = this.save.heli, plane = this.engineKind(id, H) !== 'heli';
+    c.clearRect(0, 0, W, Hh);
+    const u = Math.min(W, Hh * 1.6) / 1000;
+    // canopy frame
+    c.fillStyle = '#15181b'; c.strokeStyle = '#0b0d0f'; c.lineWidth = 2;
+    const post = (x0, x1, top) => { c.beginPath(); c.moveTo(x0, Hh); c.lineTo(x0 + 40 * u, Hh); c.lineTo(x1 + 18 * u, top); c.lineTo(x1 - 18 * u, top); c.closePath(); c.fill(); c.stroke(); };
+    if (plane) {
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, 30 * u); c.quadraticCurveTo(W / 2, 80 * u, 0, 30 * u); c.closePath(); c.fill();
+      post(W * 0.06, W * 0.2, 0); post(W * 0.94 - 40 * u, W * 0.8, 0);
+    } else {
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, 60 * u); c.lineTo(0, 60 * u); c.closePath(); c.fill();
+      post(W * 0.02, W * 0.12, 60 * u); post(W * 0.98 - 40 * u, W * 0.88, 60 * u);
+      post(W * 0.5 - 20 * u, W * 0.5, 60 * u);
+    }
+    // the dash
+    const dh = 230 * u, dy = Hh - dh;
+    const g = c.createLinearGradient(0, dy, 0, Hh); g.addColorStop(0, '#2a2f33'); g.addColorStop(1, '#111416');
+    c.fillStyle = g;
+    c.beginPath(); c.moveTo(0, Hh); c.lineTo(0, dy + 40 * u); c.quadraticCurveTo(W / 2, dy - 40 * u, W, dy + 40 * u); c.lineTo(W, Hh); c.closePath(); c.fill();
+    c.strokeStyle = '#444b51'; c.lineWidth = 3 * u; c.stroke();
+    const sp = Math.hypot(...H.vel) * 3.6, alt = Math.min(9999, this.agl || 0), vs = H.vel[1], fuel = this.fuel / S.fuel, hp = this.hp / S.hp;
+    const R = 56 * u, cy = dy + dh * 0.52, xs = [-2.65, -1.6, -0.55, 0.55, 1.6, 2.65].map((k) => W / 2 + k * R * 2.2);
+    const dial = (x, label, v, max, warn, txt) => {
+      c.fillStyle = '#060708'; c.beginPath(); c.arc(x, cy, R, 0, 7); c.fill();
+      c.strokeStyle = '#5b636a'; c.lineWidth = 3 * u; c.stroke();
+      c.strokeStyle = '#cfd6dc'; c.lineWidth = 1.5 * u;
+      for (let k = 0; k <= 10; k++) { const a = Math.PI * 0.75 + (k / 10) * Math.PI * 1.5; c.beginPath(); c.moveTo(x + Math.cos(a) * R * 0.8, cy + Math.sin(a) * R * 0.8); c.lineTo(x + Math.cos(a) * R * 0.93, cy + Math.sin(a) * R * 0.93); c.stroke(); }
+      const a = Math.PI * 0.75 + clamp(v / max, 0, 1) * Math.PI * 1.5;
+      c.strokeStyle = warn ? '#ff4a3a' : '#ffcf3a'; c.lineWidth = 3.5 * u;
+      c.beginPath(); c.moveTo(x, cy); c.lineTo(x + Math.cos(a) * R * 0.78, cy + Math.sin(a) * R * 0.78); c.stroke();
+      c.fillStyle = '#9aa4ab'; c.font = `800 ${11 * u}px sans-serif`; c.textAlign = 'center'; c.fillText(label, x, cy + R * 0.45);
+      c.fillStyle = warn ? '#ff6a5a' : '#fff'; c.font = `900 ${15 * u}px sans-serif`; c.fillText(txt, x, cy + R * 0.75);
+    };
+    dial(xs[0], 'KM/H', sp, plane ? 500 : 300, plane && S.stall && Math.hypot(...H.vel) < S.stall * 1.1 && (this.agl || 0) > 3, Math.round(sp));
+    dial(xs[1], 'ALT M', alt, 400, alt < 15 && vs < -4, Math.round(alt));
+    // artificial horizon
+    { const x = xs[2], r = R * 1.15;
+      c.save(); c.beginPath(); c.arc(x, cy, r, 0, 7); c.clip();
+      c.translate(x, cy); c.rotate(-H.rollL); const py = clamp(H.pitch, -1.2, 1.2) * r * 1.1;
+      c.fillStyle = '#3d8be0'; c.fillRect(-r * 2, -r * 2 + py, r * 4, r * 2);
+      c.fillStyle = '#7a5530'; c.fillRect(-r * 2, py, r * 4, r * 2);
+      c.strokeStyle = '#fff'; c.lineWidth = 2 * u; c.beginPath(); c.moveTo(-r * 2, py); c.lineTo(r * 2, py); c.stroke();
+      for (const k of [-2, -1, 1, 2]) { const yy = py - k * r * 0.25; c.beginPath(); c.moveTo(-r * 0.2, yy); c.lineTo(r * 0.2, yy); c.stroke(); }
+      c.restore();
+      c.strokeStyle = '#5b636a'; c.lineWidth = 3 * u; c.beginPath(); c.arc(x, cy, r, 0, 7); c.stroke();
+      c.strokeStyle = '#ffcf3a'; c.lineWidth = 3 * u; c.beginPath(); c.moveTo(x - r * 0.55, cy); c.lineTo(x - r * 0.15, cy); c.lineTo(x, cy + r * 0.1); c.lineTo(x + r * 0.15, cy); c.lineTo(x + r * 0.55, cy); c.stroke(); }
+    // compass
+    { const x = xs[3];
+      c.fillStyle = '#060708'; c.beginPath(); c.arc(x, cy, R, 0, 7); c.fill(); c.strokeStyle = '#5b636a'; c.lineWidth = 3 * u; c.stroke();
+      const hdg = H.heading;
+      c.fillStyle = '#fff'; c.font = `900 ${13 * u}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+      ['N', 'E', 'S', 'W'].forEach((n, k) => { const a = hdg + k * Math.PI / 2 - Math.PI / 2; c.fillStyle = n === 'N' ? '#ff6a5a' : '#fff'; c.fillText(n, x + Math.cos(a) * R * 0.72, cy + Math.sin(a) * R * 0.72); });
+      c.textBaseline = 'alphabetic';
+      c.strokeStyle = '#ffcf3a'; c.lineWidth = 3 * u; c.beginPath(); c.moveTo(x, cy + R * 0.3); c.lineTo(x, cy - R * 0.45); c.stroke(); }
+    dial(xs[4], 'FUEL', fuel, 1, fuel < 0.2, `${Math.round(fuel * 100)}%`);
+    dial(xs[5], plane ? 'THROTTLE' : 'ROTOR', plane ? H.thr ?? 0 : H.rpm, 1, false, `${Math.round((plane ? H.thr ?? 0 : H.rpm) * 100)}%`);
+    // warning lights
+    const lights = [['HULL', hp < 0.3], ['FUEL', fuel < 0.15], [plane ? 'STALL' : 'LOW', plane ? (S.stall && Math.hypot(...H.vel) < S.stall && (this.agl || 0) > 3) : alt < 6 && vs < -6], ['HOT', this.overT > 0]];
+    lights.forEach(([n, lit], k) => {
+      const x = W / 2 + (k - 1.5) * 74 * u, y = dy + 18 * u;
+      c.fillStyle = lit && (this.t * 3) % 1 < 0.6 ? '#ff3a2a' : '#2a1412'; c.fillRect(x - 32 * u, y - 10 * u, 64 * u, 20 * u);
+      c.fillStyle = lit ? '#fff' : '#6a4a46'; c.font = `900 ${11 * u}px sans-serif`; c.textAlign = 'center'; c.fillText(n, x, y + 4 * u);
+    });
+  }
   hud(dt) {
     if (!this.run || this.mode === 'hangar') return;
     const H = this.heli, S = this.S, run = this.run;
+    this.cockpit();
+    this.tutTick();
     this.helpT = Math.max(0, (this.helpT || 0) - dt);
     this.$('help').style.opacity = this.helpT > 0 ? 1 : 0;
     this.$('help').style.visibility = this.helpT > 0 ? 'visible' : 'hidden';
@@ -3300,7 +3469,7 @@ export class HeliGame {
     const list = this.client ? this.client.evs.map((e) => e.mk).filter(Boolean) : this.director.list.map((e) => e.marker(this));
     const sp = this.map.spire;
     if (this.map.fort && !this.map.fort.locked) list.push({ p: [this.map.fort.padAt[0], this.map.fort.padAt[1] + 6, this.map.fort.padAt[2]], col: '#c8ff5a', icon: 'H', text: 'FORT CALDER', sub: '', fob: true });
-    for (const d of this.dustoffs || []) list.push({ p: [d.pos[0], d.pos[1] + 4, d.pos[2]], col: '#7dff9a', icon: '✚', text: 'DUSTOFF', sub: d.phase === 'load' ? (d.ev.kind === 'crate' ? 'HOOKING THE CRATE' : `LOADING · ${d.riders} ABOARD`) : d.phase === 'out' ? `HEADING HOME${d.riders ? ` · ${d.riders} ABOARD` : ''}` : 'ON ITS WAY' });
+    list.push(...this.dustMarks());
     const af = this.map.airfield;
     if (af) list.push({ p: [af.x, af.y + 8, af.z], col: '#5ab4ff', icon: '✈', text: 'AIRFIELD', sub: S.plane && !S.vtol && this.fuel / S.fuel < 0.35 ? 'FUEL HERE' : '', fob: true });
     list.push({ p: [sp.padAt[0], sp.padAt[1] + 6, sp.padAt[2]], col: '#5ab4ff', icon: 'H', text: sp.name, sub: this.riders ? `DROP OFF ${this.riders}` : this.fuel / S.fuel < 0.35 ? 'FUEL HERE' : '', fob: true });
@@ -3406,26 +3575,82 @@ export class HeliGame {
     const wl = c.createBiquadFilter(); wl.type = 'lowpass'; wl.frequency.value = 1400;
     const wg = c.createGain(); wg.gain.value = 0;
     whine.connect(wl).connect(wg).connect(this.snd.master);
-    src.start(); lfo.start(); whine.start();
-    this.au = { src, g, lfo, lg, whine, wg };
+    // planes: a second, deeper engine voice (a propeller's drone, or a jet's rumble)
+    const hum = c.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 70;
+    const hl = c.createBiquadFilter(); hl.type = 'lowpass'; hl.frequency.value = 420;
+    const hg = c.createGain(); hg.gain.value = 0;
+    hum.connect(hl).connect(hg).connect(this.snd.master);
+    src.start(); lfo.start(); whine.start(); hum.start();
+    this.au = { src, lp, g, lfo, lg, whine, wl, wg, hum, hl, hg };
   }
   stopAudio() {
     if (!this.au) return;
-    try { this.au.src.stop(); this.au.lfo.stop(); this.au.whine.stop(); } catch { /* ignore */ }
-    this.au.g.disconnect(); this.au.wg.disconnect();
+    try { this.au.src.stop(); this.au.lfo.stop(); this.au.whine.stop(); this.au.hum.stop(); } catch { /* ignore */ }
+    this.au.g.disconnect(); this.au.wg.disconnect(); this.au.hg.disconnect();
     this.au = null;
+  }
+  // what the engine sounds like: 'heli' (rotor chop), 'jet' (roar and turbine whine) or 'prop' (propeller drone)
+  engineKind(id, H) {
+    const st = HELIS[id] || {};
+    if (!st.plane || (st.vtol && !H.planeMode)) return 'heli';
+    return id === 'warthog' || id === 'harrier' ? 'jet' : 'prop';
   }
   audio() {
     if (!this.au) { if ((this.mode === 'fly' || this.mode === 'gunner' || this.mode === 'wing') && this.snd.ctx) this.startAudio(); return; }
     const c = this.snd.ctx, H = this.mode === 'gunner' ? this.client?.heli : this.heli, t = c.currentTime;
     if (!H) return;
+    const id = this.mode === 'gunner' ? this.client?.hk || this.save.heli : this.save.heli;
+    const kind = this.engineKind(id, H), au = this.au;
     const coll = this.key('KeyW') ? 1 : this.key('KeyS') ? -0.5 : 0;
     const eng = this.fuel <= 0 && this.mode !== 'gunner' ? 0.3 : 1;
-    this.au.lfo.frequency.setTargetAtTime(H.rpm * 18, t, 0.1);
-    this.au.g.gain.setTargetAtTime(H.rpm * (0.55 + coll * 0.15), t, 0.1);
-    this.au.lg.gain.setTargetAtTime(H.rpm * 0.45, t, 0.1);
-    this.au.whine.frequency.setTargetAtTime(240 + H.rpm * 380 * eng + (H.boost || 0) * 300, t, 0.2);
-    this.au.wg.gain.setTargetAtTime((H.rpm * 0.018 + (H.boost || 0) * 0.03) * eng, t, 0.2);
+    const boost = H.boost || 0, thr = H.thr ?? 0.5, sp = Math.hypot(...H.vel);
+    if (kind === 'heli') {
+      au.lp.frequency.setTargetAtTime(260, t, 0.2);
+      au.lfo.frequency.setTargetAtTime(H.rpm * 18, t, 0.1);
+      au.g.gain.setTargetAtTime(H.rpm * (0.55 + coll * 0.15), t, 0.1);
+      au.lg.gain.setTargetAtTime(H.rpm * 0.45, t, 0.1);
+      au.whine.frequency.setTargetAtTime(240 + H.rpm * 380 * eng + boost * 300, t, 0.2);
+      au.wl.frequency.setTargetAtTime(1400, t, 0.2);
+      au.wg.gain.setTargetAtTime((H.rpm * 0.018 + boost * 0.03) * eng, t, 0.2);
+      au.hg.gain.setTargetAtTime(0, t, 0.2);
+    } else if (kind === 'jet') {
+      // a roar that opens up with the throttle, a high turbine whine, and a deep rumble; afterburner adds more
+      const k = (0.25 + thr * 0.75) * eng;
+      au.lp.frequency.setTargetAtTime(500 + thr * 1500 + boost * 1400 + sp * 3, t, 0.25);
+      au.lfo.frequency.setTargetAtTime(7, t, 0.3);
+      au.lg.gain.setTargetAtTime(0.04 * k, t, 0.3);
+      au.g.gain.setTargetAtTime((0.32 + thr * 0.4 + boost * 0.35) * eng, t, 0.25);
+      au.whine.frequency.setTargetAtTime(900 + thr * 1500 * eng + boost * 500, t, 0.4);
+      au.wl.frequency.setTargetAtTime(4000, t, 0.3);
+      au.wg.gain.setTargetAtTime((0.008 + thr * 0.014) * eng, t, 0.3);
+      au.hum.frequency.setTargetAtTime(45 + thr * 30, t, 0.4);
+      au.hl.frequency.setTargetAtTime(220, t, 0.3);
+      au.hg.gain.setTargetAtTime((0.05 + thr * 0.06) * eng, t, 0.3);
+    } else {
+      // propellers: a buzzing drone that beats at the blade rate, plus wind noise that rises with speed
+      const k = (0.3 + thr * 0.7) * eng;
+      au.lp.frequency.setTargetAtTime(300 + sp * 4, t, 0.25);
+      au.lfo.frequency.setTargetAtTime(22 + thr * 26, t, 0.2);
+      au.lg.gain.setTargetAtTime(0.12 * k, t, 0.2);
+      au.g.gain.setTargetAtTime(0.18 + sp * 0.002, t, 0.25);
+      au.whine.frequency.setTargetAtTime(180 + thr * 140 * eng, t, 0.3);
+      au.wl.frequency.setTargetAtTime(700, t, 0.3);
+      au.wg.gain.setTargetAtTime(0.02 * k, t, 0.3);
+      au.hum.frequency.setTargetAtTime(62 + thr * 48 * eng, t, 0.3);
+      au.hl.frequency.setTargetAtTime(480, t, 0.3);
+      au.hg.gain.setTargetAtTime(0.11 * k, t, 0.3);
+    }
+  }
+  // background music: calm everywhere, drums and an arp come in while you're fighting
+  musicTick(dt) {
+    if (!this.music) this.music = new Music(this.snd);
+    const s = this.save, m = this.mode;
+    if (this.flashT > 0 || this.shake > 0.15 || (this.rocketT || 0) > 0) this.fightT = 6;
+    this.fightT = Math.max(0, (this.fightT || 0) - dt);
+    const P = this.heli?.pos, big = !!P && this.director?.list?.some((e) => /^(horde|siege|fort)/.test(e.tgt?.field || '') && Math.hypot(e.tgt.x - P[0], e.tgt.z - P[2]) < 700);
+    const I = m === 'hangar' ? 0 : Math.max(this.fightT > 0 ? 1 : 0, big ? 0.6 : 0);
+    this.music.vol = s.musicVol ?? 0.5;
+    this.music.tick(s.music !== false && m !== 'title' && !document.hidden && !!this.snd.ctx, I);
   }
 
   // ---------------------------------------------------------------- drawing

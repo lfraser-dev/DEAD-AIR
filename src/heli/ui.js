@@ -11,6 +11,10 @@ export const CSS = `
 .da-scrap { position: absolute; right: 28px; top: 22px; background: rgba(0,0,0,.6); padding: 8px 14px; font: 900 22px var(--font); letter-spacing: .06em; border-left: 4px solid #ffcf3a; }
 .da-scrap small { display: block; font: 700 11px var(--font); letter-spacing: .2em; opacity: .7; }
 .da-slots { position: absolute; left: 28px; top: 120px; width: 230px; display: flex; flex-direction: column; gap: 4px; max-height: calc(100vh - 150px); overflow-y: auto; scrollbar-width: thin; padding-right: 4px; }
+.da-tabs { display: flex; flex-wrap: wrap; gap: 3px; flex: none; margin: 2px 0 4px; }
+.da-tabs button { flex: 1 1 30%; background: rgba(10,12,14,.72); border: 0; border-bottom: 3px solid transparent; color: #cfd6dc; font: 800 11px var(--font); letter-spacing: .06em; padding: 6px 2px; cursor: pointer; }
+.da-tabs button.on { color: #ffcf3a; border-bottom-color: #ffcf3a; background: rgba(40,34,10,.8); }
+.da-tabs button:hover { color: #fff; }
 .da-slot { display: flex; align-items: center; gap: 10px; text-align: left; background: rgba(10,12,14,.72); border: 0; border-left: 4px solid transparent; color: #fff; padding: 5px 10px; flex: none; }
 .da-slot i { font-style: normal; width: 22px; text-align: center; font-size: 18px; color: #ffcf3a; }
 .da-slot b { display: block; font: 900 15px var(--font); letter-spacing: .08em; }
@@ -57,6 +61,12 @@ export const CSS = `
 .da-right small { font: 800 11px var(--font); letter-spacing: .18em; opacity: .75; margin-right: 6px; }
 .da-flight { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); font: 900 15px var(--font); letter-spacing: .14em; text-shadow: 0 2px 0 #000; white-space: nowrap; }
 .da-flight span { margin: 0 12px; }
+.da-tut { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); min-width: 340px; max-width: min(640px, 80vw); text-align: center; background: rgba(8,10,12,.82); border: 2px solid #ffcf3a; border-radius: 10px; padding: 12px 20px 10px; color: #fff; font: 800 17px var(--font); letter-spacing: .05em; line-height: 1.5; box-shadow: 0 6px 30px rgba(0,0,0,.5); pointer-events: none; animation: daTut .35s ease-out; }
+.da-tut small { display: block; color: #ffcf3a; font: 900 11px var(--font); letter-spacing: .25em; margin-bottom: 4px; }
+.da-tut i { display: block; font: 700 10px var(--font); font-style: normal; opacity: .55; margin-top: 6px; letter-spacing: .2em; }
+.da-tut kbd { display: inline-block; background: #ffcf3a; color: #111; border-radius: 4px; padding: 0 6px; margin: 0 2px; font: 900 14px var(--font); }
+@keyframes daTut { from { opacity: 0; transform: translate(-50%, -8px); } }
+.da-pit { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .da-cross { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border: 2px solid rgba(255,255,255,.85); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
 .da-cross::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: #fff; border-radius: 50%; }
 .da-cross.hot { border-color: #ff5a3a; }

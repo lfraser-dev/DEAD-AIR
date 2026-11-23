@@ -228,10 +228,10 @@ export function buildWorld(seed = 1337) {
   spots.push({ x: westEnd.x, z: westEnd.z, r: 120, kind: 'bridgehead', y: cityY });
   spots.push({ x: cx, z: cz + IL + 120, r: 60, kind: 'bridgehead', y: cityY });
   // two small cities further out
-  for (let n = 0; n < 3; n++) {
+  for (let n = 0; n < 4; n++) {
     let b = null;
     for (let tries = 0; tries < 16 && !b; tries++) {
-      b = best(50, () => { const a = (n * Math.PI * 2 / 3) + (R() - 0.5) * 1.6, d = 1700 + R() * 1700; return [cx + Math.cos(a) * d, cz + Math.sin(a) * d, 250]; });
+      b = best(50, () => { const a = (n * Math.PI * 2 / 4) + (R() - 0.5) * 1.3, d = 1800 + R() * 2600; return [cx + Math.cos(a) * d, cz + Math.sin(a) * d, 250]; });
       if (b && (!free(b[0], b[1], 250, 400) || b[2] > 50)) b = null;
     }
     if (!b) continue;
@@ -261,17 +261,17 @@ export function buildWorld(seed = 1337) {
   { let bestA = null, bs = Infinity;
     for (let t = 0; t < 400; t++) {
       const a = Math.random() * 0 + R() * Math.PI * 2, d = 1300 + R() * 1900, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
-      if (!free(x, z, 720, 120)) continue;
+      if (!free(x, z, 480, 120)) continue;
       let lo = Infinity, hi = -Infinity, wetN = 0;
-      for (let i = -8; i <= 8; i++) for (const dz of [-90, 0, 90]) { const h = T.natural(x + i * 85, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); if (h < WATER + 2) wetN++; }
+      for (let i = -8; i <= 8; i++) for (const dz of [-90, 0, 90]) { const h = T.natural(x + i * 56, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); if (h < WATER + 2) wetN++; }
       const sc = hi - lo + wetN * 50;
       if (sc < bs) { bs = sc; bestA = [x, z]; }
     }
     if (bestA) {
-      const [x, z] = bestA; let sum = 0; for (let i = -8; i <= 8; i++) sum += T.natural(x + i * 85, z);
+      const [x, z] = bestA; let sum = 0; for (let i = -8; i <= 8; i++) sum += T.natural(x + i * 56, z);
       const y = Math.max(WATER + 6, sum / 17);
-      T.rect(x, z + 40, 720, 170, y, 160);
-      spots.push({ x, z, r: 720, kind: 'airfield', y });
+      T.rect(x, z + 40, 480, 170, y, 160);
+      spots.push({ x, z, r: 500, kind: 'airfield', y });
     }
   }
   // ST MARY'S: a big hospital out of town, where everyone went when it started
@@ -293,8 +293,8 @@ export function buildWorld(seed = 1337) {
       spots.push({ x, z, r: 20, kind: 'mast', y: h });
     }
   }
-  place(14, 70, 420, 'town');
-  place(26, 42, 260, 'village');
+  place(20, 70, 420, 'town');
+  place(38, 42, 260, 'village');
 
   // ---- roads: join everything up (a spanning tree, plus a few loops), each one winding round the hills
   const nodes = spots.filter((s) => s.kind !== 'city' && s.kind !== 'mast').map((s, i) => ({ ...s, i }));
@@ -904,7 +904,7 @@ export function buildWorld(seed = 1337) {
   // THE AIRFIELD: a 1.3 km runway with markings and edge lights, a taxiway, an apron, two hangars, a control tower,
   // fuel tanks and a windsock. Planes start here, and land here to refuel, repair and rearm.
   function airfieldSite(s) {
-    const { x, z, y } = s, L = 650, W = 24, ASP = [0.16, 0.16, 0.17], WH = [0.93, 0.93, 0.9];
+    const { x, z, y } = s, L = 420, W = 24, ASP = [0.16, 0.16, 0.17], WH = [0.93, 0.93, 0.9];
     ground.town(x, z + 40, 700, 20);
     const rw = add([x - L, y - 0.5, z - W], [x + L, y + 0.12, z + W], { color: ASP, tex: 7, tag: 'pad' });
     // centre line, thresholds, touchdown marks
@@ -1112,14 +1112,14 @@ export function buildWorld(seed = 1337) {
   // gas stations beside the roads
   let gs = 0;
   for (const rt of routes) {
-    if (rt.pts.length < 14 || gs >= 15 || R() < 0.35) continue;
+    if (rt.pts.length < 14 || gs >= 22 || R() < 0.35) continue;
     const i = Math.floor(rt.pts.length / 2), [px, pz] = rt.pts[i], [qx, qz] = rt.pts[i + 1], a = Math.atan2(qz - pz, qx - px);
     const x = px - Math.sin(a) * 22, z = pz + Math.cos(a) * 22;
     if (!clear(x, z, 20) || !offRoad(x, z, 14) || wet(x, z, 30)) continue;
     const y = T.heightAt(x, z); T.flatten(x, z, 14, y, 14); ground.town(x, z, 12, 10); gasStation(x, y, z); open.push([x, z, y]); gs++;
   }
   // farms: a barn, a silo and a farmhouse out in the fields
-  for (let n = 0, tries = 0; n < 60 && tries < 1100; tries++) {
+  for (let n = 0, tries = 0; n < 90 && tries < 1700; tries++) {
     const x = (R() - 0.5) * 2 * (TH - 300), z = (R() - 0.5) * 2 * (TH - 300);
     if (wet(x, z, 40) || T.forest(x, z) > 0.25 || T.natural(x, z) > 100 || T.natural(x, z) < WATER + 3 || rough(x, z, 30) > 9 || inSpot(x, z, 60) || !offRoad(x, z, 22)) continue;
     const y = T.natural(x, z);

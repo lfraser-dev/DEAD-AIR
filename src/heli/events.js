@@ -87,7 +87,7 @@ export class BridgeRescue extends Rescue {
   }
   update(dt, g) {
     const r = this.roof;
-    if (!r.active || r.count <= 0) { r.active = false; this.done = true; for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.roof = null; z.st = 'fall'; z.vel = [0, 0, 0]; } return; }
+    if (!r.active || r.count <= 0) { if (!this.done && r.count <= 0) g.storyHit?.('bridge', 1); r.active = false; this.done = true; for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.roof = null; z.st = 'fall'; z.vel = [0, 0, 0]; } return; }
     if (!this.near(g)) return;
     this.spawnT -= dt;
     if (this.spawnT <= 0 && this.spawned < 90) {
@@ -188,7 +188,7 @@ export class Crate extends Ev {
   }
   marker() { return { p: [this.x, this.y + 4, this.z], col: '#ff9f3a', icon: '▣', text: this.carried ? 'CRATE · TAKE IT TO THE SPIRE' : 'SUPPLY DROP', sub: this.landed && !this.carried ? `${Math.ceil((this.hp / 300) * 100)}%` : '' }; }
   parts(P, t, person, heli) { crateParts(P, this.x, this.y, this.z, this.landed, this.carried, t, heli); }
-  net() { return { k: 'crate', x: this.x, y: this.y, z: this.z, l: this.landed, c: this.carried }; }
+  net() { return { k: 'crate', x: this.x, y: this.y, z: this.z, l: this.landed, c: this.carried, dz: !!this.dust, dn: !!this.done }; }
 }
 export function crateParts(P, x, y, z, landed, carried, t, heli) {
   P([x, y + 0.9, z], [0, 0.3, 0], [1.8, 1.8, 1.8], [0.45, 0.36, 0.2], { tex: 12, shape: 0.05 });
@@ -219,6 +219,7 @@ export class CrashSite extends Rescue {
     if (r.count <= 0 && !this.paid) {
       this.paid = true;
       const saved = r.start - (r.eaten || 0);
+      if (saved > 0) g.storyHit?.('crash', 1);
       if (saved > 0) { const b = 150 + saved * 90; g.addScrap(b); g.save.events = (g.save.events || 0) + 1; g.banner('CREW RECOVERED', `THE BLACK BOX TOO · +⚙${b}`, 'g', 3); }
     }
     super.update(dt, g);
@@ -271,6 +272,7 @@ export class Outbreak extends Ev {
       const b = 400 + Math.round(this.start * 1.5);
       g.addScrap(b); g.save.events = (g.save.events || 0) + 1;
       g.banner('OUTBREAK CLEARED', `${this.town.name} · +⚙${b}`, 'g', 3);
+      g.storyHit?.('outbreak', 1);
       for (const z of mine) { z.keep = false; z.ev = null; z.tgt = null; }
     } else if (this.time <= 0) {
       this.done = true;
@@ -396,7 +398,7 @@ export class MastEv extends Ev {
     person(hx - 4, hy, hz + 1, Math.sin(t) * 0.5 + 1.6, false, 3);
     if (Math.sin(t * 9) > 0.6) P([hx - 4.6, hy + 1.3, hz + 0.6], [0, 0, 0], [0.25, 0.25, 0.25], [1, 0.9, 0.5], { em: 1, shape: 'sphere' });
   }
-  net() { return { k: 'mast', x: this.x, z: this.z, p: this.prog }; }
+  net() { return { k: 'mast', x: this.x, z: this.z, p: this.prog, wk: !!this.working, my: this.mast.y, nm: this.name }; }
 }
 
 // FORT CALDER: the base is full of them. Kill nine in ten and it's yours: a second base with fuel, repairs and guns.
