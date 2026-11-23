@@ -18,7 +18,7 @@ import { Forest } from './trees.js';
 import { Horde, TYPES, pickType } from './horde.js';
 import { hullGeometries } from './hulls.js';
 import { mountAt, AIRFRAMES, Chopper, chopperParts, qrot, qmat, droneParts } from './chopper.js';
-import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, TIPS, TRIMS, BASE, BEDS, baseCut } from './data.js';
+import { SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, TIPS, TRIMS, TINTS, BASE, BEDS, baseCut } from './data.js';
 import { Story, CHAPTERS } from './story.js';
 import { Director, crateParts, wreckParts, convoyParts } from './events.js';
 import { ROLES, ROLE_IDS, WEAPONS, ARMORS, ITEMS, newMember, recruitCost, Raid, HAIR, randName } from './team.js';
@@ -33,7 +33,7 @@ const CAMS = {
   rotor: [0.8, 0.62, 19, [0, 2, 0.3]], door: [1.62, 0.08, 9, [1.1, 0, 0.6]], cabin: [-1.45, 0.12, 11, [-1, -0.2, 0.7]],
   fuel: [1.25, 0.05, 11, [1.2, -0.8, 0.4]], winch: [1.55, 0.1, 9, [1.2, 0, 0.6]], light: [0.4, -0.05, 7.5, [0, -1.3, -3.1]], turret: [0.9, -0.25, 8, [0, -1.6, 0.6]], medbay: [1.5, 0.05, 8, [1.2, 0.3, 1.2]],
   drops: [-1.5, -0.05, 8, [-1.5, -0.6, 0.6]], radio: [2.4, 0.25, 9, [0.25, 1.8, 4.2]], flir: [0.35, -0.02, 7.5, [0, -0.9, -3.4]],
-  speaker: [1.2, 0.08, 10, [0, -0.6, 0]], nose: [0.55, 0.05, 8, [0, -0.3, -3.2]], tailart: [2.0, 0.1, 10, [0, 0.6, 4.8]], drone: [0.9, 0.35, 12, [0, 1.5, 2]], ammo: [0.5, 0.05, 7, [0, -0.9, -2.6]], repair: [-0.9, 0.12, 9, [0, 0, 0.5]], suppress: [2.5, 0.35, 9, [0, 1.3, 1.2]], flares: [2.2, 0.15, 8, [0, 0.2, 3.6]], beacon: [-2.2, 0.1, 8, [-0.6, 0.4, 3.4]], skids: [1.45, -0.12, 10, [0, -1.6, 0]], pods: [1.1, 0.02, 10, [1.8, -0.7, -0.6]], cooling: [0.55, 0.02, 8.5, [0, -0.9, -3.6]], hover: [0.4, 0.3, 12, [0, 0, -2]], crash: [-1.45, 0.12, 11, [-1, -0.2, 0.7]], sniper: [-1.5, 0.12, 8, [-0.9, 0, 1.4]], paint: [0.75, 0.22, 21, [0, 0.4, 1.5]],
+  speaker: [1.2, 0.08, 10, [0, -0.6, 0]], nose: [0.55, 0.05, 8, [0, -0.3, -3.2]], tailart: [2.0, 0.1, 10, [0, 0.6, 4.8]], drone: [0.9, 0.35, 12, [0, 1.5, 2]], ammo: [0.5, 0.05, 7, [0, -0.9, -2.6]], repair: [-0.9, 0.12, 9, [0, 0, 0.5]], suppress: [2.5, 0.35, 9, [0, 1.3, 1.2]], flares: [2.2, 0.15, 8, [0, 0.2, 3.6]], beacon: [-2.2, 0.1, 8, [-0.6, 0.4, 3.4]], skids: [1.45, -0.12, 10, [0, -1.6, 0]], pods: [1.1, 0.02, 10, [1.8, -0.7, -0.6]], sight: [0.55, 0.02, 8.5, [0, -0.9, -3.6]], quiet: [2.5, 0.38, 10, [0, 1.4, 1.6]], tpod: [0.55, 0.02, 8.5, [0, -0.9, -3.6]], cooling: [0.55, 0.02, 8.5, [0, -0.9, -3.6]], hover: [0.4, 0.3, 12, [0, 0, -2]], crash: [-1.45, 0.12, 11, [-1, -0.2, 0.7]], sniper: [-1.5, 0.12, 8, [-0.9, 0, 1.4]], paint: [0.75, 0.22, 21, [0, 0.4, 1.5]],
 };
 const FLIGHT = { easy: 'EASY', assist: 'ASSIST', pro: 'PRO' };
 const FRIEND_COLS = [[1, 0.8, 0.1], [0.3, 0.9, 1]];
@@ -59,8 +59,8 @@ function tierChips(a, b) {
 
 // the paint job plus camo, nose art and tail markings, in the form the model wants
 function paintFor(s) {
-  const p = PAINT[s.paint] || PAINT.olive, tip = TIPS.find((q) => q.id === s.tips), trim = TRIMS.find((q) => q.id === s.trimCol);
-  return { ...p, trim: trim && trim.col ? trim.col : p.trim, tips: tip ? tip.col : null, tips2: tip ? tip.col2 : null, camo: (CAMO[s.camo] || {}).k || 0, nose: s.nose && s.nose !== 'none' ? s.nose : p.shark ? 'shark' : 'none', tailArt: s.tailArt || 'none', num: s.num };
+  const p = PAINT[s.paint] || PAINT.olive, tip = TIPS.find((q) => q.id === s.tips), trim = TRIMS.find((q) => q.id === s.trimCol), tint = TINTS.find((q) => q.id === s.tint);
+  return { ...p, glass: tint && tint.col ? tint.col : null, trim: trim && trim.col ? trim.col : p.trim, tips: tip ? tip.col : null, tips2: tip ? tip.col2 : null, camo: (CAMO[s.camo] || {}).k || 0, nose: s.nose && s.nose !== 'none' ? s.nose : p.shark ? 'shark' : 'none', tailArt: s.tailArt || 'none', num: s.num };
 }
 const DECOR = {
   camo: { list: CAMOS, own: 'camos', cur: 'camo', name: 'CAMO', icon: '▦' },
@@ -68,6 +68,7 @@ const DECOR = {
   tailart: { list: TAILART, own: 'tails', cur: 'tailArt', name: 'TAIL MARKINGS', icon: '#' },
   trim: { list: TRIMS, own: 'trimsOwn', cur: 'trimCol', name: 'TRIM COLOUR', icon: '◧' },
   tips: { list: TIPS, own: 'tipsOwn', cur: 'tips', name: 'ROTOR TIPS', icon: '✲' },
+  tint: { list: TINTS, own: 'tintsOwn', cur: 'tint', name: 'WINDOW TINT', icon: '◫' },
 };
 
 export class HeliGame {
@@ -587,6 +588,7 @@ export class HeliGame {
       const grabbers = this.horde.list.filter((z) => z.alive && z.st === 'grab').length;
       H.extraMass = grabbers * 0.07 + (this.crate && this.crate.carried ? 0.12 : 0);
       for (const z of this.horde.list) if (z.alive && z.st === 'grab' && z.type === 'brute') H.extraMass += 0.14;
+      if (S.heavy) H.extraMass *= 0.4;
       H.step(dt, ctl, this.world);
       this.edge(dt);
       const easy = this.save.flight === 'easy';
@@ -619,7 +621,7 @@ export class HeliGame {
       const roofs = this.director.list.filter((e) => e.kind === 'rescue').map((e) => e.roof);
       if (this.raid && this.raid.roofT) roofs.push(this.raid.roofT);
       if (this.raid) this.raidTick(dt);
-      this.horde.update(dt, { heli: H, heliAlt: this.agl, noHeap: !!this.atFob, roofs, others: this.coop ? this.wingSpots() : null, lure: this.siren > 0 ? this.lure : this.beaconLure(), lureR: this.siren > 0 ? 0 : 260, skidGuard: S.skidGuard });
+      this.horde.update(dt, { heli: H, heliAlt: this.agl, noHeap: !!this.atFob, roofs, others: this.coop ? this.wingSpots() : null, noise: [1, 0.67, 0.42][S.quiet || 0], lure: this.siren > 0 ? this.lure : this.beaconLure(), lureR: this.siren > 0 ? 0 : 260, skidGuard: S.skidGuard });
       this.hordeEvents();
       this.ambient(dt);
       this.fx.update(dt);
@@ -1150,7 +1152,7 @@ export class HeliGame {
   // a bullet hitting a zombie, with whatever ammo you've loaded: armour-piercing ignores riot armour and carries on
   // into the one behind; incendiary sets them alight
   bullet(z, dmg, push, at, cause, dir) {
-    const S = this.S, ap = S.ammo === 1, inc = S.ammo === 2;
+    const S = this.S, ap = S.ammo === 1 || (S.gun.pierce && cause === 'gun'), inc = S.ammo === 2;
     const k = this.horde.damage(z, dmg, push, ap ? 'ap' : cause);
     this.fx.spawnPiece(at, [0.08, 0.08, 0.08], [push[0] * 0.2 + (Math.random() - 0.5) * 3, 2 + Math.random() * 2, push[2] * 0.2 + (Math.random() - 0.5) * 3], [0.35, 0.05, 0.04], 0.7);
     if (inc && z.alive) z.burn = Math.max(z.burn || 0, 3.2);
@@ -1183,7 +1185,7 @@ export class HeliGame {
         if (sc > best) { best = sc; target = z; }
       }
     }
-    this.shots.push({ kind: 'rocket', pos: o, vel: [H.vel[0] + dir[0] * 120, H.vel[1] + dir[1] * 120, H.vel[2] + dir[2] * 120], life: 4, target, homing: S.homing });
+    this.shots.push({ kind: 'rocket', pos: o, vel: [H.vel[0] + dir[0] * 120, H.vel[1] + dir[1] * 120, H.vel[2] + dir[2] * 120], life: 4, target, homing: S.homing, laser: S.tpod && !target ? aim.p : null });
     this.snd.launch?.();
   }
 
@@ -1275,7 +1277,12 @@ export class HeliGame {
           const cur = norm(s.vel), k = Math.min(1, dt * (s.mini ? 6 : 3.2));
           s.vel = norm(cur.map((c, j) => c + (v[j] - c) * k)).map((c) => c * Math.min(160, sp + dt * 40));
         }
-        s.vel[1] -= 2 * dt;
+        if (s.laser) {
+          // laser guided: keep steering at the spot under the crosshair (it follows the crosshair as you move it)
+          if (this.mode === 'fly' || this.mode === 'wing') s.laser = this.aimPoint().p;
+          const v = norm([s.laser[0] - s.pos[0], s.laser[1] - s.pos[1], s.laser[2] - s.pos[2]]), sp = Math.hypot(...s.vel), cur = norm(s.vel), k = Math.min(1, dt * 4);
+          s.vel = norm(cur.map((c, j) => c + (v[j] - c) * k)).map((c) => c * sp);
+        } else s.vel[1] -= 2 * dt;
         if (Math.random() < 0.8) { this.fx.spawnPiece(s.pos, [0.35, 0.35, 0.35], [0, 0.4, 0], [0.55, 0.55, 0.55], 1.1); this.fx.debris[this.fx.debris.length - 1].noGravity = true; }
         this.fx.flame(s.pos, [0, 0, 0], 1.6);
       } else if (s.kind === 'bomb') {
@@ -3228,7 +3235,7 @@ export class HeliGame {
     list.push(...fm);
     this.markers([...list.filter((m) => !m.fob || Math.hypot(m.p[0] - H.pos[0], m.p[2] - H.pos[2]) < 900), ...nearLoot], H.pos, extra);
     this.eventsList(list.filter((m) => !m.fob), H.pos);
-    const zr = Math.max([150, 450, 600][S.flir || 0], S.drones ? 650 : 0);
+    const zr = Math.max([150, 450, 600][S.flir || 0], S.drones ? 650 : 0, S.tpod === 2 ? 900 : 0);
     this.minimap(H.pos, H.heading, [...list, ...loots.filter((m) => m.text !== 'RAIDED')], this.horde.list.filter((z) => Math.abs(z.x - H.pos[0]) < zr && Math.abs(z.z - H.pos[2]) < zr));
     this.$('boss').classList.add('hidden');
     this.raidPanel();

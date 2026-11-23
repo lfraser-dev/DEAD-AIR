@@ -316,7 +316,7 @@ export class Horde {
         }
         const d = Math.hypot(cx - z.x, cz - z.z) || 1; dirx = (cx - z.x) / d; dirz = (cz - z.z) / d;
       } else this.followField(z, f, (x, y) => { dirx = x; dirz = y; }, tg.x, tg.z);
-    } else if (dh < 160) { dirx = dxh / dh * 0.5; dirz = dzh / dh * 0.5; }      // drift towards the noise
+    } else if (dh < 160 * (g.noise ?? 1)) { dirx = dxh / dh * 0.5; dirz = dzh / dh * 0.5; }      // drift towards the noise
     else if (z.think <= 0) { z.think = 3 + Math.random() * 4; z.wx = (Math.random() - 0.5) * 2; z.wz = (Math.random() - 0.5) * 2; }
     else { dirx = (z.wx || 0) * 0.3; dirz = (z.wz || 0) * 0.3; }
     // keep apart
@@ -353,7 +353,7 @@ export class Horde {
     else if (z.think <= 0) {
       z.think = 3 + Math.random() * 5;
       // most of them drift slowly towards the noise of the helicopter
-      if (d < 420 && Math.random() < 0.6) { z.wx = dx / d; z.wz = dz / d; } else { const a = Math.random() * 6.28; z.wx = Math.cos(a) * 0.5; z.wz = Math.sin(a) * 0.5; }
+      if (d < 420 * (g.noise ?? 1) && Math.random() < 0.6) { z.wx = dx / d; z.wz = dz / d; } else { const a = Math.random() * 6.28; z.wx = Math.cos(a) * 0.5; z.wz = Math.sin(a) * 0.5; }
     }
     const sp = z.spd * 0.8, mx = (z.wx || 0) * sp * dt, mz = (z.wz || 0) * sp * dt;
     if (!this.stuck(z.x + mx * 2, z.z)) z.x += mx; else z.wx = -(z.wx || 0);

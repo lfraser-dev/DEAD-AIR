@@ -10,6 +10,7 @@ export const SLOTS = [
     { n: 'TWIN MINIGUNS', cost: 900, d: 'Two miniguns side by side. Shreds crowds.' },
     { n: 'AUTOCANNON', cost: 1900, d: '30 mm explosive shells. Blows piles apart.' },
     { n: 'TWIN 30MM', cost: 3800, d: 'Two 30 mm chain guns side by side. Twice the explosive shells.' },
+    { n: 'GAU-19 .50 GATLING', cost: 5500, d: 'A three-barrel .50 calibre gatling: fast like a minigun, but every round hits like a hammer and goes through riot armour.' },
   ] },
   { id: 'rockets', name: 'ROCKETS', icon: '➶', tiers: [
     { n: 'NONE', cost: 0, d: 'No rocket pods fitted.' },
@@ -132,6 +133,21 @@ export const SLOTS = [
     { n: 'CRASHWORTHY SEATS', cost: 900, d: 'Seats that soak up a crash: if you\'re shot down, the survivors aboard live and the rescue team brings them home.' },
     { n: 'CRASH-RESISTANT FUEL', cost: 2000, d: 'Plus self-sealing fuel tanks: no fireball when you go down, and no repair bill.' },
   ] },
+  { id: 'sight', name: 'GUN SIGHT', icon: '⊕', tiers: [
+    { n: 'IRON SIGHTS', cost: 0, d: 'Point and hope.' },
+    { n: 'STABILISED SIGHT', cost: 700, d: 'A gyro-stabilised sight: the nose gun and pods spread half as much.' },
+    { n: 'HELMET SIGHT', cost: 1700, d: 'The gun follows your helmet: a third of the spread, and every shot lands where it hurts (+10% damage).' },
+  ] },
+  { id: 'quiet', name: 'QUIET KIT', icon: '◌', tiers: [
+    { n: 'NONE', cost: 0, d: 'Everything for miles hears you coming.' },
+    { n: 'EXHAUST SUPPRESSORS', cost: 800, d: 'Baffled exhausts: zombies hear you from a third less far, so fewer drift your way.' },
+    { n: 'QUIET ROTOR', cost: 2000, d: 'Plus swept, slow-turning blades: zombies only hear you from less than half as far.' },
+  ] },
+  { id: 'tpod', name: 'TARGETING POD', icon: '⌾', tiers: [
+    { n: 'NONE', cost: 0, d: 'Rockets go where they\'re pointed.' },
+    { n: 'LASER DESIGNATOR', cost: 1400, d: 'A laser pod: every rocket steers to the exact spot under your crosshair.' },
+    { n: 'SNIPER POD', cost: 3000, d: 'Plus a long-range camera: every zombie within 900 m shows on the map, and the big ones on screen.' },
+  ] },
   { id: 'pods', name: 'GUN PODS', icon: '⁑', tiers: [
     { n: 'NONE', cost: 0, d: 'Nothing on the wings but what you fit there.' },
     { n: '.50 CAL PODS', cost: 1400, d: 'Two HMP-400 heavy machine gun pods on the wings. They fire with the nose gun.' },
@@ -170,6 +186,10 @@ export const HELIS = {
     hp: 1.5, mass: 1.5, lift: 1.62, speed: 1.75, agility: 0.7, fuel: 2.0, tilt: true, cap: { rotor: 0, gun: 2, rockets: 2, pods: 1, bombs: 2 } },
   harrier: { n: 'HARRIER', cost: 9500, d: 'A jump jet. Takes off straight up on four swivelling nozzles, then it\'s the fastest thing in the game by miles. Guns 20% harder, 50% more rockets. One seat.', seats: [1],
     hp: 0.85, mass: 0.9, lift: 1.3, speed: 2.1, agility: 1.55, fuel: 0.9, gunMul: 1.2, rocketMul: 1.5, jet: true, cap: { rotor: 0, cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0, drops: 0, armor: 2 } },
+  alligator: { n: 'ALLIGATOR', cost: 7000, d: 'A heavy attack helicopter with two rotors stacked on one mast (no tail rotor), two pilots side by side, and six pylons. Chin gun +25%, rockets +40%, armoured.', seats: [2],
+    hp: 1.55, mass: 1.15, lift: 1.3, speed: 1.25, agility: 1.35, fuel: 1.05, gunMul: 1.25, rocketMul: 1.4, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0, rotor: 0 } },
+  skycrane: { n: 'SKYCRANE', cost: 6000, d: 'A flying crane: a cab, a skinny spine, giant legs and a people pod slung underneath. The strongest lifter there is: zombies on the skids barely slow it, and the cargo hook comes fitted.', seats: [10, 14, 18, 22],
+    hp: 1.25, mass: 1.3, lift: 1.9, speed: 0.95, agility: 0.72, fuel: 1.4, heavy: true, min: { winch: 2 }, cap: { gun: 2, rockets: 1, pods: 0, bombs: 2 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
     hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0, pods: 0 } },
 };
@@ -201,6 +221,10 @@ export const PAINTS = [
   { id: 'cherry', n: 'CHERRY RED', body: [0.55, 0.05, 0.07], trim: [0.12, 0.02, 0.03], cost: 600 },
   { id: 'carbon', n: 'CARBON BLACK', body: [0.07, 0.07, 0.08], trim: [0.3, 0.3, 0.32], cost: 700, mat: 'metal' },
   { id: 'sky', n: 'SKY BLUE', body: [0.45, 0.65, 0.85], trim: [0.92, 0.92, 0.9], cost: 500, stripe: [0.92, 0.92, 0.9] },
+  { id: 'teal', n: 'OCEAN TEAL', body: [0.1, 0.42, 0.45], trim: [0.05, 0.2, 0.22], cost: 400 },
+  { id: 'pink', n: 'DESERT PINK', body: [0.78, 0.55, 0.52], trim: [0.45, 0.3, 0.28], cost: 400 },
+  { id: 'bee', n: 'BUMBLEBEE', body: [0.95, 0.75, 0.05], trim: [0.05, 0.05, 0.05], cost: 700, stripe: [0.05, 0.05, 0.05] },
+  { id: 'gunship', n: 'GUNSHIP GREY', body: [0.28, 0.3, 0.32], trim: [0.12, 0.13, 0.14], cost: 300 },
   { id: 'gold', n: 'SOLID GOLD', body: [0.85, 0.64, 0.2], trim: [0.5, 0.36, 0.1], cost: 5000, mat: 'brass' },
   { id: 'dev', n: 'DEV: ROOT', body: [0.04, 0.05, 0.06], trim: [0.1, 1, 0.45], cost: 0, glow: [0.1, 1, 0.45], stripe: [0.1, 1, 0.45], dev: true },
 ];
@@ -244,6 +268,15 @@ export const TIPS = [
   { id: 'orange', n: 'DAYGLO TIPS', cost: 200, d: 'Dayglo orange, very easy to see.', col: [1, 0.45, 0.05] },
   { id: 'black', n: 'BLACK TIPS', cost: 150, d: 'Stealthy.', col: [0.04, 0.04, 0.05] },
   { id: 'chequer', n: 'STRIPED TIPS', cost: 300, d: 'Red and white stripes.', col: [0.85, 0.1, 0.08], col2: [0.93, 0.93, 0.9] },
+];
+// tinted glass
+export const TINTS = [
+  { id: 'none', n: 'CLEAR GLASS', cost: 0, d: 'Ordinary glass.' },
+  { id: 'smoke', n: 'SMOKED', cost: 200, d: 'Dark, like sunglasses.', col: [0.03, 0.03, 0.035] },
+  { id: 'gold', n: 'GOLD VISOR', cost: 400, d: 'Gold-coated, like an astronaut\'s visor.', col: [0.45, 0.33, 0.08] },
+  { id: 'blue', n: 'BLUE TINT', cost: 250, d: 'A cold blue.', col: [0.06, 0.16, 0.38] },
+  { id: 'green', n: 'NVG GREEN', cost: 250, d: 'Night-vision-safe green.', col: [0.06, 0.25, 0.1] },
+  { id: 'amber', n: 'AMBER', cost: 300, d: 'Warm orange.', col: [0.45, 0.2, 0.03] },
 ];
 // a second colour for the trim (tail plane, fins, pods...), over the paint job's own
 export const TRIMS = [
@@ -335,7 +368,7 @@ export function saveSave(s) { try { localStorage.setItem(KEY, JSON.stringify(s))
 export function statsFor(eq0, kind = 'warhorse') {
   const HK = HELIS[kind] || HELIS.warhorse, eq = capEq(eq0, kind);
   const v = (k, max) => Math.min(eq[k] || 0, max);
-  const g = v('gun', 4), ar = v('armor', 4), en = v('engine', 4), ro = v('rotor', 3), rk = v('rockets', 4), bo = v('bombs', 4);
+  const g = v('gun', 5), ar = v('armor', 4), en = v('engine', 4), ro = v('rotor', 3), rk = v('rockets', 4), bo = v('bombs', 4);
   const S = {
     kind,
     hp: Math.round(500 * [1, 1.6, 2.3, 3.2, 4][ar]),
@@ -351,6 +384,7 @@ export function statsFor(eq0, kind = 'warhorse') {
       { rate: 44, dmg: 16, spread: 0.018, heat: 0.011, cool: 0.4, barrels: 2, spin: true },
       { rate: 5, dmg: 90, spread: 0.006, heat: 0.05, cool: 0.5, barrels: 1, cannon: true, splash: 3.5 },
       { rate: 9, dmg: 90, spread: 0.008, heat: 0.03, cool: 0.5, barrels: 2, cannon: true, splash: 3.5 },
+      { rate: 30, dmg: 34, spread: 0.012, heat: 0.011, cool: 0.45, barrels: 1, spin: true, pierce: true },
     ][g],
     rockets: Math.round([0, 8, 16, 12, 36][rk] * [1, 1.5, 2][v('racks', 2)]), rocketDmg: [0, 260, 340, 420, 170][rk], rocketR: [0, 6.5, 8, 8.5, 5][rk], homing: rk === 3, swarm: rk === 4,
     bombs: bo ? [0, 4, 4, 4, 2][bo] + [0, 2, 4][v('racks', 2)] / (bo === 4 ? 2 : 1) : 0, cluster: bo === 2, napalm: bo === 3, thermo: bo === 4,
@@ -361,13 +395,15 @@ export function statsFor(eq0, kind = 'warhorse') {
     flir: v('flir', 2), speaker: 0, lrad: false, skidGuard: v('skids', 1) >= 1, zap: false,
     light: v('light', 2), medbay: v('medbay', 2), drops: v('drops', 2), radio: v('radio', 2),
     nvg: v('nvg', 1), racks: v('racks', 2), drones: 0, ammo: v('ammo', 2), repair: v('repair', 2), suppress: v('suppress', 1), flares: 0, megaFlare: false, beacons: 0, beaconBoom: false,
+    sight: v('sight', 2), quiet: v('quiet', 2), tpod: v('tpod', 2),
     cooling: v('cooling', 2), hover: v('hover', 2), gpws: v('hover', 2) === 2, crash: v('crash', 2),
     crewMax: [2, 3, 4, 4][v('cabin', 3)],
     pods: v('pods', 2), sniper: v('sniper', 2),
   };
+  if (S.sight) S.gun = { ...S.gun, spread: S.gun.spread * [1, 0.5, 0.33][S.sight], dmg: Math.round(S.gun.dmg * (S.sight === 2 ? 1.1 : 1)) };
   if (S.cooling) S.gun = { ...S.gun, heat: S.gun.heat * 0.6, cool: S.gun.cool * (S.cooling === 2 ? 2 : 1), rate: S.gun.rate * (S.cooling === 2 ? 1.1 : 1) };
   // the airframe
-  S.floats = !!HK.floats;
+  S.floats = !!HK.floats; S.heavy = !!HK.heavy;
   S.hp = Math.round(S.hp * HK.hp); S.mass *= HK.mass; S.lift *= HK.lift; S.speed *= HK.speed; S.agility *= HK.agility;
   S.fuel = Math.round(S.fuel * HK.fuel);
   S.seats = HK.seats[Math.min(HK.seats.length - 1, v('cabin', 3))];
