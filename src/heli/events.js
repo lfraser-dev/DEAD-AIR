@@ -132,6 +132,7 @@ export class HordeEv extends Ev {
       const bonus = 300 + Math.round(this.start * 0.6);
       g.addScrap(bonus); g.save.events = (g.save.events || 0) + 1;
       g.banner('HORDE BROKEN', `${this.town.name} IS SAFE · +⚙${bonus}`, 'g', 3);
+      g.storyHit?.('horde', 1);
       for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.ev = null; z.tgt = null; }
     }
   }
@@ -311,6 +312,7 @@ export class Convoy extends Ev {
       const b = 500 + Math.round((this.hp / this.max) * 500);
       g.addScrap(b); g.save.events = (g.save.events || 0) + 1; g.save.saved = (g.save.saved || 0) + 8;
       g.banner('CONVOY SAFE', `8 SURVIVORS MADE IT · +⚙${b}`, 'g', 3);
+      g.save.rescued = (g.save.rescued || 0) + 8; g.storyHit?.('convoy', 1);
       for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.ev = null; z.tgt = null; }
       return;
     }
@@ -354,6 +356,172 @@ export function convoyParts(P, trucks) {
   });
 }
 
+// ---------------------------------------------------------------- the big ones (mostly from the story)
+// MAST: a radio mast on a hill. Land on its pad and press E: your engineer gets the radios going (it takes a while) and
+// everything on the hill comes for the hut. Keep them off it.
+export class MastEv extends Ev {
+  constructor(mast) {
+    super('mast', mast.name, mast.x, mast.z);
+    this.mast = mast; this.y = mast.y; this.prog = 0; this.working = false; this.hut = 100; this.spawnT = 0;
+    this.tgt = { kind: 'chase', sticky: true, r: 4, alive: true, x: mast.hut[0], z: mast.hut[2], field: `mast${mast.n}` };
+  }
+  start(g) { if (this.working) return; this.working = true; this.hut = 100; g.feed(`ENGINEER ON THE GROUND AT ${this.name} · KEEP THEM OFF THE HUT`, 'y'); g.radio?.(`${this.name}: I'm in. Give me a minute to get the radios going. Keep them off me.`); }
+  update(dt, g) {
+    if (!this.working) return;
+    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]);
+    if (d > 500) { this.working = false; this.prog = Math.max(0, this.prog - 0.25); g.feed(`YOU LEFT THE ENGINEER AT ${this.name} · THEY HID`, 'r'); return; }
+    this.prog += dt / 55;
+    this.spawnT -= dt;
+    if (this.spawnT <= 0 && g.horde.list.filter((z) => z.ev === this.id && z.alive).length < 70) { this.spawnT = 0.55; this.spawnAt(g, this.mix(g), this.x, this.z, this.tgt); }
+    if (this.prog >= 1) {
+      this.done = true; this.tgt.alive = false; this.mast.on = true;
+      g.addScrap(400); g.save.events = (g.save.events || 0) + 1;
+      g.banner(`${this.name} BACK ON THE AIR`, '+⚙400', 'g', 3); g.snd?.finish?.();
+      g.storyHit?.('mast', this.mast.n);
+      for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.ev = null; z.tgt = null; }
+    }
+  }
+  spawnAt(g, type, x, z, tgt) { const p = this.edgeSpot(g, x, z, 60, 120); if (!p) return null; const zb = g.horde.spawn(type, p[0], p[1], { tgt }); zb.ev = this.id; zb.keep = true; return zb; }
+  hitTarget(tgt, dmg, g) {
+    this.hut -= dmg * 0.7;
+    if (this.hut <= 0) { this.working = false; this.prog = Math.max(0, this.prog - 0.4); this.hut = 100; g.banner('THE ENGINEER HAD TO RUN', `${this.name} · LAND AND TRY AGAIN`, 'r', 2.6); for (const z of g.horde.list) if (z.ev === this.id) { z.tgt = null; z.keep = false; z.ev = null; } }
+  }
+  marker() { return { p: [this.x, this.mast.top + 4, this.z], col: '#ffd23a', icon: '📡', text: this.name, sub: this.working ? `FIXING ${Math.floor(this.prog * 100)}% · HUT ${Math.ceil(this.hut)}%` : 'LAND ON THE PAD AND PRESS E', story: true }; }
+  parts(P, t, person) {
+    if (!this.working) return;
+    const [hx, hy, hz] = this.mast.hut;
+    person(hx - 4, hy, hz + 1, Math.sin(t) * 0.5 + 1.6, false, 3);
+    if (Math.sin(t * 9) > 0.6) P([hx - 4.6, hy + 1.3, hz + 0.6], [0, 0, 0], [0.25, 0.25, 0.25], [1, 0.9, 0.5], { em: 1, shape: 'sphere' });
+  }
+  net() { return { k: 'mast', x: this.x, z: this.z, p: this.prog }; }
+}
+
+// FORT CALDER: the base is full of them. Kill nine in ten and it's yours: a second base with fuel, repairs and guns.
+export class FortEv extends Ev {
+  constructor(fort) {
+    super('fort', 'FORT CALDER', fort.x, fort.z);
+    this.fort = fort; this.y = fort.y; this.start = 340; this.left = this.start; this.real = false;
+    this.tgt = { kind: 'chase', sticky: true, r: 60, alive: true, x: fort.x, z: fort.z, field: `fort${this.id}` };
+  }
+  update(dt, g) {
+    const d = Math.hypot(this.x - g.heli.pos[0], this.z - g.heli.pos[2]);
+    if (!this.real) { if (d < 700) { this.real = true; this.unspawned = this.left; g.radio?.('Fort Calder dead ahead. The whole garrison turned. Clear the place out and we can use it.'); } return; }
+    const mine = g.horde.list.filter((z) => z.ev === this.id && z.alive);
+    if (this.unspawned > 0) for (let k = 0; k < 40 && this.unspawned > 0; k++) {
+      const x = this.x + (Math.random() - 0.5) * 200, z = this.z + (Math.random() - 0.5) * 200;
+      if (g.horde.blockedAt(x, z)) continue;
+      const zb = g.horde.spawn(Math.random() < 0.3 ? 'riot' : this.mix(g), x, z, { tgt: this.tgt }); zb.ev = this.id; zb.keep = true; this.unspawned--;
+    }
+    this.left = mine.length + (this.unspawned || 0);
+    if (d > 1000) { this.real = false; for (const z of mine) z.alive = false; return; }
+    if (this.left <= Math.ceil(this.start * 0.1)) {
+      this.done = true; this.fort.locked = false;
+      g.addScrap(1500); g.save.events = (g.save.events || 0) + 1;
+      g.banner('FORT CALDER IS OURS', 'A SECOND BASE · FUEL, REPAIRS AND GUNS · +⚙1500', 'g', 4); g.snd?.finish?.();
+      g.storyHit?.('fort');
+      for (const z of mine) { z.keep = false; z.ev = null; z.tgt = null; }
+    }
+  }
+  marker() { return { p: [this.x, this.y + 30, this.z], col: '#c8ff5a', icon: '★', text: `FORT CALDER · ${this.left}`, sub: this.real ? 'CLEAR OUT THE GARRISON' : 'TAKE IT BACK', horde: this.real, r: 90, story: true }; }
+  net() { return { k: 'fort', x: this.x, z: this.z, n: this.left }; }
+}
+
+// EVACUATION: St Mary's. Thirty people on the roof and the whole district coming. It takes trips.
+export class Evac extends Rescue {
+  constructor(h) {
+    const r = h.roof;
+    super({ ...r, sx: r.sx, sz: r.sz });
+    this.name = 'EVACUATION'; this.evac = true; this.hosp = h;
+    this.roof.count = this.roof.start = 30;
+    this.roof.sx0 = r.x - 8; this.roof.sz0 = r.z + 6;
+    this.announced = false;
+  }
+  update(dt, g) {
+    const r = this.roof;
+    if (r.count <= 0 && !this.paid) {
+      this.paid = true;
+      const saved = r.start - (r.eaten || 0);
+      g.addScrap(1000 + saved * 40); g.save.events = (g.save.events || 0) + 1;
+      g.banner("ST MARY'S IS EMPTY", `${saved} PEOPLE GOT OUT · +⚙${1000 + saved * 40}`, 'g', 4);
+      g.storyHit?.('evac', saved);
+    }
+    if (!r.active || r.count <= 0) { r.active = false; this.done = true; return; }
+    if (!this.near(g)) return;
+    if (!this.announced) { this.announced = true; g.radio?.("St Mary's roof, this is the Spire. We see you. Hang on, help's coming. Pilot: this'll take more than one trip."); }
+    this.spawnT -= dt;
+    if (this.spawnT <= 0 && this.spawned < 600) { this.spawnT = 0.45; this.spawned++; const zb = this.spawnAt(g, Math.random() < 0.3 ? 'runner' : this.mix(g), r.x, r.z, r); if (zb) zb.keep = true; }
+  }
+  edgeSpot(g, x, z) { return super.edgeSpot(g, x, z, 70, 160); }
+  marker(g) { const m = super.marker(g); return { ...m, col: '#ff6aa0', text: "EVACUATION · ST MARY'S", story: true }; }
+}
+
+// THE SIEGE: everything in the city comes for the Spire at once, in waves. They go for the doors at the bottom. If the
+// doors go, the Spire loses power: no fuel, repairs or guns for two minutes.
+export class Siege extends Ev {
+  constructor(sp) {
+    super('siege', 'THE SIEGE', sp.foot[0], sp.foot[2]);
+    this.sp = sp; this.gate = this.gateMax = 2400; this.wave = 0; this.waves = 6; this.waveT = 25; this.toSpawn = 0; this.spawnT = 0; this.t = 0;
+    this.tgt = { kind: 'chase', sticky: true, r: 6, alive: true, x: sp.foot[0], z: sp.foot[2], field: `siege${this.id}` };
+  }
+  update(dt, g) {
+    this.t += dt;
+    const mine = g.horde.list.filter((z) => z.ev === this.id && z.alive);
+    this.alive = mine.length;
+    this.waveT -= dt;
+    if (this.waveT <= 0 && this.wave < this.waves) {
+      this.wave++; this.waveT = 55; this.toSpawn += 120 + this.wave * 40;
+      g.banner(`WAVE ${this.wave} OF ${this.waves}`, 'THEY\'RE COMING FOR THE SPIRE', 'bad', 2.5); g.snd?.alarm?.();
+      this.dirs = [0, 1, 2].map(() => Math.random() * Math.PI * 2);
+    }
+    this.spawnT -= dt;
+    while (this.toSpawn > 0 && this.spawnT <= 0) {
+      this.spawnT += 0.04;
+      const a = this.dirs[Math.floor(Math.random() * this.dirs.length)] + (Math.random() - 0.5) * 0.5, r = 330 + Math.random() * 120;
+      const x = this.x + Math.cos(a) * r, z = this.z + Math.sin(a) * r;
+      if (g.horde.blockedAt(x, z)) continue;
+      const type = this.wave >= 4 && Math.random() < 0.08 ? 'brute' : Math.random() < 0.25 ? 'runner' : this.mix(g);
+      const zb = g.horde.spawn(type, x, z, { tgt: this.tgt }); zb.ev = this.id; zb.keep = true; this.toSpawn--;
+    }
+    if (this.wave >= this.waves && this.toSpawn <= 0 && mine.length < 20) {
+      this.done = true; this.tgt.alive = false;
+      const b = 2500 + Math.round((this.gate / this.gateMax) * 1500);
+      g.addScrap(b); g.save.events = (g.save.events || 0) + 1;
+      g.banner('THE SPIRE HELD', `+⚙${b}`, 'g', 4); g.snd?.finish?.();
+      g.storyHit?.('siege');
+      for (const z of mine) { z.keep = false; z.ev = null; z.tgt = null; }
+    }
+  }
+  hitTarget(tgt, dmg, g) {
+    if (this.done) return;
+    this.gate -= dmg;
+    if (this.gate <= 0 && !this.sp.wrecked) {
+      this.gate = this.gateMax * 0.5;
+      this.sp.wrecked = true; this.sp.wreckT = 120;
+      g.banner('THE DOORS ARE DOWN', 'THE SPIRE HAS NO POWER FOR 2 MINUTES · KEEP KILLING', 'bad', 3); g.snd?.fail?.();
+    }
+  }
+  marker() { return { p: [this.x, this.sp.pos[1] + 12, this.z], col: '#ff3a3a', icon: '⚔', text: `THE SIEGE · WAVE ${this.wave}/${this.waves}`, sub: `DOORS ${Math.ceil((this.gate / this.gateMax) * 100)}% · ${(this.alive || 0) + this.toSpawn} LEFT`, story: true, horde: true, r: 60 }; }
+  net() { return { k: 'siege', x: this.x, z: this.z, w: this.wave }; }
+}
+
+// THE GREAT HORDE: every zombie for miles, walking on the city. It's a horde, but enormous.
+export class GreatHorde extends HordeEv {
+  constructor(town, x, z, n) { super(town, x, z, n); this.great = true; this.spd = 1.1; }
+  update(dt, g) {
+    const was = this.done;
+    super.update(dt, g);
+    if (!was && this.done && this.n <= Math.max(12, this.start * 0.08)) g.storyHit?.('great');
+  }
+  overrun(g) {
+    // the great horde never really "wins": it hits the city and turns round for another go
+    g.banner('THEY REACHED THE CITY', 'THE HORDE IS REGROUPING · HIT THEM AGAIN', 'r', 3);
+    this.arrived = 0; const a = Math.random() * 6.28; this.x = this.town.x + Math.cos(a) * 900; this.z = this.town.z + Math.sin(a) * 900;
+    for (const z of g.horde.list) if (z.ev === this.id) z.alive = false;
+    this.real = false;
+  }
+  marker() { const m = super.marker(); return { ...m, col: '#b02aff', text: `THE GREAT HORDE · ${this.n}`, story: true }; }
+}
+
 export class Director {
   constructor() { this.list = []; this.newT = 6; }
   clear() { this.list.length = 0; this.newT = 6; }
@@ -361,7 +529,9 @@ export class Director {
   add(g, kind) {
     const H = g.heli.pos, map = g.map;
     let ev = null;
-    const far = g.S && g.S.radio ? (g.S.radio === 2 ? 9000 : 1900) : 1000;
+    // how far you hear calls for help: your radio, plus every mast you've got working
+    const masts = (g.map.masts || []).filter((m) => m.on).length;
+    const far = (g.S && g.S.radio ? (g.S.radio === 2 ? 9000 : 1900) : 1000) * (1 + masts * 0.35);
     if (kind === 'bridge') {
       const used = new Set(this.list.filter((e) => e.br).map((e) => e.br));
       const c = (map.bridges || []).filter((b) => !used.has(b));
@@ -416,14 +586,15 @@ export class Director {
     for (const e of this.list) if (e.done && e.kind === 'outbreak') g.horde.dropField(`ob${e.id}`);
     this.list = this.list.filter((e) => !e.done || (e.kind === 'crate' && e.carried));
     this.newT -= dt;
-    if (this.newT <= 0 && this.list.filter((e) => e.kind !== 'horde').length < 5) {
+    const cap = (g.save && g.save.base && g.save.base.radar ? 7 : 5) + (g.coop ? g.coop.friends.size : 0);
+    if (this.newT <= 0 && this.list.filter((e) => e.kind !== 'horde' && !e.story).length < cap) {
       this.newT = 30 + Math.random() * 20;
       const r = Math.random();
       const has = (k) => this.list.some((e) => e.kind === k);
       this.add(g, r < 0.1 && !this.list.some((e) => e.br) ? 'bridge' : r < 0.2 && !this.list.some((e) => e.crash) ? 'crash' : r < 0.3 && !has('outbreak') ? 'outbreak' : r < 0.4 && !has('convoy') ? 'convoy' : r < 0.78 ? 'rescue' : 'crate');
     }
     this.hordeT = (this.hordeT ?? 200) - dt;
-    if (this.hordeT <= 0 && this.list.filter((e) => e.kind === 'horde').length < 2) { this.hordeT = 200 + Math.random() * 160; this.add(g, 'horde'); }
+    if (this.hordeT <= 0 && this.list.filter((e) => e.kind === 'horde' && !e.story).length < 2) { this.hordeT = 200 + Math.random() * 160; this.add(g, 'horde'); }
   }
   shootables() { return []; }
 }

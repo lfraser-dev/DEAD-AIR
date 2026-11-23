@@ -126,9 +126,31 @@ export const CSS = `
 .da-gunner .da-cross { left: 50% !important; top: 50% !important; }
 .da-teambtn { position: absolute; right: 300px; bottom: 30px; background: rgba(10,12,14,.85); color: #fff; border: 2px solid #ffcf3a; padding: 12px 22px; font: 900 22px var(--font) !important; letter-spacing: .06em; }
 .da-teambtn:hover { background: #ffcf3a; color: #111; }
+.da-spirebtn, .da-netbtn { position: absolute; bottom: 30px; background: rgba(10,12,14,.85); color: #fff; border: 2px solid #5ab4ff; padding: 12px 18px; font: 900 22px var(--font) !important; letter-spacing: .06em; border-radius: 10px; }
+.da-spirebtn { right: 450px; } .da-netbtn { right: 640px; border-color: #7dff9a; }
+.da-spirebtn:hover { background: #5ab4ff; color: #111; } .da-netbtn:hover { background: #7dff9a; color: #111; }
+.da-spirebtn.new::after, .da-netbtn.new::after { content: '!'; position: absolute; top: -9px; right: -9px; background: #ff4a3a; color: #fff; width: 22px; height: 22px; border-radius: 50%; font: 900 15px/22px var(--font); text-align: center; }
+.da-evs .da-story { border-left-color: #ffd23a; background: rgba(30,24,4,.72); padding: 6px 9px; margin-bottom: 6px; }
+.da-evs .da-story b { display: block; color: #ffd23a; font: 900 13px var(--font); letter-spacing: .12em; }
+.da-evs .da-story em { color: #fff; font-size: 12px; } .da-evs .da-story em.ok { color: #7dff9a; text-decoration: line-through; opacity: .75; }
+.da-radio { position: absolute; left: 26px; bottom: 210px; width: min(420px, 40vw); background: rgba(8,14,10,.88); border-left: 5px solid #7dff9a; padding: 10px 14px; font: 600 15px/1.4 var(--font); color: #e8ffe8; transition: opacity .6s; }
+.da-radio b { display: block; font: 900 12px var(--font); letter-spacing: .2em; color: #7dff9a; margin-bottom: 3px; }
+.da-base { display: flex; flex-wrap: wrap; gap: 8px; }
+.da-base button { width: 250px; text-align: left; background: rgba(255,255,255,.07); color: #fff; border: 0; border-left: 4px solid #5ab4ff; padding: 9px 11px; font: 600 13px/1.3 var(--font); }
+.da-base button b { display: block; font: 900 16px var(--font); letter-spacing: .04em; } .da-base button small { display: block; color: #ffcf3a; font: 900 12px var(--font); letter-spacing: .1em; margin-top: 4px; }
+.da-base button.own { border-left-color: #7dff9a; opacity: .7; } .da-base button.lock { opacity: .45; } .da-base button:not(:disabled):hover { background: rgba(90,180,255,.25); }
+.da-chap { background: rgba(255,210,58,.08); border-left: 5px solid #ffd23a; padding: 10px 14px; margin: 6px 0 10px; }
+.da-chap p { font-size: 15px !important; opacity: 1 !important; } .da-chap em { display: block; font: 800 14px var(--font); font-style: normal; letter-spacing: .05em; } .da-chap em.ok { color: #7dff9a; }
+.da-chaps { display: flex; gap: 4px; margin: 6px 0; } .da-chaps i { flex: 1; height: 6px; background: rgba(255,255,255,.15); } .da-chaps i.d { background: #7dff9a; } .da-chaps i.c { background: #ffd23a; }
+.da-srv { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; margin: 6px 0; }
+.da-srv button { display: flex; justify-content: space-between; gap: 10px; text-align: left; background: rgba(255,255,255,.08); color: #fff; border: 0; border-left: 4px solid #7dff9a; padding: 9px 12px; font: 800 16px var(--font); }
+.da-srv button small { color: #aaa; font: 700 13px var(--font); } .da-srv button:hover { background: rgba(125,255,154,.22); }
+.da-seg { display: inline-flex; gap: 4px; margin: 4px 0; } .da-seg button { background: rgba(255,255,255,.08); color: #fff; border: 2px solid transparent; padding: 8px 14px; font: 900 15px var(--font); } .da-seg button.on { border-color: #7dff9a; background: rgba(125,255,154,.18); }
 .da-tbtn { position: absolute; right: 22px; top: 216px; background: rgba(10,12,14,.8); color: #fff; border: 2px solid rgba(255,255,255,.25); padding: 6px 12px; font: 900 14px var(--font) !important; letter-spacing: .1em; pointer-events: auto; }
 .da-tbtn kbd { background: #ffcf3a; color: #111; padding: 0 5px; margin-right: 5px; font: 900 12px var(--font); }
-.da-gunner .da-tbtn { display: none; }
+.da-gunner .da-tbtn, .da-wing .da-tbtn { display: none; }
+@media (max-width: 1250px) { .da-teambtn, .da-spirebtn, .da-netbtn { font-size: 16px !important; padding: 9px 11px; bottom: 34px; } .da-teambtn { right: 250px; } .da-spirebtn { right: 350px; } .da-netbtn { right: 490px; } }
+@media (max-width: 900px) { .da-teambtn, .da-spirebtn, .da-netbtn { bottom: 84px; } .da-teambtn { right: 20px; } .da-spirebtn { right: 120px; } .da-netbtn { right: 260px; } }
 
 /* ---- polish (glass panels, rounded bars, glowing buttons) ---- */
 .da-left { background: linear-gradient(180deg, rgba(10,12,16,.55), rgba(10,12,16,.35)); padding: 10px 14px 12px; border-radius: 10px; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.08); }

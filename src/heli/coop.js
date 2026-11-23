@@ -6,6 +6,11 @@
 // kills, messages) as they happen. Friends send back where they're aiming and whether they're firing; the pilot's
 // game fires their gun for them. Same city on both sides (it's built from a fixed seed), so it never has to be sent.
 //
+// SERVERS: a pilot can make a server with a name. Public servers show up in the list on the JOIN screen (each one is a
+// small retained message on the relay that the host keeps fresh); private ones only work with the code.
+// Friends can either ride in the doors, or fly their own helicopter alongside (a WINGMAN): their game flies it, the
+// pilot's game runs the zombies and decides what their bullets hit.
+//
 // Messages go through a public MQTT server over a secure WebSocket (works on school and phone networks), the same
 // way The Semi-Finals does online. `?net=local` uses a BroadcastChannel instead, for testing in two tabs.
 const MQTTJS = 'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js';
@@ -56,6 +61,12 @@ const parse = (buf) => { try { return JSON.parse(buf.toString()); } catch { retu
 class RelayTransport {
   constructor() { this.id = rid(); this.peers = new Map(); }
   pub(topic, obj, retain = false) { try { this.c?.publish(TOPIC + this.code + topic, JSON.stringify(obj), { qos: 0, retain }); } catch { /* ignore */ } }
+  // keep this server in the public list (or take it out)
+  advertise(info) {
+    this.info = info;
+    if (!this.c) return;
+    try { this.c.publish(TOPIC + 'lobby/' + this.code, info && info.pub ? JSON.stringify({ ...info, code: this.code, t: Date.now() }) : '', { qos: 0, retain: true }); } catch { /* ignore */ }
+  }
   async listen(code) {
     const mqtt = await loadMQTT();
     this.code = code;
@@ -74,8 +85,10 @@ class RelayTransport {
       else if (m.kind === 'ping') { /* keep-alive */ }
       else if (known) this.onData?.(m.from, m.msg);
     });
+    let adv = 0;
     const beat = () => {
       this.pub('/beacon', { t: Date.now() }, true);
+      if (this.info && (adv++ % 2 === 0)) this.advertise(this.info);
       for (const [p, t] of this.peers) { this.pub('/c/' + p, { kind: 'ping', from: 'host' }); if (Date.now() - t > 9000) { this.peers.delete(p); this.onLeave?.(p); } }
     };
     beat();
@@ -137,7 +150,7 @@ class RelayTransport {
     if (this.c) {
       try {
         if (this.lastHost) this.pub('/h', { kind: 'bye', from: this.id });
-        else { for (const p of this.peers.keys()) this.pub('/c/' + p, { kind: 'bye', from: 'host' }); this.c.publish(TOPIC + this.code + '/beacon', '', { retain: true }); }
+        else { for (const p of this.peers.keys()) this.pub('/c/' + p, { kind: 'bye', from: 'host' }); this.c.publish(TOPIC + this.code + '/beacon', '', { retain: true }); this.c.publish(TOPIC + 'lobby/' + this.code, '', { retain: true }); }
       } catch { /* ignore */ }
       const c = this.c;
       setTimeout(() => { try { c.end(true); } catch { /* ignore */ } }, 300);
@@ -148,7 +161,14 @@ class RelayTransport {
 
 class LocalTransport {
   constructor() { this.id = rid(); this.peers = new Set(); }
+  advertise(info) {
+    this.info = info;
+    clearInterval(this.advT);
+    const post = () => { try { new BroadcastChannel('da-lobby').postMessage(this.info && this.info.pub ? { ...this.info, code: this.code, t: Date.now() } : { code: this.code, gone: true }); } catch { /* ignore */ } };
+    post(); this.advT = setInterval(post, 1000);
+  }
   async listen(code) {
+    this.code = code;
     this.ch = new BroadcastChannel('da-' + code);
     this.ch.onmessage = ({ data: m }) => {
       if (m.to !== this.id && m.to !== 'host') return;
@@ -175,6 +195,8 @@ class LocalTransport {
   send(msg) { this.ch?.postMessage({ to: this.hostId || 'host', from: this.id, msg }); }
   kick(id) { this.ch?.postMessage({ to: id, kind: 'bye', from: this.id }); this.peers.delete(id); }
   close() {
+    clearInterval(this.advT);
+    if (this.info) try { new BroadcastChannel('da-lobby').postMessage({ code: this.code, gone: true }); } catch { /* ignore */ }
     if (this.ch) {
       if (this.hostId) this.ch.postMessage({ to: this.hostId, kind: 'bye', from: this.id });
       else for (const p of this.peers) this.ch.postMessage({ to: p, kind: 'bye', from: this.id });
@@ -182,6 +204,35 @@ class LocalTransport {
     }
     this.ch = null;
   }
+}
+
+// the public server list: calls back with the servers it can see (newest first) until you call the stop function
+export function listServers(onList) {
+  const seen = new Map();
+  const emit = () => onList([...seen.values()].filter((v) => Date.now() - v.t < 30000 && Math.abs(Date.now() - v.t) < 5 * 60000).sort((a, b) => b.t - a.t));
+  const take = (v) => {
+    if (!v || !v.code) return;
+    if (v.gone || !v.name) { seen.delete(v.code); emit(); return; }
+    const clean = { code: String(v.code).slice(0, 5).toUpperCase(), name: String(v.name).replace(/[^A-Za-z0-9 '!?-]/g, '').slice(0, 22) || 'SERVER', host: String(v.host || '').replace(/[^A-Za-z0-9 ]/g, '').slice(0, 12), n: Math.max(0, Math.min(9, +v.n || 0)), max: Math.max(1, Math.min(9, +v.max || 5)), ch: Math.max(0, Math.min(9, +v.ch || 0)), world: +v.world || 0, t: Math.min(Date.now(), +v.t || 0) };
+    seen.set(clean.code, clean); emit();
+  };
+  const tick = setInterval(emit, 3000);
+  if (new URLSearchParams(location.search).get('net') === 'local') {
+    const ch = new BroadcastChannel('da-lobby');
+    ch.onmessage = ({ data }) => take(data);
+    return () => { clearInterval(tick); ch.close(); };
+  }
+  const clients = [];
+  let stopped = false;
+  loadMQTT().then((mqtt) => {
+    for (const b of BROKERS) openBroker(mqtt, b, rid()).then((c) => {
+      if (stopped) { c.end(true); return; }
+      clients.push(c);
+      c.subscribe(TOPIC + 'lobby/+');
+      c.on('message', (topic, buf) => { const code = topic.split('/').pop(); if (!buf || !buf.length) { seen.delete(code); emit(); return; } take(parse(buf)); });
+    }, () => {});
+  }, () => onList(null));
+  return () => { stopped = true; clearInterval(tick); for (const c of clients) { try { c.end(true); } catch { /* ignore */ } } };
 }
 
 export const makeTransport = () => (new URLSearchParams(location.search).get('net') === 'local' ? new LocalTransport() : new RelayTransport());

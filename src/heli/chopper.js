@@ -175,7 +175,7 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     B([0, -0.05, 7.7], [0.08, 0.45, 0.35], GUNM, { r: [0.5, 0, 0], mat: 'metal' });                          // tail skid
     for (const x of [-0.42, 0.42]) B([x, 1.615, 0.95], [0.5, 0.01, 0.3], [0.85, 0.85, 0.8], { alpha: 0.6, shape: undefined }); // NO STEP
     // nav lights: red on the left, green on the right, a white strobe on the tail
-    const wings = eq.rockets || eq.bombs || eq.fuel === 2, wingX = wings ? (eq.racks ? 2.75 : 2.35) : 1.2;
+    const wings = eq.rockets || eq.bombs || eq.fuel === 2 || eq.pods, wingX = wings ? (eq.racks ? 2.75 : 2.35) : 1.2;
     B([-wingX, -0.33, 0.5], [0.12, 0.12, 0.12], [1, 0.1, 0.05], { em: 1, shape: 'sphere' });
     B([wingX, -0.33, 0.5], [0.12, 0.12, 0.12], [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
     B([0, 2.45, 8.25], [0.12, 0.12, 0.12], [1, 1, 1], { em: (st.t * 1.2) % 1 < 0.08 ? 1 : 0.1, shape: 'sphere' });
@@ -439,6 +439,33 @@ export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
     B([x, y + 0.45, z], [0.26, 0.28, 0.26], SKIN[i % SKIN.length], { shape: 'sphere', mat: 'skin' });
   }
 
+  // ---- gun pods under the wings: a fat pod, a fairing and a barrel; they flash when they fire
+  if (eq.pods) {
+    const px = eq.rockets || eq.bombs ? 2.7 : 1.8;
+    for (const x of [-px, px]) {
+      const big = eq.pods === 2;
+      add('rockets', [x, -0.4, 0.2], [0, 0, 0], [0.1, 0.24, 0.9], GUNM, { mat: 'metal', shape: 0.02 });
+      add('rockets', [x, -0.74, 0.25], [0, 0, 0], [0.42, 0.46, 2.1], big ? [0.3, 0.32, 0.26] : GUNM, { mat: 'metal', shape: 'cyl' });
+      add('rockets', [x, -0.74, -0.85], [0, 0, 0], [0.36, 0.4, 0.3], DARK, { shape: 'sphere', mat: 'metal' });
+      add('rockets', [x, -0.74, -1.45], [0, 0, 0], [big ? 0.14 : 0.09, big ? 0.14 : 0.09, 1.1], STEEL, { mat: 'steel', shape: 'cyl' });
+      if (big) add('rockets', [x, -0.74, -1.95], [0, 0, 0], [0.2, 0.2, 0.22], GUNM, { mat: 'metal', shape: 'cyl' });       // muzzle brake
+      add('rockets', [x + 0.22, -0.74, 0.6], [0, 0, 0], [0.04, 0.18, 0.5], [0.85, 0.7, 0.15], {});                      // ammo feed cover
+      if (st.podFlash > 0 && (st.podSide == null || Math.sign(st.podSide) === Math.sign(x))) add('rockets', [x, -0.74, -2.25], [0, 0, st.t * 40], [0.4, 0.4, 0.55], [1, 0.75, 0.35], { em: 1, shape: 'sphere', alpha: 0.85 });
+    }
+  }
+  // ---- the marksman: kneeling in the back of the left door with a long scoped rifle
+  if (eq.sniper) {
+    const ex = -0.75, aim = st.snipeAim;
+    add('door', [ex, -0.55, 1.45], [0, 0, 0], [0.5, 0.45, 0.55], [0.28, 0.3, 0.22], { mat: 'cloth', shape: 0.1 });
+    add('door', [ex, -0.05, 1.45], [0, 0, 0], [0.44, 0.55, 0.36], [0.3, 0.33, 0.24], { mat: 'cloth', shape: 0.1 });
+    add('door', [ex, 0.42, 1.45], [0, 0, 0], [0.3, 0.32, 0.3], [0.86, 0.68, 0.55], { mat: 'skin', shape: 'sphere' });
+    add('door', [ex, 0.53, 1.45], [0, 0, 0], [0.36, 0.2, 0.38], [0.24, 0.27, 0.2], { shape: 'sphere' });
+    const yw = aim ? aim[0] : Math.PI / 2, pt = aim ? aim[1] : -0.15, d = [-Math.sin(yw) * Math.cos(pt), Math.sin(pt), -Math.cos(yw) * Math.cos(pt)];
+    const L = eq.sniper === 2 ? 1.7 : 1.3;
+    add('door', [ex - 0.25 + d[0] * L * 0.5, 0.25 + d[1] * L * 0.5, 1.45 + d[2] * L * 0.5], [pt, yw, 0], [0.07, 0.09, L], GUNM, { mat: 'metal', shape: 0.02 });
+    add('door', [ex - 0.25 + d[0] * L * 0.35, 0.36 + d[1] * L * 0.35, 1.45 + d[2] * L * 0.35], [pt, yw, 0], [0.07, 0.07, 0.4], DARK, { mat: 'metal', shape: 'cyl' });   // the scope
+    if (st.snipeFlash > 0) add(null, [ex - 0.25 + d[0] * (L + 0.2), 0.25 + d[1] * (L + 0.2), 1.45 + d[2] * (L + 0.2)], [0, 0, 0], [0.35, 0.35, 0.35], [1, 0.85, 0.5], { em: 1, shape: 'sphere', alpha: 0.85 });
+  }
   // ---- door gunners (they turn their guns to shoot)
   for (let sd = 0; sd < 2; sd++) {
     const friend = st.doorFriend && st.doorFriend[sd];

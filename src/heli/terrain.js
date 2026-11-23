@@ -8,7 +8,7 @@
 // helicopter, bullets, debris, the camera) gets the hills and the forests too.
 import { World } from '../world.js';
 
-export const HALF = 3200, CELL = 4, N = HALF * 2 / CELL + 1, WATER = 0;
+export const HALF = 4800, CELL = 4, N = HALF * 2 / CELL + 1, WATER = 0;
 export const CH = 128;                       // mesh chunk size (32 cells)
 const TILE = 16, NT = Math.ceil(N / TILE);   // generation tiles (64 m)
 

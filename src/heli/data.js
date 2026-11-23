@@ -138,6 +138,16 @@ export const SLOTS = [
     { n: 'NONE', cost: 0, d: 'When it\'s going down, it\'s going down.' },
     { n: 'ENGINE EXTINGUISHERS', cost: 1500, d: 'Once a sortie, a hit that would have brought you down puts the fire out instead: you keep flying on 20% health.' },
   ] },
+  { id: 'pods', name: 'GUN PODS', icon: '⁑', tiers: [
+    { n: 'NONE', cost: 0, d: 'Nothing on the wings but what you fit there.' },
+    { n: '.50 CAL PODS', cost: 1400, d: 'Two HMP-400 heavy machine gun pods on the wings. They fire with the nose gun.' },
+    { n: '20 MM CANNON PODS', cost: 3200, d: 'Two 20 mm cannon pods: slower, but every shell bursts. They fire with the nose gun.' },
+  ] },
+  { id: 'sniper', name: 'MARKSMAN', icon: '⌕', tiers: [
+    { n: 'NONE', cost: 0, d: 'Nobody aiming carefully.' },
+    { n: 'DESIGNATED MARKSMAN', cost: 1600, d: 'A sharpshooter in the cabin with a scoped rifle: picks off screamers and riot police first, one shot every second and a half.' },
+    { n: 'ANTI-MATERIEL RIFLE', cost: 3600, d: 'A .50 calibre rifle: one shot drops a brute, and it goes through riot armour and the one behind.' },
+  ] },
   { id: 'racks', name: 'WEAPON RACKS', icon: '☰', tiers: [
     { n: 'NONE', cost: 0, d: 'Standard load.' },
     { n: 'EXTRA RACKS', cost: 900, d: 'Bigger ammo racks: +50% rockets and 2 more bombs.' },
@@ -151,15 +161,15 @@ export const HELIS = {
   warhorse: { n: 'WARHORSE', cost: 0, d: 'The all-rounder. Good guns, room for your team, takes a beating. Fits every upgrade.', seats: [4, 8, 12, 16],
     hp: 1, mass: 1, lift: 1, speed: 1, agility: 1, fuel: 1, cap: {} },
   hornet: { n: 'HORNET', cost: 1500, d: 'A tiny, fast scout. Darts between skyscrapers and turns on a coin. Two inside, two on the benches outside. Paper-thin.', seats: [4, 6],
-    hp: 0.6, mass: 0.72, lift: 1.06, speed: 1.3, agility: 1.65, fuel: 0.85, cap: { gun: 2, rockets: 2, bombs: 1, armor: 1, cabin: 1, fuel: 1, winch: 1, medbay: 0, drops: 1, engine: 3, speaker: 1 } },
+    hp: 0.6, mass: 0.72, lift: 1.06, speed: 1.3, agility: 1.65, fuel: 0.85, cap: { gun: 2, rockets: 2, bombs: 1, armor: 1, cabin: 1, fuel: 1, winch: 1, medbay: 0, drops: 1, engine: 3, speaker: 1, pods: 1, sniper: 1 } },
   reaper: { n: 'REAPER', cost: 4500, d: 'A gunship. Its chin gun hits 30% harder, its four pylons carry 50% more rockets, and it\'s armoured like a tank. Two seats only.', seats: [2],
-    hp: 1.75, mass: 1.2, lift: 1.28, speed: 1.14, agility: 1.08, fuel: 1, gunMul: 1.3, rocketMul: 1.5, cap: { cabin: 0, door: 0, winch: 0, medbay: 0 } },
+    hp: 1.75, mass: 1.2, lift: 1.28, speed: 1.14, agility: 1.08, fuel: 1, gunMul: 1.3, rocketMul: 1.5, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0 } },
   viper: { n: 'VIPER', cost: 3000, d: 'A slim two-seat attack helicopter: the fastest thing in the sky, a chin gun 15% harder and 25% more rockets. Not much armour, no cabin.', seats: [2],
-    hp: 0.9, mass: 0.85, lift: 1.12, speed: 1.4, agility: 1.4, fuel: 0.95, gunMul: 1.15, rocketMul: 1.25, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, drops: 1 } },
+    hp: 0.9, mass: 0.85, lift: 1.12, speed: 1.4, agility: 1.4, fuel: 0.95, gunMul: 1.15, rocketMul: 1.25, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, drops: 1, sniper: 0 } },
   kestrel: { n: 'KESTREL', cost: 6500, d: 'A big three-engine utility helicopter: 12 to 24 seats, a quick cruise, tough as anything, and room for nearly every upgrade.', seats: [12, 16, 20, 24],
     hp: 1.45, mass: 1.35, lift: 1.42, speed: 1.08, agility: 0.8, fuel: 1.5, cap: { gun: 3 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
-    hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0 } },
+    hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0, pods: 0 } },
 };
 export const HELI_IDS = Object.keys(HELIS);
 // the upgrades that actually fit this helicopter
@@ -208,6 +218,43 @@ export const TAILART = [
   { id: 'number', n: 'TAIL NUMBER', cost: 200, d: 'Your number on both sides. Click it again for a new one.' },
 ];
 
+// THE SPIRE: what you build at the base. Each tier needs scrap AND enough people living there (everyone you rescue
+// moves in). The people are what make the place work: they scavenge, so the more there are, the more scrap comes in.
+export const BASE = [
+  { id: 'bunks', name: 'BUNKS', icon: '⌂', tiers: [
+    { n: 'CAMP BEDS', cost: 0, pop: 0, d: 'Room for 40 people. Everyone over that just sleeps on the floor and doesn\'t help.' },
+    { n: 'BARRACKS FLOORS', cost: 1200, pop: 25, d: 'Three floors turned into dorms: room for 150.' },
+    { n: 'THE WHOLE TOWER', cost: 3500, pop: 90, d: 'Every floor fitted out: room for 500.' },
+  ] },
+  { id: 'guns', name: 'DEFENCE GUNS', icon: '⌖', tiers: [
+    { n: 'TWIN .50 CALS', cost: 0, pop: 0, d: 'Heavy machine guns on the corners of the flight deck.' },
+    { n: 'BOFORS 40 MM', cost: 2500, pop: 30, d: 'Old anti-aircraft guns: explosive shells that blow piles apart.' },
+    { n: 'PHALANX CIWS', cost: 6000, pop: 120, d: 'A navy close-in weapon system on every corner: 75 shots a second. Nothing gets near the Spire.' },
+  ] },
+  { id: 'depot', name: 'FUEL DEPOT', icon: '⛽', tiers: [
+    { n: 'JERRY CANS', cost: 0, pop: 0, d: 'Fuel by hand.' },
+    { n: 'FUEL BOWSER', cost: 1500, pop: 20, d: 'Refuel twice as fast, and fuel drops (G) cost ⚙60 and bring twice as much.' },
+    { n: 'TANK FARM', cost: 4000, pop: 70, d: 'Big tanks and pumps: refuelling, repairs and rearming are instant, and fuel drops are free.' },
+  ] },
+  { id: 'works', name: 'WORKSHOP', icon: '⚒', tiers: [
+    { n: 'TOOLBOX', cost: 0, pop: 0, d: 'A spanner and some tape.' },
+    { n: 'WORKSHOP', cost: 2000, pop: 35, d: 'Mechanics among the survivors: every helicopter upgrade costs 10% less.' },
+    { n: 'MACHINE SHOP', cost: 5000, pop: 110, d: 'Lathes, welders, a whole crew: upgrades cost 20% less and helicopters 15% less.' },
+  ] },
+  { id: 'clinic', name: 'CLINIC', icon: '✚', tiers: [
+    { n: 'FIRST AID', cost: 0, pop: 0, d: 'Plasters.' },
+    { n: 'CLINIC', cost: 1500, pop: 25, d: 'A doctor and nurses: your team gets +25 max health.' },
+    { n: 'FIELD HOSPITAL', cost: 4000, pop: 80, d: 'A proper ward: +50 max health, and recruiting is free (they train the volunteers).' },
+  ] },
+  { id: 'radar', name: 'RADAR ROOM', icon: '◎', tiers: [
+    { n: 'BINOCULARS', cost: 0, pop: 0, d: 'Someone on the roof with binoculars.' },
+    { n: 'RADAR ROOM', cost: 2200, pop: 40, d: 'Hordes show on your map wherever they are, and more calls for help come in at once.' },
+  ] },
+];
+export const BASE_SLOT = Object.fromEntries(BASE.map((s) => [s.id, s]));
+export const BEDS = [40, 150, 500];
+export function baseCut(save, heli) { const w = (save.base && save.base.works) || 0; return heli ? [1, 1, 0.85][w] : [1, 0.9, 0.8][w]; }
+
 const KEY = 'semifinals.deadair';
 export function loadSave() {
   const s = { scrap: 0, own: {}, eq: {}, paints: ['olive', 'night'], paint: 'olive', camos: ['none'], camo: 'none', noses: ['none'], nose: 'none', tails: ['none'], tailArt: 'none', num: 10 + Math.floor(Math.random() * 90), flight: 'easy', invert: false, sens: 1, best: 0, runs: 0, titans: 0, rescued: 0, crew: [], pool: [], events: 0, name: '' };
@@ -229,6 +276,8 @@ export function loadSave() {
   for (const k of Object.keys(s.eq)) if (!SLOTS.some((sl) => sl.id === k)) { delete s.eq[k]; delete s.own[k]; }
   s.team = s.team || []; s.stash = s.stash || { medkit: 2, pistol: 0, smg: 0, shotgun: 0, rifle: 0, vest: 0, heavy: 0, pack: 0, grenade: 0 };
   if (s.seed == null) s.seed = 0;
+  s.base = Object.assign({ bunks: 0, guns: 0, depot: 0, works: 0, clinic: 0, radar: 0 }, s.base || {});
+  s.story = Object.assign({ ch: 0, prog: {}, masts: [], fort: false, seen: -1, done: false }, s.story || {});
   s.helis = s.helis || ['warhorse']; if (!HELIS[s.heli] || !s.helis.includes(s.heli)) s.heli = 'warhorse';
   if (s.refundPending) { delete s.refundPending; saveSave(s); }
   return s;
@@ -266,6 +315,7 @@ export function statsFor(eq0, kind = 'warhorse') {
     light: v('light', 2), medbay: v('medbay', 2), drops: v('drops', 2), radio: v('radio', 2),
     nvg: v('nvg', 1), racks: v('racks', 2), drones: v('drone', 3), ammo: v('ammo', 2), repair: v('repair', 2), suppress: v('suppress', 1), flares: [0, 4, 8][fl], megaFlare: fl === 2, beacons: [0, 3, 5][bc], beaconBoom: bc === 2,
     crewMax: [2, 3, 4, 4][v('cabin', 3)],
+    pods: v('pods', 2), sniper: v('sniper', 2),
   };
   // the airframe
   S.hp = Math.round(S.hp * HK.hp); S.mass *= HK.mass; S.lift *= HK.lift; S.speed *= HK.speed; S.agility *= HK.agility;
@@ -281,7 +331,7 @@ export function bars(eq, kind) {
   const s = statsFor(eq, kind), gun = s.gun.rate * s.gun.dmg * (s.gun.splash ? 2.2 : 1);
   return [
     ['ARMOUR', Math.min(1, s.hp / 3600)],
-    ['FIREPOWER', Math.min(1, (gun + s.rockets * s.rocketDmg / 12 + s.gunners * 150 * (s.doorMini ? 2 : 1) + s.bombs * 60) / 1900)],
+    ['FIREPOWER', Math.min(1, (gun + s.rockets * s.rocketDmg / 12 + s.gunners * 150 * (s.doorMini ? 2 : 1) + s.bombs * 60 + [0, 600, 700][s.pods] + [0, 90, 330][s.sniper]) / 2200)],
     ['FUEL', Math.min(1, s.fuel / 460)],
     ['SEATS', Math.min(1, s.seats / 40)],
   ];

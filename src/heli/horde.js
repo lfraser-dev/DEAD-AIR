@@ -25,7 +25,7 @@ export const TYPES = {
   riot: { hp: 110, spd: [1.7, 2.5], s: 1.0, scrap: 8 },           // riot police: helmet and vest shrug off bullets (explosives work)
 };
 // what turns up: mostly walkers, more runners at night and later on, the odd special
-const SMALL_ARMS = new Set(['gun', 'door', 'turret', 'team', 'tail', 'drone']);
+const SMALL_ARMS = new Set(['gun', 'door', 'turret', 'team', 'tail', 'drone', 'pod']);
 export function pickType(night = 0, t = 0, city = false) {
   const r = Math.random() * 100;
   const tab = [['runner', 9 + night * 14 + Math.min(8, t / 300)], ['crawler', 7], ['screamer', t > 60 ? 3 : 1], ['brute', t > 45 ? 2.2 : 0.4], ['bloater', 4], ['riot', city ? 6 : 2]];
@@ -253,7 +253,8 @@ export class Horde {
         if (z.y < WATER - 30) z.alive = false;
       }
     }
-    for (const z of L) if (z.alive && !z.keep && z.st !== 'grab' && Math.abs(z.x - hp[0]) + Math.abs(z.z - hp[2]) > 760) z.alive = false;
+    const oth = g.others || [];
+    for (const z of L) if (z.alive && !z.keep && z.st !== 'grab' && Math.abs(z.x - hp[0]) + Math.abs(z.z - hp[2]) > 760 && oth.every((o) => Math.abs(z.x - o[0]) + Math.abs(z.z - o[2]) > 760)) z.alive = false;
     let w = 0;
     for (let i = 0; i < L.length; i++) if (L[i].alive) L[w++] = L[i]; else if (L[i].pile) this.leavePile(L[i]);
     L.length = w;
