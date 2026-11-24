@@ -769,7 +769,7 @@ export class HeliGame {
       this.syncVats();
       this.story.ensure(this);
       this.incomeT = 0;
-      this.banner('DEAD AIR', this.story.done ? 'THE SPIRE · FREE FLIGHT · HELP WHO YOU CAN' : `THE SPIRE · CHAPTER ${this.save.story.ch + 1}: ${CHAPTERS[this.save.story.ch].n}`, '', 3);
+      this.banner('DEAD AIR', this.story.done ? `THE SPIRE · SPECIAL OPS · THREAT LEVEL ${this.story.ops.lvl}` : `THE SPIRE · CHAPTER ${this.save.story.ch + 1}: ${CHAPTERS[this.save.story.ch].n}`, '', 3);
       for (const m of this.save.team) { m.raid = false; }
       this.help(true);
       // brand new pilots (or anyone who asked for it in the hangar) get the guided first flight
@@ -2422,7 +2422,7 @@ export class HeliGame {
     const ch = CHAPTERS[st.ch];
     const story = new Story(s, this.map);
     const chap = ch ? `<div class="da-chap"><b style="color:#ffd23a;font:900 14px var(--font);letter-spacing:.15em">CHAPTER ${st.ch + 1} OF ${CHAPTERS.length} · ${ch.n}</b><p>"${ch.brief}"</p>${ch.goals.map((g) => { const h = Math.min(g.n, story.have(g)); return `<em class="${h >= g.n ? 'ok' : ''}">${h >= g.n ? '✔' : '▸'} ${g.t}${g.n > 1 ? ` · ${h}/${g.n}` : ''}</em>`; }).join('')}<p style="color:#ffcf3a">REWARD ⚙${ch.reward.toLocaleString('en-GB')}</p></div>`
-      : `<div class="da-chap"><b style="color:#7dff9a;font:900 14px var(--font);letter-spacing:.15em">THE STORY IS DONE · FREE FLIGHT</b><p>"The Spire's safe and the radio never stops. Keep flying."</p></div>`;
+      : `<div class="da-chap"><b style="color:#7dff9a;font:900 14px var(--font);letter-spacing:.15em">THE STORY IS DONE · SPECIAL OPS</b><p>"The big jobs keep coming, pilot, and they keep getting bigger. Every three you finish, the threat level goes up, and so does the pay."</p><em class="ok">THREAT LEVEL ${story.ops.lvl}</em><em>${story.ops.n} SPECIAL OPS DONE · NEXT LEVEL AT ${Math.ceil((story.ops.n + 1) / 3) * 3}</em><p style="color:#ffcf3a">EACH OP PAYS ⚙${story.opPay(story.ops.lvl).toLocaleString('en-GB')}</p></div>`;
     const bars = CHAPTERS.map((_, i) => `<i class="${i < st.ch ? 'd' : i === st.ch ? 'c' : ''}"></i>`).join('');
     const atBase = this.mode === 'hangar' || (this.atFob && this.mode === 'fly');
     const ups = BASE.map((b) => {

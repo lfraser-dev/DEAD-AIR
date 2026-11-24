@@ -630,20 +630,20 @@ export class BossEv extends Ev {
 // HALDEN BIOLAB (story): clear the dead out of the compound, then a survivor shows herself on the office roof
 // COUNTDOWN (story): the army is going to firebomb a town in seven minutes. Get everyone off its roofs first.
 export class CountdownEv extends Ev {
-  static make(g) {
+  static make(g, lvl = 1) {
     const H = g.heli.pos, M = g.map;
     // a city that isn't ours: the small cities and the Borough, with a few roofs low enough to land on
     const towns = (M.cities || []).filter((t) => t.kind !== 'city').map((t) => ({ x: t.x, z: t.z, y: t.y, r: Math.min(t.r || 230, 260), name: t.name || 'THE BOROUGH' }))
       .map((t) => [t, M.roofs.filter((r) => !r.loot && r.h < 40 && Math.hypot(r.x - t.x, r.z - t.z) < t.r)]).filter((q) => q[1].length >= 4);
     if (!towns.length) return null;
     const [t, roofs] = towns[Math.floor(Math.random() * towns.length)];
-    return new CountdownEv(g, t, roofs.sort(() => Math.random() - 0.5).slice(0, 5));
+    return new CountdownEv(g, t, roofs.sort(() => Math.random() - 0.5).slice(0, Math.min(roofs.length, 4 + lvl)), lvl);
   }
-  constructor(g, town, roofs) {
+  constructor(g, town, roofs, lvl = 1) {
     super('countdown', 'COUNTDOWN', town.x, town.z); this.town = town; this.story = true;
-    this.t = 420; this.phase = 'run'; this.bombT = 0; this.warn = 0;
+    this.t = Math.max(240, 420 - (lvl - 1) * 30); this.phase = 'run'; this.bombT = 0; this.warn = 0;
     this.resc = roofs.map((r) => { const e = new Rescue(r); e.story = true; e.roof.count = e.roof.start = 2 + Math.floor(Math.random() * 3); g.director.list.push(e); return e; });
-    g.banner(`${town.name} · 7:00`, 'THE BOMBERS ARE COMING · GET THEM OFF THE ROOFS', 'r', 4);
+    g.banner(`${town.name} · ${Math.floor(this.t / 60)}:${String(this.t % 60).padStart(2, '0')}`, 'THE BOMBERS ARE COMING · GET THEM OFF THE ROOFS', 'r', 4);
   }
   left() { return this.resc.reduce((a, e) => a + Math.max(0, e.roof.count), 0); }
   update(dt, g) {
@@ -688,7 +688,7 @@ export class CountdownEv extends Ev {
 // THE PIED PIPER (story): a huge horde in the hills. Fly low over it and your speaker plays: they follow you.
 // Lead most of them into the army's target zone and the artillery wipes them out.
 export class PiperEv extends Ev {
-  static make(g) {
+  static make(g, lvl = 1) {
     const sp = g.map.spire.pos;
     for (let k = 0; k < 60; k++) {
       const a = Math.random() * 6.28, d = 1500 + Math.random() * 1200, x = sp[0] + Math.cos(a) * d, z = sp[2] + Math.sin(a) * d;
@@ -697,7 +697,7 @@ export class PiperEv extends Ev {
       const tx = x + Math.cos(a) * 380, tz = z + Math.sin(a) * 380;
       let ok = !g.horde.blockedAt(tx, tz);
       for (let i = 1; i < 10 && ok; i++) if (g.horde.blockedAt(x + (tx - x) * i / 10, z + (tz - z) * i / 10)) ok = false;
-      if (ok) return new PiperEv(x, z, tx, tz);
+      if (ok) { const e = new PiperEv(x, z, tx, tz); e.size = Math.min(320, 160 + 40 * (lvl - 1)); return e; }
     }
     return null;
   }
@@ -707,7 +707,7 @@ export class PiperEv extends Ev {
     const H = g.heli; if (!H) return;
     if (this.phase === 'wait') {
       if (this.dist(g) > 900) return;
-      for (let k = 0; k < 160; k++) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * 45, x = this.x + Math.cos(a) * r, z = this.z + Math.sin(a) * r; if (g.horde.blockedAt(x, z)) continue; const zb = g.horde.spawn(k % 5 < 3 ? 'runner' : 'walker', x, z); zb.ev = this.id; zb.keep = true; this.n0++; }
+      for (let k = 0; k < (this.size || 160); k++) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * 55, x = this.x + Math.cos(a) * r, z = this.z + Math.sin(a) * r; if (g.horde.blockedAt(x, z)) continue; const zb = g.horde.spawn(k % 5 < 3 ? 'runner' : 'walker', x, z); zb.ev = this.id; zb.keep = true; this.n0++; }
       this.phase = 'lead';
       g.radio?.('There they are. Get down low over them, pilot, and the speaker will kick in. Then fly slowly to the red zone. Not too fast, or they will lose you.', 8);
       return;

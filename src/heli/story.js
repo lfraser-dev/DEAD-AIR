@@ -44,6 +44,7 @@ export const CHAPTERS = [
     goals: [{ k: 'piper', n: 1, t: 'LEAD THE HORDE INTO THE ARTILLERY ZONE' }] },
 ];
 export const ENDING = "Direct hit... the whole horde, gone in one go. The army says they have never seen anything like it. The roads are open, the towns are filling up again, and the radio is full of people laughing. The dead don't own this country any more. We do. Thank you, pilot. Keep flying.";
+const OPNAME = { countdown: 'COUNTDOWN', piper: 'THE PIED PIPER', great: 'THE GREAT HORDE', evac: "ST MARY'S EVACUATION" };
 const ENDING1 = "That's it. They're broken. The Spire's safe, Fort Calder's running, and the radio hasn't stopped: people coming in from everywhere. You did that. There are always more of them out there, though. Keep flying.";
 
 export class Story {
@@ -60,6 +61,7 @@ export class Story {
   }
   // something happened in the world that a goal might want
   hit(game, k, v = 1) {
+    if (this.done && OPNAME[k]) { this.opDone(game, k); return; }
     if (k === 'mast') { if (!this.s.masts.includes(v)) this.s.masts.push(v); }
     else if (k === 'fort') this.s.fort = true;
     const ch = this.ch;
@@ -105,17 +107,57 @@ export class Story {
     if (want('countdown') && !has('countdown')) { const e = CountdownEv.make(game); if (e) D.list.push(e); }
     if (want('piper') && !has('piper')) { const e = PiperEv.make(game); if (e) D.list.push(e); }
     if (want('evac') && map.hospital && !has('evac')) { const e = new Evac(map.hospital); e.story = true; D.list.push(e); }
-    if (want('great') && !has('great')) {
-      const B = map.boro, town = { x: B.x, z: B.z, r: 260, name: 'THE BOROUGH', y: 10 };
-      let x = 0, z = 0;
-      for (let t = 0; t < 30; t++) { const a = Math.random() * 6.28; x = B.x + Math.cos(a) * 2200; z = B.z + Math.sin(a) * 2200; if (Math.abs(x) < 5400 && Math.abs(z) < 5400 && !game.horde.blockedAt(x, z)) break; }
-      const e = new GreatHorde(town, x, z, 1500); e.story = true; D.list.push(e);
-      game.feed('RADIO: THE GREAT HORDE IS ON THE MOVE · HEADING FOR THE BOROUGH', 'r');
-    }
+    if (want('great') && !has('great')) { D.list.push(this.great(game, 1500)); game.feed('RADIO: THE GREAT HORDE IS ON THE MOVE · HEADING FOR THE BOROUGH', 'r'); }
+  }
+  great(game, n) {
+    const map = game.map, B = map.boro, town = { x: B.x, z: B.z, r: 260, name: 'THE BOROUGH', y: 10 };
+    let x = 0, z = 0;
+    for (let t = 0; t < 30; t++) { const a = Math.random() * 6.28; x = B.x + Math.cos(a) * 2200; z = B.z + Math.sin(a) * 2200; if (Math.abs(x) < 5400 && Math.abs(z) < 5400 && !game.horde.blockedAt(x, z)) break; }
+    const e = new GreatHorde(town, x, z, n); e.story = true; return e;
+  }
+  // ---- SPECIAL OPS: after the story, the big jobs come back again and again, and each threat level makes them
+  // bigger and better paid. Every 3 ops done, the threat level goes up.
+  get ops() { return (this.save.ops = this.save.ops || { n: 0, lvl: 1, best: 0 }); }
+  opTick(dt, game) {
+    const D = game.director; if (!D) return;
+    if (D.list.some((e) => e.op && !e.done)) return;
+    this.opT = (this.opT ?? 40) - dt;
+    if (this.opT > 0) return;
+    this.opT = 75;
+    const o = this.ops, lvl = o.lvl, kinds = ['countdown', 'piper', 'great', 'evac'].filter((k) => k !== this.lastOp && (k !== 'evac' || game.map.hospital));
+    const k = kinds[Math.floor(Math.random() * kinds.length)];
+    let e = null;
+    if (k === 'countdown') e = CountdownEv.make(game, lvl);
+    else if (k === 'piper') e = PiperEv.make(game, lvl);
+    else if (k === 'great') e = this.great(game, Math.min(4000, 1500 + 400 * lvl));
+    else if (k === 'evac') { e = new Evac(game.map.hospital); e.story = true; e.roof.count = e.roof.start = Math.min(60, 25 + 5 * lvl); }
+    if (!e) return;
+    e.op = k; e.opLvl = lvl; this.lastOp = k; D.list.push(e);
+    const say = {
+      countdown: 'The army is bombing another city. People on the roofs again. Get them off before the bombers come.',
+      piper: 'Another big horde is gathering in the hills. Get your speaker playing and lead them into the artillery zone.',
+      great: 'A great horde is walking on the Borough again. Bigger than last time. Break it up.',
+      evac: "St Mary's is full again: people keep running there for help. Empty the roof.",
+    }[k];
+    game.banner(`SPECIAL OP ${o.n + 1} · THREAT LEVEL ${lvl}`, OPNAME[k], 'r', 4);
+    game.radio(`Pilot, new job. ${say} Pays ⚙${this.opPay(lvl).toLocaleString('en-GB')}.`, 9);
+  }
+  opPay(lvl) { return 2500 + 1500 * (lvl - 1); }
+  opDone(game, k) {
+    const o = this.ops, D = game.director, e = D && D.list.find((q) => q.op === k && !q.opPaid);
+    if (!e) return;
+    e.opPaid = true;
+    const pay = this.opPay(e.opLvl || o.lvl);
+    o.n++; o.best = Math.max(o.best || 0, o.lvl);
+    game.addScrap(pay);
+    game.banner(`SPECIAL OP DONE · ${OPNAME[k]}`, `+⚙${pay.toLocaleString('en-GB')} · ${o.n} OPS DONE`, 'good', 4); game.snd.finish?.();
+    if (o.n % 3 === 0) { o.lvl++; setTimeout(() => game.banner(`THREAT LEVEL ${o.lvl}`, 'THE OPS GET BIGGER · AND PAY MORE', 'r', 4), 4500); }
+    this.opT = 60; game.saveNow?.();
   }
   // every frame while flying: the siege waits until you've had a minute to get ready
   update(dt, game) {
-    const ch = this.ch; if (!ch) return;
+    this.game = game;
+    const ch = this.ch; if (!ch) { if (this.done && !game.client) this.opTick(dt, game); return; }
     if (this.s.seen !== this.s.ch) { this.brief(game); return; }
     this.ensT = (this.ensT ?? 20) - dt;
     if (this.ensT <= 0) { this.ensT = 20; this.ensure(game); }
@@ -128,7 +170,11 @@ export class Story {
   // the lines for the HUD tracker
   lines() {
     const ch = this.ch;
-    if (!ch) return null;
+    if (!ch) {
+      if (!this.done) return null;
+      const o = this.ops, e = this.game?.director?.list.find((q) => q.op && !q.done);
+      return { title: `SPECIAL OPS · THREAT LEVEL ${o.lvl}`, goals: [{ t: e ? OPNAME[e.op] : 'WAITING FOR THE NEXT JOB...', have: 0, n: 1 }, { t: 'OPS DONE', have: o.n, n: Math.ceil((o.n + 1) / 3) * 3 }] };
+    }
     return { title: `CHAPTER ${this.s.ch + 1} · ${ch.n}`, goals: ch.goals.map((g) => ({ t: g.t, have: Math.min(g.n, this.have(g)), n: g.n })) };
   }
 }
