@@ -3771,7 +3771,9 @@ export class HeliGame {
   //    two displays below it, the stick
   //  propeller transport / gunship: four windscreen panes, a big overhead panel, four displays, a yoke and throttles
   cockpit() {
-    const cv = this.$('pit'), on = this.camMode === 3 && (this.mode === 'fly' || this.mode === 'wing') && !this.heli.dead && !this.gunCam;
+    // the gunship sensor screen uses the same canvas: leave it alone while that's up
+    if (this.gunCam) return;
+    const cv = this.$('pit'), on = this.camMode === 3 && (this.mode === 'fly' || this.mode === 'wing') && !this.heli.dead;
     cv.classList.toggle('hidden', !on);
     if (!on) return;
     const W = this.r.cssSize ? this.r.cssSize[0] : innerWidth, Hh = this.r.cssSize ? this.r.cssSize[1] : innerHeight;
