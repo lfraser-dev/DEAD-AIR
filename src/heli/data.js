@@ -163,6 +163,37 @@ export const SLOTS = [
     { n: 'AFTERBURNER', cost: 1500, d: 'Hold SHIFT: fuel sprayed into the exhaust, +60% thrust. Drinks fuel.' },
     { n: 'BIG AFTERBURNER', cost: 3500, d: 'A longer, hotter burn: +110% thrust.' },
   ] },
+  // ---- the Spectre's gunship kit (only fits a gunship)
+  { id: 'gsgat', only: 'gunship', name: '25 MM GATLING', icon: '⁂', tiers: [
+    { n: 'GAU-12', cost: 0, d: 'The standard 25 mm: fast, light shells. Good for strings of zombies.' },
+    { n: 'HIGH-RATE GAU-12', cost: 1200, d: 'Faster motor: fires 45% faster.' },
+    { n: 'TWIN GATLINGS', cost: 3200, d: 'A second Gatling next to the first: twice the fire, and the shells hit 20% harder.' },
+  ] },
+  { id: 'gsbof', only: 'gunship', name: '40 MM BOFORS', icon: '◉', tiers: [
+    { n: 'BOFORS', cost: 0, d: 'A 40 mm cannon: one exploding shell about every half second.' },
+    { n: 'AUTOLOADER', cost: 1500, d: 'Clips fed in by machine: fires 60% faster.' },
+    { n: 'PROXIMITY FUZE', cost: 3500, d: 'Autoloader, and the shells burst just above the crowd: blast 50% wider, 30% harder.' },
+  ] },
+  { id: 'gshow', only: 'gunship', name: '105 MM HOWITZER', icon: '✹', tiers: [
+    { n: 'HOWITZER', cost: 0, d: 'A field gun in the side of a plane. One huge shell every 3.5 seconds.' },
+    { n: 'FAST LOADER', cost: 2000, d: 'A two-man loading crew: one shell every 2.2 seconds.' },
+    { n: 'AIRBURST + INCENDIARY', cost: 4800, d: 'Fast loader, and the shells burst in the air (40% wider blast) and leave the ground burning.' },
+  ] },
+  { id: 'gsmag', only: 'gunship', name: 'GUNSHIP MAGAZINES', icon: '▤', tiers: [
+    { n: 'STANDARD LOAD', cost: 0, d: '1,500 × 25 mm, 100 × 40 mm, 30 × 105 mm. Rearm at a base (3).' },
+    { n: 'EXTRA RACKS', cost: 1000, d: '50% more of everything.' },
+    { n: 'FULL LOAD-OUT', cost: 2600, d: 'Twice the standard load.' },
+  ] },
+  { id: 'gssens', only: 'gunship', name: 'SENSOR TURRET', icon: '◎', tiers: [
+    { n: 'TV / THERMAL', cost: 0, d: 'A daylight camera and a white-hot thermal camera (I), four zoom levels.' },
+    { n: 'TARGET TRACKER', cost: 1500, d: 'Press Q over a zombie, a crowd or a boss: the turret locks on and follows it. Q again to let go.' },
+    { n: 'THREAT SCAN', cost: 3600, d: 'Tracker, and the computer boxes every crowd and boss it can see, marks friendlies on the roofs, and shows the zombies left near the crosshair.' },
+  ] },
+  { id: 'gsauto', only: 'gunship', name: 'GUNSHIP AUTOPILOT', icon: '⟲', tiers: [
+    { n: 'FIXED ORBIT', cost: 0, d: 'Flies one steady circle round where you started.' },
+    { n: 'ORBIT CONTROL', cost: 1200, d: 'While in gunship mode: W / S climb and descend, A / D tighten and widen the circle, O moves the circle to where you\'re aiming.' },
+    { n: 'CREW GUNNER', cost: 4200, d: 'Orbit control, and a gunner works the 25 mm on his own, hosing the biggest crowd near your crosshair while you use the big guns.' },
+  ] },
   { id: 'gear', only: 'plane', name: 'LANDING GEAR', icon: '⊼', tiers: [
     { n: 'STANDARD GEAR', cost: 0, d: 'Land gently.' },
     { n: 'ROUGH-FIELD GEAR', cost: 700, d: 'Big tyres and long-travel legs: hard landings don\'t hurt.' },
@@ -231,6 +262,7 @@ export const HELIS = {
 export function slotFits(id, kind) {
   const sl = SLOT[id], HK = HELIS[kind] || HELIS.warhorse;
   if (!sl || !sl.only) return true;
+  if (sl.only === 'gunship') return !!HK.gunship;
   if (HK.vtol) return true;
   return sl.only === (HK.plane ? 'plane' : 'heli');
 }
@@ -442,6 +474,7 @@ export function statsFor(eq0, kind = 'warhorse') {
     light: v('light', 2), medbay: v('medbay', 2), drops: v('drops', 2), radio: v('radio', 2),
     nvg: v('nvg', 1), racks: v('racks', 2), drones: 0, ammo: v('ammo', 2), repair: v('repair', 2), suppress: v('suppress', 1), flares: 0, megaFlare: false, beacons: 0, beaconBoom: false,
     sight: v('sight', 2), quiet: v('quiet', 2), tpod: v('tpod', 2),
+    gsGat: v('gsgat', 2), gsBof: v('gsbof', 2), gsHow: v('gshow', 2), gsMag: v('gsmag', 2), gsSens: v('gssens', 2), gsAuto: v('gsauto', 2),
     flaps: v('flaps', 2), airbrake: v('airbrake', 2), reheat: v('reheat', 2), gear: v('gear', 1), hardpoints: v('hardpoints', 2),
     cooling: v('cooling', 2), hover: v('hover', 2), gpws: v('hover', 2) === 2, crash: v('crash', 2),
     crewMax: [2, 3, 4, 4][v('cabin', 3)],

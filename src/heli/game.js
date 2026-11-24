@@ -74,18 +74,21 @@ const QLEVELS = [
 ];
 const GFXNAME = { auto: 'AUTO', low: 'LOW (FAST)', potato: 'POTATO (FASTEST)' };
 const GFXNEXT = { auto: 'low', low: 'potato', potato: 'auto' };
-// the Spectre's side guns: where they fire from (left side), how fast, how hard
-const GUNS = [
-  { n: '25 MM GATLING', kind: 'gat', dmg: 70, splash: 2.6, reload: 0.055, spread: 3, from: [-3.4, -0.6, -2], snd: 0.12, shake: 0.06 },
-  { n: '40 MM BOFORS', kind: 'bofors', dmg: 280, splash: 6, reload: 0.45, spread: 1.5, from: [-3.4, -0.4, 2], snd: 0.35, shake: 0.15 },
-  { n: '105 MM HOWITZER', kind: 'how', dmg: 1300, splash: 15, reload: 3.5, spread: 0.5, from: [-3.4, -0.2, 6], snd: 0.9, shake: 0.5 },
-];
+// the Spectre's side guns (where they fire from, how fast, how hard), from its gunship upgrades
+const gunsFor = (S) => {
+  const g = S.gsGat || 0, b = S.gsBof || 0, h = S.gsHow || 0, m = [1, 1.5, 2][S.gsMag || 0];
+  return [
+    { n: g === 2 ? 'TWIN 25 MM' : '25 MM GATLING', kind: 'gat', dmg: 70 * (g === 2 ? 1.2 : 1), splash: 2.6, reload: 0.055 / [1, 1.45, 2.9][g], spread: 3, from: [-3.4, -0.6, -2], snd: 0.12, shake: 0.06, ammo: Math.round(1500 * m) },
+    { n: b === 2 ? '40 MM PROX' : '40 MM BOFORS', kind: 'bofors', dmg: 280 * (b === 2 ? 1.3 : 1), splash: 6 * (b === 2 ? 1.5 : 1), reload: 0.45 / (b ? 1.6 : 1), spread: 1.5, from: [-3.4, -0.4, 2], snd: 0.35, shake: 0.15, ammo: Math.round(100 * m), air: b === 2 ? 2.5 : 0 },
+    { n: h === 2 ? '105 MM AIRBURST' : '105 MM HOWITZER', kind: 'how', dmg: 1300, splash: 15 * (h === 2 ? 1.4 : 1), reload: h ? 2.2 : 3.5, spread: 0.5, from: [-3.4, -0.2, 6], snd: 0.9, shake: 0.5, ammo: Math.round(30 * m), air: h === 2 ? 4 : 0, fire: h === 2 },
+  ];
+};
 // where the pilot's eyes are in each aircraft (for the cockpit camera)
 const SEATS = { warhorse: [0.3, 0.25, -2.6], hornet: [0, 0.15, -0.9], reaper: [0, 0.65, -3.0], kestrel: [0.42, 0.45, -3.2], viper: [0, 0.75, -2.6], huey: [0.4, 0.35, -2.4], seaking: [0.42, 0.45, -3.9], osprey: [0.42, 0.45, -4.8], harrier: [0, 0.95, -3.3], alligator: [0, 0.65, -2.9], warthog: [0, 1.0, -3.5], spectre: [0.5, 0.5, -7.2], mule: [0.5, 0.45, -6.0], lynx: [0.4, 0.35, -3.1], stallion: [0.42, 0.4, -4.2], bronco: [0, 0.85, -2.6], falcon: [0, 0.95, -3.6] };
 const seatFor = (id) => SEATS[id] || SEATS.warhorse;
 // which tab of the hangar each upgrade is on
 const TABS = {
-  weapons: ['gun', 'rockets', 'bombs', 'pods', 'sniper', 'racks', 'hardpoints', 'door', 'ammo', 'cooling', 'sight', 'tpod'],
+  weapons: ['gun', 'rockets', 'bombs', 'pods', 'sniper', 'racks', 'hardpoints', 'door', 'ammo', 'cooling', 'sight', 'tpod', 'gsgat', 'gsbof', 'gshow', 'gsmag', 'gssens', 'gsauto'],
   armour: ['armor', 'crash', 'repair', 'suppress', 'quiet', 'skids', 'flares'],
   flight: ['engine', 'rotor', 'fuel', 'hover', 'flaps', 'airbrake', 'reheat', 'gear', 'radio'],
   kit: ['cabin', 'winch', 'medbay', 'drops', 'flir', 'light', 'nvg'],
@@ -576,7 +579,7 @@ export class HeliGame {
     this.hp = S.hp; this.fuel = Math.max(this.fuel ?? S.fuel, S.fuel);
     this.heat = 0; this.overT = 0; this.gunT = 0; this.spinV = 0; this.flashT = 0;
     this.rockets = S.rockets; this.rocketT = 0; this.rocketRegen = 0; this.rocketSide = 0;
-    this.gunCam = false; this.canvas.style.filter = ''; if (this.horde) this.horde.ir = false;
+    this.gunCam = false; this.canvas.style.filter = ''; if (this.horde) this.horde.ir = false; this.gsRearm();
     this.bombs = S.bombs; this.bombT = 0;
     this.siren = 0; this.raid = this.raid || null;
     const cb = [0, 25, 50][this.save.base.clinic || 0];
@@ -672,7 +675,7 @@ export class HeliGame {
       const ctrl = live && !this.panel;
       const k = (c) => (ctrl && this.key(c) ? 1 : 0);
       const ctl = {
-        coll: H.dead ? 0 : k('KeyW') - k('KeyS'), yaw: k('KeyA') - k('KeyD'),
+        coll: H.dead || this.gunCam ? 0 : k('KeyW') - k('KeyS'), yaw: this.gunCam ? 0 : k('KeyA') - k('KeyD'),
         mx: ctrl && this.locked && !this.gunCam ? this.mx : 0, my: ctrl && this.locked && !this.gunCam ? this.my : 0,
         pk: k('ArrowUp') - k('ArrowDown'), rk: k('ArrowRight') - k('ArrowLeft'),
         boost: ctrl && (this.key('ShiftLeft') || this.key('ShiftRight')) && this.fuel > 0,
@@ -1435,7 +1438,7 @@ export class HeliGame {
       else { this.fx.sparks(p, 12, [0.5, 0.95, 1], 7, 0.4, 0.07, 1); this.blasts.push({ pos: p, t: 0.25, size: 0.5, col: [0.5, 0.95, 1] }); }
       return;
     }
-    if (s.kind === 'howitzer') { this.blastAll(p, 15, 1300, 26, 'bomb'); this.boom(p, 2.8); this.shake = Math.max(this.shake || 0, 0.35); this.fires.push({ pos: p, r: 6, t: 4, tick: 0 }); return; }
+    if (s.kind === 'howitzer') { const r = s.splash || 15; this.blastAll(p, r, 1300, 26, 'bomb'); this.boom(p, 2.8 * r / 15); this.shake = Math.max(this.shake || 0, 0.35); this.fires.push({ pos: [p[0], this.groundAt(p[0], p[2]), p[2]], r: s.fire ? 14 : 6, t: s.fire ? 10 : 4, tick: 0, big: !!s.fire }); return; }
     if (s.kind === 'rocket') { this.blastAll(p, S.rocketR, S.rocketDmg, 16, 'rocket'); this.boom(p, s.mini ? 0.8 : 1.2); return; }
     if (s.kind === 'flare') return;
     if (s.kind === 'beacon') { this.beacons.push({ pos: [p[0], h.z ? this.groundAt(p[0], p[2]) : p[1], p[2]], t: 25, boom: S.beaconBoom }); this.fx.dust(p, 4); this.feed('BEACON DOWN · THEY\'RE ALL GOING TO IT', 'y'); return; }
@@ -1654,8 +1657,8 @@ export class HeliGame {
       acts.push(['Digit1', '1', this.fuel >= S.fuel - 0.5 ? 'FUEL FULL' : this.svc === 'fuel' ? `REFUELLING ${pct(this.fuel / S.fuel)}` : `REFUEL (${pct(this.fuel / S.fuel)})`, () => { this.svc = 'fuel'; this.snd.click?.(1800, 0.3); }, this.fuel >= S.fuel - 0.5]);
       if (!f.fuelOnly) {
         acts.push(['Digit2', '2', this.hp >= S.hp ? 'NO DAMAGE' : this.svc === 'fix' ? `REPAIRING ${pct(this.hp / S.hp)}` : `REPAIR (${pct(this.hp / S.hp)})`, () => { this.svc = 'fix'; this.snd.click?.(1800, 0.3); }, this.hp >= S.hp]);
-        const full = this.rockets >= S.rockets && this.bombs >= S.bombs && this.heat <= 0 && this.beaconsLeft >= S.beacons && this.flaresLeft >= S.flares;
-        acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.rockets = S.rockets; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); setTimeout(() => this.snd.bolt?.(), 200); this.feed('REARMED', 'g'); }, full]);
+        const full = this.rockets >= S.rockets && this.bombs >= S.bombs && this.heat <= 0 && this.beaconsLeft >= S.beacons && this.flaresLeft >= S.flares && this.gsFull();
+        acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.gsRearm(); this.rockets = S.rockets; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); setTimeout(() => this.snd.bolt?.(), 200); this.feed('REARMED', 'g'); }, full]);
         acts.push(['KeyH', 'H', 'HANGAR', () => { this.session.fob = f; this.toHangar(); }, true]);
         acts.push(['KeyT', 'T', 'TEAM', () => this.openTeam(), true]);
       }
@@ -2006,6 +2009,7 @@ export class HeliGame {
       if (ev.type === 'kill') {
         run.kills++;
         this.storyHit('kills', 1);
+        if (this.gunCam) (this.gsSplash = this.gsSplash || []).push(this.t);
         if (ev.z.type === 'bloater') this.burst([ev.z.x, ev.z.y + 1.1, ev.z.z]);
         this.splat([ev.z.x, ev.z.y, ev.z.z], true);
         const T = TYPES[ev.z.type];
@@ -2851,7 +2855,7 @@ export class HeliGame {
     this.hp = S.hp; this.fuel = S.fuel;
     this.heat = 0; this.overT = 0; this.gunT = 0; this.spinV = 0; this.flashT = 0;
     this.rockets = S.rockets; this.rocketT = 0; this.rocketRegen = 0; this.rocketSide = 0;
-    this.bombs = S.bombs; this.bombT = 0; this.siren = 0; this.raid = null; this.riders = 0;
+    this.bombs = S.bombs; this.bombT = 0; this.siren = 0; this.raid = null; this.riders = 0; this.gsRearm(); this.gunCam = false;
     this.shield = 0; this.shieldHit = 0; this.shieldT = 0; this.flaresLeft = S.flares; this.flareRegen = 0; this.beaconsLeft = S.beacons; this.beacons = []; this.mag = []; this.beams = [];
     this.shots = []; this.tracers = []; this.blasts = []; this.fires = []; this.runners = []; this.splats = [];
     this.boardT = 0; this.unloadT = 0; this.unloading = false; this.boarding = false; this.suppressUsed = false;
@@ -2892,7 +2896,7 @@ export class HeliGame {
     const ctrl = live && !this.panel;
     const k = (c) => (ctrl && this.key(c) ? 1 : 0);
     const ctl = {
-      coll: H.dead ? 0 : k('KeyW') - k('KeyS'), yaw: k('KeyA') - k('KeyD'),
+      coll: H.dead || this.gunCam ? 0 : k('KeyW') - k('KeyS'), yaw: this.gunCam ? 0 : k('KeyA') - k('KeyD'),
       mx: ctrl && this.locked && !this.gunCam ? this.mx : 0, my: ctrl && this.locked && !this.gunCam ? this.my : 0,
       pk: k('ArrowUp') - k('ArrowDown'), rk: k('ArrowRight') - k('ArrowLeft'),
       boost: ctrl && (this.key('ShiftLeft') || this.key('ShiftRight')) && this.fuel > 0,
@@ -3000,7 +3004,7 @@ export class HeliGame {
       acts.push(['Digit1', '1', this.fuel >= S.fuel - 0.5 ? 'FUEL FULL' : `REFUEL (${pct(this.fuel / S.fuel)})`, () => { this.svc = 'fuel'; }, this.fuel >= S.fuel - 0.5]);
       acts.push(['Digit2', '2', this.hp >= S.hp ? 'NO DAMAGE' : `REPAIR (${pct(this.hp / S.hp)})`, () => { this.svc = 'fix'; }, this.hp >= S.hp]);
       const full = this.rockets >= S.rockets && this.bombs >= S.bombs;
-      acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.rockets = S.rockets; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); this.feed('REARMED', 'g'); }, full]);
+      acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.gsRearm(); this.rockets = S.rockets; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); this.feed('REARMED', 'g'); }, full]);
       acts.push(['KeyH', 'H', 'HANGAR', () => { if (this.riders > 0) { cl.tr.send({ k: 'drop', n: this.riders }); this.riders = 0; } this.toHangar(); }, true]);
     }
     if (!f || f.wrecked) this.svc = null;
@@ -3561,10 +3565,29 @@ export class HeliGame {
     this.banner('GUNSHIP', '1 · 25 MM   2 · 40 MM   3 · 105 MM   ·   WHEEL ZOOM   ·   I THERMAL   ·   G EXIT', '', 3);
     this.snd.bolt?.();
   }
+  gsRearm() { const S = this.S; if (!S || !S.gunship) return; this.gsAmmo = gunsFor(S).map((w) => w.ammo); }
+  gsFull() { const S = this.S; return !S.gunship || !this.gsAmmo || gunsFor(S).every((w, i) => this.gsAmmo[i] >= w.ammo); }
+  // fire one of the side guns at a point on the ground
+  gsFire(i, at) {
+    const H = this.heli, W = gunsFor(this.S)[i];
+    if (!this.gsAmmo) this.gsRearm();
+    if (this.gsAmmo[i] <= 0) { if ((this.gsEmptyT || 0) < this.t) { this.gsEmptyT = this.t + 2; this.feed(`${W.n} EMPTY · REARM AT A BASE`, 'y'); } return false; }
+    this.gsAmmo[i]--;
+    const o = H.toWorld(W.from), sp = W.spread;
+    const tgt = [at[0] + (Math.random() - 0.5) * sp, at[1] + (W.air || 0), at[2] + (Math.random() - 0.5) * sp];
+    const d = norm([tgt[0] - o[0], tgt[1] - o[1], tgt[2] - o[2]]), dist = Math.hypot(tgt[0] - o[0], tgt[1] - o[1], tgt[2] - o[2]);
+    if (W.kind === 'how') this.shots.push({ kind: 'howitzer', pos: o, vel: d.map((q) => q * 420), life: W.air ? dist / 420 : 6, splash: W.splash, fire: W.fire });
+    else this.shots.push({ kind: 'plasma', cannon: true, dmg: W.dmg, splash: W.splash, big: W.kind === 'bofors', pos: o, vel: d.map((q) => q * 650), life: W.air ? dist / 650 : 5 });
+    this.snd.boom?.(W.snd); this.shake = Math.max(this.shake || 0, W.shake);
+    this.fx.sparks(o, 5, [1, 0.8, 0.4], 6, 0.2, 0.06, 1);
+    return true;
+  }
   gunshipTick(dt) {
-    const g = this.gs, H = this.heli;
+    const g = this.gs, H = this.heli, S = this.S, O = H.orbit;
     if (H.dead || H.contacts) { this.toggleGunship(); return; }
+    if (!this.gsAmmo) this.gsRearm();
     const z = [1, 0.5, 0.22, 0.1][g.zoom], k = 0.0021 * (this.save.sens || 1) * z * (this.save.invert ? -1 : 1);
+    if (Math.abs(this.mx) + Math.abs(this.my) > 3 && g.lock && g.lock.z) g.lock = null;     // grabbing the mouse breaks a lock
     g.yaw -= this.mx * 0.0021 * (this.save.sens || 1) * z; g.pitch = clamp(g.pitch - this.my * k, -1.45, 0.1);
     if (this.hit('KeyX') || this.wheelD) { g.zoom = (g.zoom + (this.wheelD < 0 ? 1 : this.wheelD > 0 ? 3 : 1)) % 4; this.wheelD = 0; }
     if (this.hit('KeyI')) { g.ir = !g.ir; }
@@ -3572,18 +3595,51 @@ export class HeliGame {
     this.horde.ir = g.ir;
     for (const [key, n] of [['Digit1', 0], ['Digit2', 1], ['Digit3', 2]]) if (this.hit(key) && g.wpn !== n) { g.wpn = n; this.snd.bolt?.(); }
     for (let i = 0; i < 3; i++) g.t[i] = Math.max(0, g.t[i] - dt);
+    const eye = this.camEye || H.pos, look = [Math.cos(g.pitch) * Math.sin(g.yaw), Math.sin(g.pitch), Math.cos(g.pitch) * Math.cos(g.yaw)];
+    const hit = this.rayHit(eye, look, 4000);
+    g.aim = hit.p;
+    // the tracker: lock onto a zombie (and follow it) or a spot on the ground
+    if (S.gsSens >= 1 && this.hit('KeyQ')) {
+      if (g.lock) { g.lock = null; this.feed('TRACK OFF', 'y'); }
+      else { g.lock = hit.z ? { z: hit.z } : { p: [...hit.p] }; this.feed(hit.z ? (hit.z.boss ? 'TRACKING THE BOSS' : 'TRACKING TARGET') : 'TRACKING POINT', 'g'); this.snd.bolt?.(); }
+    }
+    if (g.lock) {
+      const L = g.lock;
+      if (L.z && (L.z.alive === false || L.z.dead)) { g.lock = null; this.feed('TARGET DOWN', 'g'); }
+      else {
+        const p = L.z ? [L.z.x, L.z.y + (L.z.s || 1) * 1.0, L.z.z] : L.p;
+        const dx = p[0] - eye[0], dy = p[1] - eye[1], dz = p[2] - eye[2];
+        g.yaw = Math.atan2(dx, dz); g.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+      }
+    }
+    // orbit control
+    if (S.gsAuto >= 1 && O) {
+      const gy = this.groundAt(O.x, O.z);
+      if (this.key('KeyW')) O.y = Math.min(gy + 1400, O.y + 45 * dt);
+      if (this.key('KeyS')) O.y = Math.max(gy + 180, O.y - 45 * dt);
+      if (this.key('KeyA')) O.r = Math.max(320, O.r - 160 * dt);
+      if (this.key('KeyD')) O.r = Math.min(1300, O.r + 160 * dt);
+      if (this.hit('KeyO')) { O.x = hit.p[0]; O.z = hit.p[2]; this.feed('ORBIT MOVED TO THE CROSSHAIR', 'g'); }
+    }
+    // the crew gunner hoses the biggest crowd near your crosshair with the 25 mm
+    if (S.gsAuto >= 2) {
+      g.crewT = (g.crewT || 0) - dt;
+      if (g.crewT <= 0 && !(g.wpn === 0 && this.btn.has(0))) {
+        g.crewT = gunsFor(S)[0].reload * 1.6;
+        if ((g.crewPickT = (g.crewPickT || 0) - dt * 30) <= 0) {
+          g.crewPickT = 20;
+          const near = (this.client ? [...(this.client.zs ? this.client.zs.values() : [])] : this.horde.list).filter((q) => q.alive !== false && Math.hypot(q.x - hit.p[0], q.z - hit.p[2]) < 140);
+          let best = null, bn = 0;
+          for (let i = 0; i < Math.min(40, near.length); i++) { const a = near[(i * 7) % near.length]; const n = near.filter((q) => Math.hypot(q.x - a.x, q.z - a.z) < 14).length; if (n > bn) { bn = n; best = a; } }
+          g.crew = best && bn >= 3 ? [best.x, best.y, best.z] : null;
+        }
+        if (g.crew) this.gsFire(0, g.crew);
+      }
+    }
     const firing = (this.btn.has(0) || this.clk.has(0) || this.key('KeyF')) && this.locked;
     if (!firing || g.t[g.wpn] > 0) return;
-    const W = GUNS[g.wpn], look = [Math.cos(g.pitch) * Math.sin(g.yaw), Math.sin(g.pitch), Math.cos(g.pitch) * Math.cos(g.yaw)];
-    const hit = this.rayHit(this.camEye || H.pos, look, 4000);
-    const o = H.toWorld(W.from), spread = W.spread;
-    const tgt = [hit.p[0] + (Math.random() - 0.5) * spread, hit.p[1], hit.p[2] + (Math.random() - 0.5) * spread];
-    const d = norm([tgt[0] - o[0], tgt[1] - o[1], tgt[2] - o[2]]);
-    g.t[g.wpn] = W.reload;
-    if (W.kind === 'how') this.shots.push({ kind: 'howitzer', pos: o, vel: d.map((q) => q * 420), life: 6 });
-    else this.shots.push({ kind: 'plasma', cannon: true, dmg: W.dmg, splash: W.splash, big: W.kind === 'bofors', pos: o, vel: d.map((q) => q * 650), life: 5 });
-    this.snd.boom?.(W.snd); this.shake = Math.max(this.shake || 0, W.shake);
-    this.fx.sparks(o, 5, [1, 0.8, 0.4], 6, 0.2, 0.06, 1);
+    g.t[g.wpn] = gunsFor(S)[g.wpn].reload;
+    this.gsFire(g.wpn, hit.p);
   }
   // the gunship sensor picture: brackets, reticle, the gun list with reload bars, the zoom and mode
   drawGun() {
@@ -3609,16 +3665,53 @@ export class HeliGame {
     const hit = this.rayHit(this.camEye || H.pos, this.camLook || [0, -1, 0], 4000);
     txt(`RANGE ${Math.round(hit.t)} M`, W - 60 * u, 96 * u, 14, 'right');
     // the guns
-    GUNS.forEach((Wp, i) => {
+    gunsFor(this.S).forEach((Wp, i) => {
       const y = Hh - 150 * u + i * 34 * u, x = 60 * u, on = i === g.wpn;
       c.globalAlpha = on ? 1 : 0.5;
       txt(`${i + 1}  ${Wp.n}`, x, y, on ? 17 : 14);
-      const rl = g.t[i] / Wp.reload;
+      const rl = g.t[i] / Wp.reload, am = this.gsAmmo ? this.gsAmmo[i] : Wp.ammo;
       c.strokeRect(x + 220 * u, y - 12 * u, 120 * u, 12 * u);
       c.fillRect(x + 220 * u, y - 12 * u, 120 * u * (1 - rl), 12 * u);
+      txt(am > 0 ? String(am) : 'EMPTY', x + 352 * u, y, 13);
       c.globalAlpha = 1;
     });
-    txt('G  EXIT GUNSHIP   ·   I  THERMAL   ·   WHEEL / X  ZOOM', W / 2, Hh - 54 * u, 13, 'center');
+    const S = this.S;
+    txt(`G  EXIT   ·   I  THERMAL   ·   WHEEL / X  ZOOM${S.gsSens >= 1 ? '   ·   Q  TRACK' : ''}${S.gsAuto >= 1 ? '   ·   W S  HEIGHT   ·   A D  CIRCLE   ·   O  MOVE ORBIT' : ''}`, W / 2, Hh - 22 * u, 12, 'center');
+    if (S.gsAuto >= 2) txt(g.crew ? 'CREW GUNNER · ENGAGING' : 'CREW GUNNER · LOOKING', W - 60 * u, 122 * u, 13, 'right');
+    // locked on
+    if (g.lock) { c.save(); c.setLineDash([6 * u, 4 * u]); c.strokeRect(cx - 34 * u, cy - 34 * u, 68 * u, 68 * u); c.restore(); txt(g.lock.z ? (g.lock.z.boss ? 'TRACK · BOSS' : 'TRACK · TARGET') : 'TRACK · POINT', cx, cy + 56 * u, 13, 'center'); }
+    // confirmed kills from the last couple of seconds
+    const sp = (this.gsSplash || []).filter((q) => this.t - q < 2.2);
+    this.gsSplash = sp;
+    if (sp.length) { txt(`SPLASH × ${sp.length}`, cx, cy - 74 * u, 20, 'center'); }
+    // threat scan: crowds, bosses and friendlies, boxed
+    if (S.gsSens >= 2) {
+      const sc = W / innerWidth, sy = Hh / innerHeight, A = g.aim || hit.p;
+      const zs = this.client ? [...(this.client.zs ? this.client.zs.values() : [])] : this.horde.list;
+      const cells = new Map(); let nearN = 0;
+      for (const q of zs) {
+        if (q.alive === false) continue;
+        const d = Math.hypot(q.x - A[0], q.z - A[2]);
+        if (d > 900) continue;
+        if (d < 30) nearN++;
+        if (q.boss) { const pp = this.project([q.x, q.y + q.s, q.z]); if (!pp.behind) { c.strokeStyle = '#ff5a4a'; c.fillStyle = '#ff5a4a'; c.lineWidth = 2.5 * u; c.strokeRect(pp.x * sc - 40 * u, pp.y * sy - 40 * u, 80 * u, 80 * u); txt('BOSS', pp.x * sc, pp.y * sy - 46 * u, 13, 'center'); c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 2 * u; } continue; }
+        const key = Math.floor(q.x / 30) + ',' + Math.floor(q.z / 30), e = cells.get(key);
+        if (e) { e.n++; e.x += q.x; e.y += q.y; e.z += q.z; } else cells.set(key, { n: 1, x: q.x, y: q.y, z: q.z });
+      }
+      c.lineWidth = 1.2 * u;
+      for (const e of cells.values()) {
+        if (e.n < 6) continue;
+        const pp = this.project([e.x / e.n, e.y / e.n, e.z / e.n]); if (pp.behind) continue;
+        const r = clamp(8 + Math.sqrt(e.n) * 3, 10, 40) * u * (1 + g.zoom * 0.6);
+        c.strokeRect(pp.x * sc - r, pp.y * sy - r, r * 2, r * 2); txt(String(e.n), pp.x * sc + r + 3 * u, pp.y * sy - r + 10 * u, 11);
+      }
+      // friendlies waiting on the roofs: don't hit them
+      const evs = this.client ? (this.client.evs || []).map((e) => e.mk).filter(Boolean) : this.director.list.filter((e) => e.roof && e.roof.active && e.roof.count > 0).map((e) => e.marker(this));
+      c.strokeStyle = '#5ab4ff'; c.fillStyle = '#5ab4ff';
+      for (const mk of evs) { if (!mk || !/SOS|SURVIV|PICK|ROOF/i.test(`${mk.text} ${mk.sub || ''}`)) continue; const pp = this.project(mk.p); if (pp.behind) continue; c.beginPath(); c.arc(pp.x * sc, pp.y * sy + 20 * u, 16 * u, 0, 7); c.stroke(); txt('FRIENDLY', pp.x * sc, pp.y * sy - 2 * u, 11, 'center'); }
+      c.strokeStyle = col; c.fillStyle = col;
+      txt(`${nearN} HOSTILE IN 30 M`, cx, cy + 80 * u, 12, 'center');
+    }
     // north arrow
     const na = -g.yaw + Math.PI;
     c.save(); c.translate(W - 90 * u, Hh - 110 * u); c.rotate(na); c.beginPath(); c.moveTo(0, -24 * u); c.lineTo(8 * u, 8 * u); c.lineTo(-8 * u, 8 * u); c.closePath(); c.fill(); c.restore();
