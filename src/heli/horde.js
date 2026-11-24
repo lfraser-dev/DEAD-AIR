@@ -24,6 +24,7 @@ export const TYPES = {
   brute: { hp: 320, spd: [1.3, 1.9], s: 1.32, scrap: 18 },        // huge, tough, can't be knocked over; three of them on the skids is a lot
   bloater: { hp: 50, spd: [0.9, 1.4], s: 1.06, scrap: 7 },        // swollen up: bursts when it dies and takes the ones round it too
   riot: { hp: 110, spd: [1.7, 2.5], s: 1.0, scrap: 8 },           // riot police: helmet and vest shrug off bullets (explosives work)
+  stalker: { hp: 70, spd: [5.6, 6.8], s: 0.95, scrap: 12 },        // NIGHT ONLY: black, glowing eyes, sprint and leap high for the skids; burn up at dawn
   // BOSSES: giants, each with its own trick (see BossEv in events.js)
   goliath: { hp: 9000, spd: [3.4, 3.6], s: 11, scrap: 0, boss: true },   // throws cars
   spitter: { hp: 6000, spd: [2.8, 3.0], s: 8, scrap: 0, boss: true },   // spits acid at anything flying
@@ -34,7 +35,7 @@ export const BOSS_TYPES = ['goliath', 'spitter', 'mother'];
 const SMALL_ARMS = new Set(['gun', 'door', 'turret', 'team', 'tail', 'drone', 'pod']);
 export function pickType(night = 0, t = 0, city = false) {
   const r = Math.random() * 100;
-  const tab = [['runner', 9 + night * 14 + Math.min(8, t / 300)], ['crawler', 7], ['screamer', t > 60 ? 3 : 1], ['brute', t > 45 ? 2.2 : 0.4], ['bloater', 4], ['riot', city ? 6 : 2]];
+  const tab = [['stalker', night > 0.6 ? 7 * night : 0], ['runner', 9 + night * 14 + Math.min(8, t / 300)], ['crawler', 7], ['screamer', t > 60 ? 3 : 1], ['brute', t > 45 ? 2.2 : 0.4], ['bloater', 4], ['riot', city ? 6 : 2]];
   let a = 0;
   for (const [k, w] of tab) { a += w; if (r < a) return k; }
   return 'walker';
@@ -118,6 +119,7 @@ export class Horde {
     if (type === 'brute') { zb.skin = [0.46, 0.5, 0.43]; zb.shirt = [0.3, 0.27, 0.24]; zb.pants = [0.22, 0.24, 0.28]; zb.torn = true; }
     if (type === 'bloater') { zb.skin = [0.58, 0.62, 0.36]; zb.shirt = [0.55, 0.5, 0.4]; }
     if (type === 'riot') { zb.shirt = [0.08, 0.1, 0.16]; zb.pants = [0.07, 0.09, 0.14]; zb.torn = false; }
+    if (type === 'stalker') { zb.skin = [0.06, 0.06, 0.07]; zb.shirt = [0.05, 0.05, 0.06]; zb.pants = [0.04, 0.04, 0.05]; zb.torn = true; zb.hunch = 0.5; }
     if (T.boss) {
       zb.boss = true; zb.s = T.s; zb.keep = true; zb.torn = true; zb.hunch = 0.15;
       if (type === 'goliath') { zb.skin = [0.5, 0.47, 0.42]; zb.shirt = [0.25, 0.2, 0.17]; zb.pants = [0.2, 0.22, 0.26]; }
@@ -440,10 +442,10 @@ export class Horde {
   tryGrab(z, H, n, fromPile) {
     if (H.dead || z.type === 'crawler') return false;
     const skidY = H.pos[1] - 1.9, dx = H.pos[0] - z.x, dz = H.pos[2] - z.z;
-    const reach = fromPile ? 3.2 : 2.4;
-    if (dx * dx + dz * dz > (fromPile ? 30 : 14) || skidY - (z.y + 1.7 * z.s) > reach || skidY - z.y < -0.5) return false;
+    const reach = fromPile ? 3.2 : z.type === 'stalker' ? 7 : 2.4;
+    if (dx * dx + dz * dz > (fromPile ? 30 : z.type === 'stalker' ? 40 : 14) || skidY - (z.y + 1.7 * z.s) > reach || skidY - z.y < -0.5) return false;
     if (n < 0) { n = 0; for (const o of this.list) if (o.alive && o.st === 'grab') n++; }
-    if (n >= 6 || (!fromPile && Math.random() > 0.08)) return false;
+    if (n >= 6 || (!fromPile && Math.random() > (z.type === 'stalker' ? 0.3 : 0.08))) return false;
     const used = new Set(this.list.filter((o) => o.alive && o.st === 'grab').map((o) => o.slot));
     let s = 0; while (used.has(s)) s++;
     this.leavePile(z);
@@ -593,6 +595,7 @@ export class Horde {
       for (let k = 0; k < 6; k++) { const a = k * 1.05; P(Math.cos(a) * 0.3, 1.0 + Math.sin(a) * 0.25 + 0.15, 0.12 + td * 0.4 - 0.33 * tl, lean, 0.16, 0.16, 0.14, [1, 0.55, 0.3], 0.7, 'sphere'); }
     }
     P(0, 1.67, -0.62 * tl - 0.05, lean * 0.6 + 0.2, 0.3, 0.34, 0.3, z.skin, 0, 'sphere');
+    if (z.type === 'stalker') for (const sd of [-1, 1]) P(sd * 0.07, 1.7, -0.62 * tl - 0.2, lean * 0.6 + 0.2, 0.06, 0.04, 0.04, [1, 0.25, 0.1], 1, 'sphere');
     P(0, 1.6, -0.62 * tl - 0.2, lean * 0.6 + 0.2, z.type === 'screamer' && z.screamed ? 0.2 : 0.16, z.type === 'screamer' && z.screamed ? 0.14 : 0.06, 0.06, [0.2, 0.05, 0.04]);
     for (const dx of [-0.065, 0.065]) P(dx, 1.7, -0.62 * tl - 0.19, lean * 0.6, 0.06, 0.05, 0.04, [0.85, 0.82, 0.55], 0.25);
     for (const sd of [-1, 1]) {

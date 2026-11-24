@@ -63,6 +63,14 @@ function paintFor(s) {
   const p = PAINT[s.paint] || PAINT.olive, tip = TIPS.find((q) => q.id === s.tips), trim = TRIMS.find((q) => q.id === s.trimCol), tint = TINTS.find((q) => q.id === s.tint);
   return { ...p, glass: tint && tint.col ? tint.col : null, trim: trim && trim.col ? trim.col : p.trim, tips: tip ? tip.col : null, tips2: tip ? tip.col2 : null, camo: (CAMO[s.camo] || {}).k || 0, nose: s.nose && s.nose !== 'none' ? s.nose : p.shark ? 'shark' : 'none', tailArt: s.tailArt || 'none', num: s.num };
 }
+// weather: fog multiplier, cloud cover, rain, wind (m/s), storm
+const WX = {
+  clear: { fog: 1, cloud: 0, rain: 0, wind: 2, storm: 0 },
+  cloudy: { fog: 1.25, cloud: 0.5, rain: 0, wind: 5, storm: 0 },
+  rain: { fog: 1.9, cloud: 0.75, rain: 0.6, wind: 8, storm: 0 },
+  fog: { fog: 6, cloud: 0.45, rain: 0, wind: 1, storm: 0 },
+  storm: { fog: 2.5, cloud: 0.95, rain: 1, wind: 14, storm: 1 },
+};
 // graphics levels: resolution, shadows, how far you can see, how far the trees go
 const QLEVELS = [
   { res: 1, shadow: true, view: 2800, trees: 1100 },
@@ -215,7 +223,201 @@ export class HeliGame {
     this.tod = ((this.tod ?? 0.3) + (dt / 720) * (1 + was * 0.5)) % 1;
     this.applyDay();
     if (was < 0.5 && this.night >= 0.5) { this.banner('NIGHT FALLS', 'THEY\'RE FASTER IN THE DARK · AND THERE ARE MORE OF THEM · ⚙ +50%', 'r', 3); this.snd.fail?.(); }
-    if (was >= 0.5 && this.night < 0.5) this.banner('DAWN', 'YOU MADE IT THROUGH THE NIGHT', 'g', 2.5);
+    if (was >= 0.5 && this.night < 0.5) {
+      this.banner('DAWN', 'YOU MADE IT THROUGH THE NIGHT · THE STALKERS BURN', 'g', 2.5);
+      for (const z of this.horde.list) if (z.alive && z.type === 'stalker') { this.fx.flame([z.x, z.y + 1, z.z], [0, 2, 0], 1.2); z.keep = false; this.horde.damage(z, 1e4, [0, 1, 0], 'fire'); }
+    }
+    this.wxTick(dt);
+  }
+  // ---- WEATHER: clear, cloudy, rain, fog banks and thunderstorms roll through every few minutes. Rain and storms bring
+  // wind that pushes you about (and turbulence), fog closes the view right down, storms throw lightning.
+  wxTick(dt) {
+    const w = this.wx = this.wx || { kind: 'clear', t: 150 + Math.random() * 120, dir: Math.random() * 6.28 };
+    if (!this.client) {
+      w.t -= dt;
+      if (w.t <= 0) {
+        const r = Math.random(), prev = w.kind;
+        w.kind = r < 0.3 ? 'clear' : r < 0.52 ? 'cloudy' : r < 0.72 ? 'rain' : r < 0.84 ? 'fog' : 'storm';
+        if (w.kind === prev) w.kind = prev === 'clear' ? 'cloudy' : 'clear';
+        w.t = 200 + Math.random() * 220;
+        const say = { clear: 'CLEARING UP', cloudy: 'CLOUDING OVER', rain: 'RAIN COMING IN', fog: 'FOG ROLLING IN · STAY LOW, FLY SLOW', storm: 'THUNDERSTORM COMING · HOLD ON TIGHT' }[w.kind];
+        this.feed(`WEATHER: ${say}`, w.kind === 'storm' ? 'r' : 'y');
+        if (w.kind === 'storm') this.radio?.("Pilot, the masts are showing a big storm cell heading our way. Expect wind, rain and lightning. Keep your speed up and stay off the hilltops.", 7);
+      }
+      w.dir += dt * 0.01 * (w.kind === 'storm' ? 4 : 1);
+    }
+    const T = WX[w.kind] || WX.clear, v = this.wxv = this.wxv || { fog: 1, cloud: 0, rain: 0, wind: 2, storm: 0 };
+    for (const k of Object.keys(T)) v[k] += (T[k] - v[k]) * damp(0.06, dt);
+    // gusts
+    this.gustT = (this.gustT || 0) + dt;
+    const gust = 1 + Math.sin(this.gustT * 0.7) * 0.3 + Math.sin(this.gustT * 2.3) * 0.25 * v.storm;
+    this.wind = [Math.cos(w.dir) * v.wind * gust, Math.sin(w.dir) * v.wind * gust];
+    // lightning
+    this.flashL = Math.max(0, (this.flashL || 0) - dt * 3.5);
+    if (v.storm > 0.5 && Math.random() < dt / 7) {
+      this.flashL = 1;
+      const H = this.client ? this.client.heli || this.heli : this.heli;
+      if (!this.client && H && Math.random() < 0.55) this.groundStrike(H);
+      else { this.bolt = { x: Math.random(), t: 0.25, seed: Math.random() }; setTimeout(() => this.thunder(0.4 + Math.random() * 0.6), 400 + Math.random() * 2600); }
+    }
+    if (this.bolt) { this.bolt.t -= dt; if (this.bolt.t <= 0) this.bolt = null; }
+  }
+  // lightning hits the ground near you: anything standing there fries and it starts a fire. Fly high in a storm and you
+  // are the tallest thing around, so now and then it hits YOU: a jolt of damage and the electrics flicker.
+  groundStrike(H) {
+    const agl = H.pos[1] - this.groundAt(H.pos[0], H.pos[2]);
+    let p;
+    if (agl > 120 && Math.random() < 0.12) {
+      p = H.pos.slice(); this.hurt(12, p); this.zapT = 2.2;
+      this.feed('⚡ LIGHTNING STRIKE! ELECTRICS FLICKERING · FLY LOWER IN STORMS', 'r'); this.thunder(1.2); this.shake = Math.max(this.shake || 0, 0.5);
+    } else {
+      const a = Math.random() * 6.28, d = 120 + Math.random() * 380;
+      p = [H.pos[0] + Math.cos(a) * d, 0, H.pos[2] + Math.sin(a) * d]; p[1] = this.groundAt(p[0], p[2]);
+      for (const z of this.horde.list) if (z.alive && Math.hypot(z.x - p[0], z.z - p[2]) < 9 && Math.abs(z.y - p[1]) < 6) { this.fx.flame([z.x, z.y + 1, z.z], [0, 3, 0], 1.5); this.horde.damage(z, 1e4, [0, 6, 0], 'fire'); }
+      this.fires.push({ pos: p, r: 7, t: 7, tick: 0 }); this.fx.sparks?.([p[0], p[1] + 1, p[2]], 40, [0.85, 0.9, 1], 14, 0.8, 0.08, 3);
+      setTimeout(() => this.thunder(clamp(1.3 - d / 500, 0.4, 1.2)), d / 340 * 1000);
+    }
+    // the bolt itself: a jagged line of light from the cloud down to the ground
+    let q = [p[0] + (Math.random() - 0.5) * 60, p[1] + 420, p[2] + (Math.random() - 0.5) * 60];
+    for (let i = 0; i < 12; i++) {
+      const k = 1 - (i + 1) / 12, n = i === 11 ? p.slice() : [p[0] + (q[0] - p[0]) * 0.8 + (Math.random() - 0.5) * 30 * k, p[1] + (q[1] - p[1]) * 0.8 * (k / (k + 1 / 12)) , p[2] + (q[2] - p[2]) * 0.8 + (Math.random() - 0.5) * 30 * k];
+      if (n[1] < p[1]) n[1] = p[1];
+      this.fx.beam(q, n, [0.85, 0.9, 1], 0.35, 1.1); q = n;
+    }
+  }
+  // ---- BIRDS: flocks sit in fields and on rooftops and take off in a burst when you come close. Hit one and it hurts.
+  birdTick(dt) {
+    const H = this.client ? this.client.heli || this.heli : this.heli; if (!H) return;
+    const L = this.birds = this.birds || [], v = this.wxv || { storm: 0 }, want = this.night > 0.6 || v.storm > 0.5 ? 1 : 4;
+    for (let i = L.length - 1; i >= 0; i--) if (Math.hypot(L[i].x - H.pos[0], L[i].z - H.pos[2]) > 1100 || !L[i].b.length) L.splice(i, 1);
+    if (L.length < want && Math.random() < dt) {
+      const a = Math.random() * 6.28, d = 350 + Math.random() * 450, x = H.pos[0] + Math.cos(a) * d, z = H.pos[2] + Math.sin(a) * d, g = this.groundAt(x, z);
+      if (Math.abs(x) < WORLD - 50 && Math.abs(z) < WORLD - 50 && g > (WATER ?? 0) + 0.5) {
+        const sit = Math.random() < 0.6, n = 14 + Math.floor(Math.random() * 16), f = { x, z, y: sit ? g : g + 40 + Math.random() * 60, st: sit ? 'sit' : 'fly', t: 0, hd: Math.random() * 6.28, b: [] };
+        for (let k = 0; k < n; k++) { const r = Math.sqrt(Math.random()) * (sit ? 9 : 14), b = Math.random() * 6.28; f.b.push({ p: [x + Math.cos(b) * r, sit ? this.groundAt(x + Math.cos(b) * r, z + Math.sin(b) * r) : f.y + (Math.random() - 0.5) * 8, z + Math.sin(b) * r], v: [0, 0, 0], ph: Math.random() * 6.28, sit }); }
+        L.push(f);
+      }
+    }
+    const spd = Math.hypot(...H.vel);
+    for (const f of L) {
+      f.t += dt;
+      let cx = 0, cy = 0, cz = 0; for (const b of f.b) { cx += b.p[0]; cy += b.p[1]; cz += b.p[2]; }
+      cx /= f.b.length; cy /= f.b.length; cz /= f.b.length;
+      const dH = Math.hypot(cx - H.pos[0], cy - H.pos[1], cz - H.pos[2]);
+      if (f.st === 'sit' && (dH < 90 || this.flashL > 0.9)) { f.st = 'fly'; f.t = 0; f.hd = Math.atan2(cz - H.pos[2], cx - H.pos[0]); for (const b of f.b) { b.sit = false; b.v = [(Math.random() - 0.5) * 6 + Math.cos(f.hd) * 6, 7 + Math.random() * 5, (Math.random() - 0.5) * 6 + Math.sin(f.hd) * 6]; } if (dH < 140) this.chirp(); }
+      if (f.st === 'sit') { for (const b of f.b) b.ph += dt * 3; continue; }
+      // flying: wheel about, keep together, swerve away from you
+      f.hd += dt * (0.25 + Math.sin(f.t * 0.3) * 0.35);
+      const gx = cx + Math.cos(f.hd) * 40, gz = cz + Math.sin(f.hd) * 40, gy = Math.max(this.groundAt(cx, cz) + 35, Math.min(f.y, 160));
+      for (const b of f.b) {
+        b.ph += dt * 14;
+        const ax = (gx - b.p[0]) * 0.08 + (cx - b.p[0]) * 0.25, ay = (gy - b.p[1]) * 0.25 + (cy - b.p[1]) * 0.2, az = (gz - b.p[2]) * 0.08 + (cz - b.p[2]) * 0.25;
+        b.v[0] += ax * dt; b.v[1] += ay * dt; b.v[2] += az * dt;
+        const dx = b.p[0] - H.pos[0], dy = b.p[1] - H.pos[1], dz = b.p[2] - H.pos[2], d = Math.hypot(dx, dy, dz);
+        if (d < 30) { b.v[0] += (dx / d) * 18 * dt; b.v[1] += (dy / d) * 18 * dt; b.v[2] += (dz / d) * 18 * dt; }
+        const sv = Math.hypot(...b.v), top = 13; if (sv > top) b.v = b.v.map((c) => (c * top) / sv);
+        if (this.wind) { b.p[0] += this.wind[0] * 0.3 * dt; b.p[2] += this.wind[1] * 0.3 * dt; }
+        for (let k = 0; k < 3; k++) b.p[k] += b.v[k] * dt;
+        // bird strike
+        if (d < 2.6 && spd > 14 && !H.dead && !(this.birdCD > this.t)) {
+          this.birdCD = this.t + 0.6;
+          b.dead = true; const p = b.p.slice();
+          this.fx.sparks?.(p, 14, [0.92, 0.92, 0.9], 6, 1.1, 0.06, 0.2); this.fx.sparks?.(p, 6, [0.6, 0.08, 0.06], 4, 0.7, 0.05, 0);
+          this.hurt(Math.min(18, 3 + spd * 0.12), p); this.bsplat = { t: 3.5, x: 0.3 + Math.random() * 0.4, y: 0.25 + Math.random() * 0.3, s: Math.random() };
+          this.feed(spd > 50 ? 'BIRD STRIKE! · THAT ONE CRACKED THE GLASS' : 'BIRD STRIKE!', 'y'); this.snd.hit?.();
+        }
+      }
+      f.b = f.b.filter((b) => !b.dead);
+    }
+  }
+  chirp() {
+    const c = this.snd.ctx; if (!c || this.save.sfx === false) return;
+    const t0 = c.currentTime;
+    for (let i = 0; i < 7; i++) {
+      const t = t0 + i * 0.05 + Math.random() * 0.15, o = c.createOscillator(), g = c.createGain(); o.type = 'sine';
+      o.frequency.setValueAtTime(2600 + Math.random() * 1600, t); o.frequency.exponentialRampToValueAtTime(1500 + Math.random() * 800, t + 0.08);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.025, t + 0.01); g.gain.linearRampToValueAtTime(0, t + 0.09);
+      o.connect(g).connect(this.snd.master); o.start(t); o.stop(t + 0.1);
+    }
+    // the clatter of wings taking off
+    const n = c.createBufferSource(); n.buffer = this.snd.noise; const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.8;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.08, t0 + 0.05); g.gain.setTargetAtTime(0, t0 + 0.3, 0.3);
+    n.connect(bp).connect(g).connect(this.snd.master); n.start(t0, Math.random()); n.stop(t0 + 1.5);
+  }
+  birdParts(P) {
+    const e = this.eye; if (!e || !this.birds) return;
+    for (const f of this.birds) for (const b of f.b) {
+      if (Math.abs(b.p[0] - e[0]) + Math.abs(b.p[2] - e[2]) > 420) continue;
+      const yaw = b.sit ? b.ph * 0.3 : Math.atan2(-b.v[0], -b.v[2]), fl = b.sit ? 0.1 : Math.sin(b.ph);
+      P([b.p[0], b.p[1] + (b.sit ? 0.12 : 0), b.p[2]], [0, yaw, 0], [0.2, 0.17, 0.48], [0.07, 0.07, 0.08], { shape: 'sphere' });
+      if (!b.sit) P([b.p[0], b.p[1] + fl * 0.12, b.p[2]], [0, yaw, 0], [1.05 * (0.35 + 0.65 * Math.abs(Math.cos(b.ph * 0.5))), 0.04, 0.22], [0.1, 0.1, 0.11]);
+    }
+  }
+  // wind and turbulence acting on your aircraft
+  windPush(H, dt) {
+    if (!this.wind || H.contacts || H.dead) return;
+    const v = this.wxv, plane = this.S.plane && (!this.S.vtol || H.planeMode), k = plane ? 0.025 : 0.07;
+    H.vel[0] += (this.wind[0] - H.vel[0] * 0.0) * k * dt * 1; H.vel[2] += this.wind[1] * k * dt;
+    const turb = (v.storm * 1.0 + v.rain * 0.3) * (0.5 + Math.random());
+    if (turb > 0.05) { H.w[2] += (Math.random() - 0.5) * turb * 2.2 * dt * 10; H.w[0] += (Math.random() - 0.5) * turb * 1.2 * dt * 10; H.vel[1] += (Math.random() - 0.5) * turb * 6 * dt; }
+  }
+  thunder(vol) {
+    const c = this.snd.ctx; if (!c || this.save.sfx === false) return;
+    const t = c.currentTime, n = c.createBufferSource(); n.buffer = this.snd.noise; n.loop = true;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(90, t + 3);
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol * 0.7, t + 0.08); g.gain.setTargetAtTime(0, t + 0.5, 1.1);
+    n.connect(lp).connect(g).connect(this.snd.master); n.start(t); n.stop(t + 5);
+  }
+  // rain streaks and lightning drawn over the view; rain and wind sound
+  wxDraw() {
+    const cv = this.$('wx'), v = this.wxv;
+    const on = v && (this.mode === 'fly' || this.mode === 'wing' || this.mode === 'gunner');
+    const W = this.r.cssSize ? this.r.cssSize[0] : innerWidth, Hh = this.r.cssSize ? this.r.cssSize[1] : innerHeight;
+    if (cv.width !== W || cv.height !== Hh) { cv.width = W; cv.height = Hh; }
+    const c = cv.getContext('2d'); c.clearRect(0, 0, W, Hh);
+    // sound
+    const ctx = this.snd.ctx;
+    if (ctx && !this.wxAu && on) {
+      const mk = (type, f) => { const n = ctx.createBufferSource(); n.buffer = this.snd.noise; n.loop = true; const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; const g = ctx.createGain(); g.gain.value = 0; n.connect(fl).connect(g).connect(this.snd.master); n.start(); return g; };
+      this.wxAu = { rain: mk('highpass', 1400), wind: mk('bandpass', 380) };
+    }
+    if (this.wxAu) { const t = ctx.currentTime, lo = on && this.save.sfx !== false ? 1 : 0; this.wxAu.rain.gain.setTargetAtTime((v ? v.rain : 0) * 0.13 * lo, t, 0.5); this.wxAu.wind.gain.setTargetAtTime((v ? clamp((v.wind - 3) / 10, 0, 1) : 0) * 0.1 * lo, t, 0.5); }
+    if (!on) return;
+    // rain: streaks falling past the camera, slanted by the wind and your speed
+    const n = Math.round(v.rain * (this.ql >= 4 ? 140 : 320));
+    if (n > 0) {
+      const H = this.client ? this.client.heli || this.heli : this.heli, sp = H ? Math.hypot(H.vel[0], H.vel[2]) : 0;
+      const slant = clamp(((this.wind ? this.wind[0] : 0) * 0.02) + sp * 0.004, -0.5, 0.5), len = (18 + sp * 0.4) * (Hh / 900);
+      c.strokeStyle = this.night > 0.5 ? 'rgba(170,185,210,.22)' : 'rgba(210,220,235,.35)'; c.lineWidth = 1.2;
+      c.beginPath();
+      for (let i = 0; i < n; i++) { const x = Math.random() * W, y = Math.random() * Hh; c.moveTo(x, y); c.lineTo(x + slant * len, y + len); }
+      c.stroke();
+    }
+    // lightning: the whole sky flashes, and sometimes you see the bolt
+    if (this.bolt && this.bolt.t > 0) {
+      let x = this.bolt.x * W, y = 0, sd = this.bolt.seed * 1000;
+      const rnd = () => { sd = (sd * 9301 + 49297) % 233280; return sd / 233280; };
+      c.strokeStyle = `rgba(235,240,255,${clamp(this.bolt.t * 5, 0, 1)})`; c.lineWidth = 3; c.shadowColor = '#cfe0ff'; c.shadowBlur = 14;
+      c.beginPath(); c.moveTo(x, y);
+      while (y < Hh * 0.55) { x += (rnd() - 0.5) * 60; y += 20 + rnd() * 30; c.lineTo(x, y); }
+      c.stroke(); c.shadowBlur = 0;
+    }
+    // a bird smeared across the glass: a messy splat, dragged back by the airflow, and a few cracks
+    if (this.bsplat && this.bsplat.t > 0) {
+      const sp = this.bsplat, a = clamp(sp.t / 1.5, 0, 1), x = sp.x * W, y = sp.y * Hh, R0 = Hh * 0.035;
+      let sd = sp.s * 1e4; const rnd = () => { sd = (sd * 9301 + 49297) % 233280; return sd / 233280; };
+      c.strokeStyle = `rgba(220,230,240,${0.45 * a})`; c.lineWidth = 1; c.beginPath();
+      for (let i = 0; i < 6; i++) { let px = x, py = y, an = rnd() * 6.28; c.moveTo(px, py); for (let k = 0; k < 5; k++) { an += (rnd() - 0.5) * 0.9; px += Math.cos(an) * R0 * 0.8; py += Math.sin(an) * R0 * 0.8; c.lineTo(px, py); } }
+      c.stroke();
+      for (let i = 0; i < 22; i++) {
+        const an = rnd() * 6.28, dd = R0 * rnd() * 1.6, rr = R0 * (0.04 + rnd() * 0.12);
+        c.fillStyle = i % 4 ? `rgba(80,20,14,${0.6 * a})` : `rgba(235,235,225,${0.6 * a})`;
+        c.fillRect(x + Math.cos(an) * dd, y + Math.sin(an) * dd, rr, rr * (1 + rnd() * 2.5));
+      }
+    }
+    // electrics flicker after a lightning hit
+    if (this.zapT > 0 && Math.random() < 0.6) { c.fillStyle = `rgba(0,0,0,${0.35 + Math.random() * 0.4})`; c.fillRect(0, 0, W, Hh); }
+    if ((this.flashL || 0) > 0.02) { c.fillStyle = `rgba(230,235,255,${this.flashL * 0.35})`; c.fillRect(0, 0, W, Hh); }
   }
   applyDay(on = true) {
     const r = this.r, gl = r.gl;
@@ -230,9 +432,12 @@ export class HeliGame {
     // night vision: when it's dark, everything comes up bright and green
     const nv = this.S && this.S.nvg && this.nvgOn !== false && this.mode !== 'hangar' ? clamp((1 - dk) * 1.6, 0, 1) : 0;
     this.nvNow = nv;
-    r.setDay(dk + (1 - dk) * 0.1, (1 - dk) * (1 - 0.75 * nv), 0.2 + 0.8 * dk + nv * 0.75, mix3(tint, [0.42, 1.15, 0.45], nv), 1);
-    const sky = mix3(mix3([0.012, 0.02, 0.05], mix3(SKY, [0.3, 0.28, 0.45], gold), dk), [0.07, 0.2, 0.08], nv);
-    const fog = mix3(mix3([0.03, 0.04, 0.075], mix3(FOG, [0.92, 0.6, 0.42], gold), dk), [0.12, 0.3, 0.13], nv);
+    const W = this.wxv || { cloud: 0 }, cl = W.cloud || 0, flash = this.flashL || 0;
+    // proper dark nights (moonlight only), clouds take the sun away, lightning lights everything up for a moment
+    r.setDay((dk + (1 - dk) * 0.05) * (1 - cl * 0.55) + flash * 1.4, (1 - dk) * (1 - 0.75 * nv), (0.12 + 0.88 * dk + nv * 0.8) * (1 - cl * 0.25) + flash * 0.8, mix3(mix3(tint, [0.42, 1.15, 0.45], nv), [0.8, 0.85, 0.95], cl * 0.6), 1);
+    const grey = (c3) => mix3(c3, [0.42, 0.45, 0.5].map((v) => v * (0.15 + 0.85 * dk)), cl * 0.8);
+    const sky = mix3(grey(mix3(mix3([0.006, 0.01, 0.03], mix3(SKY, [0.3, 0.28, 0.45], gold), dk), [0.07, 0.2, 0.08], nv)), [0.85, 0.88, 1], flash * 0.7);
+    const fog = mix3(grey(mix3(mix3([0.02, 0.025, 0.05], mix3(FOG, [0.92, 0.6, 0.42], gold), dk), [0.12, 0.3, 0.13], nv)), [0.8, 0.82, 0.95], flash * 0.5);
     gl.useProgram(r.prog);
     r.fogColor = fog; gl.uniform3fv(r.u.uFogColor, fog); gl.uniform3fv(r.u.uSkyTop, sky);
     r.sunDir = el > -0.02 ? sun : sun.map((v) => -v); gl.uniform3fv(r.u.uSunDir, r.sunDir);
@@ -322,7 +527,7 @@ export class HeliGame {
         <button class="da-deploy" data-da="deploy" type="button">TAKE OFF ▶</button>
       </div>
       <div class="da-hud hidden" data-da="hud">
-        <canvas class="da-pit hidden" data-da="pit"></canvas><div class="da-dmg" data-da="dmg"></div><div class="da-white" data-da="white"></div>
+        <canvas class="da-wx" data-da="wx"></canvas><canvas class="da-pit hidden" data-da="pit"></canvas><div class="da-dmg" data-da="dmg"></div><div class="da-white" data-da="white"></div>
         <div data-da="marks"></div>
         <div class="da-cross" data-da="cross"></div><div class="da-hit" data-da="hit"></div>
         <div class="da-evs" data-da="evs"></div>
@@ -498,6 +703,7 @@ export class HeliGame {
     opt('INVERT MOUSE', s.invert ? 'ON' : 'OFF', () => { s.invert = !s.invert; });
     opt('GRAPHICS', GFXNAME[s.gfx || 'auto'], () => { s.gfx = GFXNEXT[s.gfx || 'auto']; this.ql = null; this.pfT = 0; this.pfN = 0; });
     opt('MUSIC', s.music === false ? 'OFF' : ['QUIET', 'MEDIUM', 'LOUD'][Math.round((s.musicVol ?? 0.5) * 2 - 0.5) || 0] || 'MEDIUM', () => { if (s.music === false) { s.music = true; s.musicVol = 0.25; } else if ((s.musicVol ?? 0.5) < 0.4) s.musicVol = 0.5; else if (s.musicVol < 0.9) s.musicVol = 1; else s.music = false; });
+    opt('SAVE BACKUP', 'OPEN 💾', () => this.openBackup());
     opt('TUTORIAL', this.tutAsk ? 'ON NEXT FLIGHT ✔' : 'PLAY IT AGAIN', () => { this.tutAsk = !this.tutAsk; });
     opt('MOUSE SPEED', `${s.sens.toFixed(1)}×`, () => { s.sens = s.sens >= 2 ? 0.5 : Math.round((s.sens + 0.25) * 100) / 100; });
     const nw = el(`<button class="da-opt" type="button">WORLD<b>${this.sureNew ? 'SURE? CLICK AGAIN' : 'NEW WORLD ▶'}</b></button>`);
@@ -663,6 +869,10 @@ export class HeliGame {
       this.draw(eye, v.map((c) => c / l), 0, [], [], [C.x, 0, C.z], 0.0032);
     }
     if (this.mode === 'fly' || this.mode === 'wing' || this.mode === 'gunner') { this.bossFeel(dt); this.siteTick(dt); }
+    if (this.mode === 'wing' || this.mode === 'gunner') { this.wxTick(dt); this.applyDay(); }
+    if (this.mode === 'fly' || this.mode === 'wing' || this.mode === 'gunner') this.birdTick(dt);
+    if (this.bsplat) this.bsplat.t -= dt; if (this.zapT > 0) this.zapT -= dt;
+    this.wxDraw();
     this.musicTick(dt);
     this.hitKeys.clear(); this.clk.clear(); this.mx = 0; this.my = 0;
   }
@@ -687,7 +897,7 @@ export class HeliGame {
       H.extraMass = grabbers * 0.07 + (this.crate && this.crate.carried ? 0.12 : 0);
       for (const z of this.horde.list) if (z.alive && z.st === 'grab' && z.type === 'brute') H.extraMass += 0.14;
       if (S.heavy) H.extraMass *= 0.4;
-      H.step(dt, ctl, this.world);
+      H.step(dt, ctl, this.world); this.windPush(H, dt); this.windPush(H, dt);
       this.edge(dt);
       const easy = this.save.flight === 'easy';
       for (const ev of H.events) {
@@ -2242,6 +2452,71 @@ export class HeliGame {
   flashPanel(t) { const m = this.$('panel').querySelector('[data-x=netmsg]'); if (m) m.textContent = t; }
   closePanel() { this.panel = null; this.$('panel').classList.add('hidden'); }
 
+  // ---------------------------------------------------------------- save backup
+  // Your progress lives in this browser only. The backup panel turns it into a code you can copy somewhere safe (or a
+  // file you can download), and turns a code or file back into your save.
+  async saveCode() {
+    const json = JSON.stringify(this.save);
+    let bytes = new TextEncoder().encode(json), z = 'R';
+    try {
+      const cs = new CompressionStream('deflate-raw');
+      const out = await new Response(new Blob([bytes]).stream().pipeThrough(cs)).arrayBuffer();
+      bytes = new Uint8Array(out); z = 'Z';
+    } catch { /* no compression in this browser: plain is fine */ }
+    let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    const b64 = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return `DEADAIR.${z}.${b64}.${this.codeSum(b64)}`;
+  }
+  codeSum(s2) { let h = 2166136261; for (let i = 0; i < s2.length; i++) { h ^= s2.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36).slice(-5).toUpperCase(); }
+  async readCode(code) {
+    const parts = String(code || '').trim().replace(/\s+/g, '').split('.');
+    if (parts.length !== 4 || parts[0] !== 'DEADAIR') throw new Error("That isn't a DEAD AIR save code");
+    const [, z, b64, sum] = parts;
+    if (this.codeSum(b64) !== sum) throw new Error('That code has been changed or cut short: copy the whole thing');
+    const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+    let bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (z === 'Z') bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    const save = JSON.parse(new TextDecoder().decode(bytes));
+    if (!save || typeof save !== 'object' || typeof save.scrap !== 'number' || (save.helis && !Array.isArray(save.helis))) throw new Error("That save doesn't look right");
+    return save;
+  }
+  async openBackup() {
+    const panel = this.$('panel');
+    this.panel = 'backup';
+    if (this.locked) this.unlockSoft();
+    saveSave(this.save);
+    const code = await this.saveCode();
+    const s2 = this.save, ch = (s2.story && s2.story.ch) || 0;
+    panel.innerHTML = `<button class="alt close" data-x="close" type="button">CLOSE ✕</button><h2>SAVE BACKUP 💾</h2>
+      <p>Your progress is only stored in this browser. If it gets cleared (a school computer, clearing history, a new computer) it's gone, <b>unless you keep a backup</b>.</p>
+      <h3>BACK UP NOW</h3>
+      <p>⚙${(s2.scrap || 0).toLocaleString('en-GB')} · ${(s2.helis || ['warhorse']).length} AIRCRAFT · CHAPTER ${Math.min(ch + 1, 12)} · ${s2.rescued || 0} RESCUED</p>
+      <textarea data-x="code" readonly spellcheck="false" style="width:100%;height:84px;font:600 11px ui-monospace,monospace;word-break:break-all">${code}</textarea>
+      <div class="row"><button data-x="copy" type="button">COPY CODE</button><button class="alt" data-x="dl" type="button">DOWNLOAD SAVE FILE</button></div>
+      <p style="font-size:12px;opacity:.75">Paste the code into a note, an email to yourself or a doc, or keep the file somewhere safe. Anyone with the code can load your progress, so only share it with yourself.</p>
+      <h3>LOAD A BACKUP</h3>
+      <p>Paste a code here, or pick a save file. <b>This replaces the progress in this browser.</b></p>
+      <textarea data-x="paste" spellcheck="false" placeholder="DEADAIR.Z.…" style="width:100%;height:60px;font:600 11px ui-monospace,monospace"></textarea>
+      <div class="row"><button data-x="load" type="button">LOAD CODE</button><label class="alt" style="cursor:pointer;padding:8px 14px;border:1px solid #555">LOAD FILE<input data-x="file" type="file" accept=".txt,.deadair" style="display:none"></label></div>
+      <p data-x="bmsg"></p>`;
+    panel.classList.remove('hidden');
+    const q = (k) => panel.querySelector(`[data-x=${k}]`), msg = (t, ok) => { const m = q('bmsg'); m.textContent = t; m.style.color = ok ? '#7dff9a' : '#ff7a6a'; };
+    q('close').onclick = () => this.closePanel();
+    q('copy').onclick = async () => { q('code').select(); try { await navigator.clipboard.writeText(code); msg('Copied! Paste it somewhere safe.', true); } catch { document.execCommand?.('copy'); msg('Copied (or press Ctrl+C now).', true); } };
+    q('dl').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([code], { type: 'text/plain' })); a.download = `dead-air-save-${new Date().toISOString().slice(0, 10)}.deadair`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); msg('Downloaded.', true); };
+    const load = async (text) => {
+      try {
+        const sv = await this.readCode(text);
+        const c2 = (sv.story && sv.story.ch) || 0;
+        msg(`Found: ⚙${(sv.scrap || 0).toLocaleString('en-GB')}, ${(sv.helis || ['warhorse']).length} aircraft, chapter ${Math.min(c2 + 1, 12)}. Loading…`, true);
+        localStorage.setItem('semifinals.deadair', JSON.stringify(sv));
+        setTimeout(() => location.reload(), 900);
+      } catch (e) { msg(e.message || 'That code didn\'t work', false); }
+    };
+    q('load').onclick = () => load(q('paste').value);
+    q('file').onchange = async (e) => { const f = e.target.files && e.target.files[0]; if (f) load(await f.text()); };
+  }
+
   // ---------------------------------------------------------------- online: the pilot's side (the server)
   // the ONLINE panel: make a server (with a name, public or private), see who's on it, or go and join someone else's
   openOnline() {
@@ -2569,7 +2844,7 @@ export class HeliGame {
     if (C.hxT <= 0) {
       C.hxT = 1;
       send({ k: 'hx', hpm: S.hp, fum: S.fuel, cr: this.save.team.filter((m) => m.aboard && !m.raid && m.hp > 0).slice(0, 4).map((c) => ROLE_IDS.indexOf(c.role)), sc: this.save.scrap, kl: this.run?.kills || 0,
-        fr: [...C.friends.values()].filter((f) => f.seat >= 0).map((f) => [f.seat, f.kills]), eq: this.save.eq, pt: this.save.paint, hk: this.save.heli, rk: this.rockets, bm: this.bombs, td: this.tod,
+        fr: [...C.friends.values()].filter((f) => f.seat >= 0).map((f) => [f.seat, f.kills]), eq: this.save.eq, pt: this.save.paint, hk: this.save.heli, rk: this.rockets, bm: this.bombs, td: this.tod, wx: this.wx ? [this.wx.kind, Math.round(this.wx.dir * 100) / 100] : null,
         hn: this.coop.info.host || 'HOST', fort: !!this.save.story.fort, masts: this.save.story.masts, st: this.story ? this.story.lines() : null, sw: this.map.spire.wrecked ? 1 : 0,
         wx: [...C.friends.values()].filter((f) => f.pilot).map((f) => [f.id, f.name, f.kind, f.eq, f.paint, f.kills]) });
     }
@@ -2711,7 +2986,7 @@ export class HeliGame {
     const now = performance.now();
     if (m.t != null) { const off = now - m.t; cl.off = cl.off == null ? off : Math.min(cl.off, off); }
     if (m.k === 'hx') {
-      cl.hx = m; cl.hs = Object.assign(cl.hs || {}, m); if (m.td != null) { this.tod = m.td; this.applyDay(); }
+      cl.hx = m; cl.hs = Object.assign(cl.hs || {}, m); if (m.td != null) { this.tod = m.td; this.applyDay(); } if (Array.isArray(m.wx) && WX[m.wx[0]]) { this.wx = this.wx || {}; this.wx.kind = m.wx[0]; this.wx.dir = +m.wx[1] || 0; }
       cl.story = m.st || null;
       if (this.map.fort) this.map.fort.locked = !m.fort;
       for (const mm of this.map.masts || []) mm.on = (m.masts || []).includes(mm.n);
@@ -3193,6 +3468,7 @@ export class HeliGame {
       P(L(0.12, 1.25, -0.4), [0, yaw, 0], [0.08, 0.1, m.wpn === 'pistol' ? 0.3 : 0.8], [0.1, 0.1, 0.1], { mat: 'metal' });
       if (m.flashT > 0) { m.flashT -= 1 / 60; P(L(0.12, 1.25, -0.9), [0, 0, 0], [0.2, 0.2, 0.2], [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.8 }); }
     };
+    this.birdParts(P);
     if (client || this.client) {
       const cl = this.client;
       for (const e of cl.evs) {
@@ -4228,6 +4504,7 @@ export class HeliGame {
       r.gl.useProgram(r.prog); r.gl.uniform3fv(r.u.uSunDir, r.sunDir);
     }
     if ((this.ql || 0) >= 4) fog = Math.max(fog, 0.0075);
+    if (this.mode !== 'hangar' && this.wxv) fog *= this.wxv.fog;
     const aspect = r.resize();
     const vfov = ((this.fovDeg || 64) * Math.PI) / 180;
     perspective(this.proj, vfov, aspect, 0.5, this.mode === 'hangar' ? 1100 : 4200);
