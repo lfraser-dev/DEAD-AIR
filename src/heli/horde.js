@@ -616,8 +616,10 @@ export class Horde {
       const o = n * INST_FLOATS;
       for (let k = 0; k < 16; k++) D[o + k] = m[k];
       D[o + 16] = p.size[0]; D[o + 17] = p.size[1]; D[o + 18] = p.size[2]; D[o + 19] = mesh === 'box' ? 1 : 0;
-      D[o + 20] = p.col[0]; D[o + 21] = p.col[1]; D[o + 22] = p.col[2]; D[o + 23] = 1;
-      D[o + 24] = 0; D[o + 25] = 0; D[o + 26] = p.em || 0; D[o + 27] = 0;
+      // thermal camera: bodies glow white hot
+      if (this.ir) { D[o + 20] = 0.95; D[o + 21] = 0.95; D[o + 22] = 0.95; } else { D[o + 20] = p.col[0]; D[o + 21] = p.col[1]; D[o + 22] = p.col[2]; }
+      D[o + 23] = 1;
+      D[o + 24] = 0; D[o + 25] = 0; D[o + 26] = this.ir ? 0.9 : p.em || 0; D[o + 27] = 0;
       D[o + 28] = 0; D[o + 29] = 0.8; D[o + 30] = 0; D[o + 31] = 0;
       N[mesh] = n + 1;
     };

@@ -74,6 +74,12 @@ const QLEVELS = [
 ];
 const GFXNAME = { auto: 'AUTO', low: 'LOW (FAST)', potato: 'POTATO (FASTEST)' };
 const GFXNEXT = { auto: 'low', low: 'potato', potato: 'auto' };
+// the Spectre's side guns: where they fire from (left side), how fast, how hard
+const GUNS = [
+  { n: '25 MM GATLING', kind: 'gat', dmg: 70, splash: 2.6, reload: 0.055, spread: 3, from: [-3.4, -0.6, -2], snd: 0.12, shake: 0.06 },
+  { n: '40 MM BOFORS', kind: 'bofors', dmg: 280, splash: 6, reload: 0.45, spread: 1.5, from: [-3.4, -0.4, 2], snd: 0.35, shake: 0.15 },
+  { n: '105 MM HOWITZER', kind: 'how', dmg: 1300, splash: 15, reload: 3.5, spread: 0.5, from: [-3.4, -0.2, 6], snd: 0.9, shake: 0.5 },
+];
 // where the pilot's eyes are in each aircraft (for the cockpit camera)
 const SEATS = { warhorse: [0.3, 0.25, -2.6], hornet: [0, 0.15, -0.9], reaper: [0, 0.65, -3.0], kestrel: [0.42, 0.45, -3.2], viper: [0, 0.75, -2.6], huey: [0.4, 0.35, -2.4], seaking: [0.42, 0.45, -3.9], osprey: [0.42, 0.45, -4.8], harrier: [0, 0.95, -3.3], alligator: [0, 0.65, -2.9], warthog: [0, 1.0, -3.5], spectre: [0.5, 0.5, -7.2], mule: [0.5, 0.45, -6.0] };
 const seatFor = (id) => SEATS[id] || SEATS.warhorse;
@@ -276,7 +282,7 @@ export class HeliGame {
       } else if (this.drag != null) { this.cam.dyaw -= (e.clientX - this.drag) * 0.008; this.drag = e.clientX; }
       e.stopImmediatePropagation();
     }, true);
-    addEventListener('wheel', (e) => { if (this.active) { e.stopImmediatePropagation(); if (this.mode === 'hangar') this.cam.zoom = clamp((this.cam.zoom || 1) * (e.deltaY > 0 ? 1.1 : 0.9), 0.6, 1.6); } }, { capture: true, passive: true });
+    addEventListener('wheel', (e) => { if (this.active) { e.stopImmediatePropagation(); if (this.gunCam) this.wheelD = e.deltaY; if (this.mode === 'hangar') this.cam.zoom = clamp((this.cam.zoom || 1) * (e.deltaY > 0 ? 1.1 : 0.9), 0.6, 1.6); } }, { capture: true, passive: true });
     addEventListener('contextmenu', (e) => { if (this.active && e.target === this.canvas) e.preventDefault(); }, true);
     document.addEventListener('pointerlockchange', (e) => {
       if (!this.active) return;
@@ -570,6 +576,7 @@ export class HeliGame {
     this.hp = S.hp; this.fuel = Math.max(this.fuel ?? S.fuel, S.fuel);
     this.heat = 0; this.overT = 0; this.gunT = 0; this.spinV = 0; this.flashT = 0;
     this.rockets = S.rockets; this.rocketT = 0; this.rocketRegen = 0; this.rocketSide = 0;
+    this.gunCam = false; this.canvas.style.filter = ''; if (this.horde) this.horde.ir = false;
     this.bombs = S.bombs; this.bombT = 0;
     this.siren = 0; this.raid = this.raid || null;
     const cb = [0, 25, 50][this.save.base.clinic || 0];
@@ -630,7 +637,7 @@ export class HeliGame {
     const h = this.$('help');
     const mode = this.save.flight, S = this.S || {};
     if (S.plane) {
-      h.innerHTML = `<b>YOU'RE FLYING A PLANE</b> · <kbd>W</kbd><kbd>S</kbd> THROTTLE · <kbd>MOUSE</kbd> PITCH AND ROLL (BANK TO TURN) · <kbd>A</kbd><kbd>D</kbd> RUDDER${S.vtol ? ' · <kbd>V</kbd> HOVER / FLY LIKE A PLANE' : ''}<br>KEEP YOUR SPEED UP OR IT STALLS · ${S.vtol ? 'HOVER TO LAND ANYWHERE' : 'FULL THROTTLE DOWN THE RUNWAY, THEN PULL BACK ON THE MOUSE TO TAKE OFF · LAND AND STOP ON THE RUNWAY TO REFUEL'}<br>JOBS: FLY NEAR AN SOS OR A SUPPLY DROP AND PRESS <kbd>E</kbd> TO CALL A DUSTOFF HELICOPTER, THEN KEEP THE ZOMBIES OFF IT · <kbd>E</kbd> OVER A MAST DROPS THE ENGINEER BY PARACHUTE · <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>M</kbd> MAP`;
+      h.innerHTML = `<b>YOU'RE FLYING A PLANE</b> · <kbd>W</kbd><kbd>S</kbd> THROTTLE · <kbd>MOUSE</kbd> PITCH AND ROLL (BANK TO TURN) · <kbd>A</kbd><kbd>D</kbd> RUDDER${S.vtol ? ' · <kbd>V</kbd> HOVER / FLY LIKE A PLANE' : ''}${S.gunship ? ' · <kbd>G</kbd> GUNSHIP MODE (ABOVE 80 M)' : ''}<br>KEEP YOUR SPEED UP OR IT STALLS · ${S.vtol ? 'HOVER TO LAND ANYWHERE' : 'FULL THROTTLE DOWN THE RUNWAY, THEN PULL BACK ON THE MOUSE TO TAKE OFF · LAND AND STOP ON THE RUNWAY TO REFUEL'}<br>JOBS: FLY NEAR AN SOS OR A SUPPLY DROP AND PRESS <kbd>E</kbd> TO CALL A DUSTOFF HELICOPTER, THEN KEEP THE ZOMBIES OFF IT · <kbd>E</kbd> OVER A MAST DROPS THE ENGINEER BY PARACHUTE · <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>M</kbd> MAP`;
       this.helpT = on ? 22 : 0;
       return;
     }
@@ -666,7 +673,7 @@ export class HeliGame {
       const k = (c) => (ctrl && this.key(c) ? 1 : 0);
       const ctl = {
         coll: H.dead ? 0 : k('KeyW') - k('KeyS'), yaw: k('KeyA') - k('KeyD'),
-        mx: ctrl && this.locked ? this.mx : 0, my: ctrl && this.locked ? this.my : 0,
+        mx: ctrl && this.locked && !this.gunCam ? this.mx : 0, my: ctrl && this.locked && !this.gunCam ? this.my : 0,
         pk: k('ArrowUp') - k('ArrowDown'), rk: k('ArrowRight') - k('ArrowLeft'),
         boost: ctrl && (this.key('ShiftLeft') || this.key('ShiftRight')) && this.fuel > 0,
         mode: this.save.flight || 'easy', assist: this.save.flight !== 'pro', sens: this.save.sens, invert: this.save.invert,
@@ -937,6 +944,8 @@ export class HeliGame {
 
   weapons(dt) {
     const S = this.S, G = S.gun;
+    if (S.gunship && this.hit('KeyG')) this.toggleGunship();
+    if (this.gunCam) { this.gunshipTick(dt); if (this.hit('KeyM')) { this.bigMap = !this.bigMap; this.$('bigmap').classList.toggle('hidden', !this.bigMap); } return; }
     const firing = (this.btn.has(0) || this.clk.has(0) || this.key('KeyF')) && this.locked;
     this.overT = Math.max(0, this.overT - dt);
     if (firing && this.overT <= 0) {
@@ -1390,7 +1399,8 @@ export class HeliGame {
         }
       } else if (s.kind === 'bomblet' || s.kind === 'beacon' || s.kind === 'grenade') s.vel[1] -= 9.8 * dt;
       else if (s.kind === 'flare') { s.vel[1] -= 4 * dt; s.vel = s.vel.map((v) => v * Math.exp(-1.2 * dt)); if (Math.random() < 0.7) this.fx.sparks(s.pos, 1, [1, 0.85, 0.4], 2, 0.4, 0.06, 0); }
-      else if (s.kind === 'plasma' && Math.random() < 0.7) { this.fx.spawnPiece(s.pos, [0.25, 0.25, 0.25], [0, 0, 0], [0.4, 0.9, 1], 0.25, 1); this.fx.debris[this.fx.debris.length - 1].noGravity = true; }
+      else if (s.kind === 'howitzer') this.fx.flame(s.pos, [0, 0, 0], 1.2);
+      else if (s.kind === 'plasma' && Math.random() < 0.7) { this.fx.spawnPiece(s.pos, [0.25, 0.25, 0.25], [0, 0, 0], s.cannon ? [1, 0.75, 0.3] : [0.4, 0.9, 1], 0.25, 1); this.fx.debris[this.fx.debris.length - 1].noGravity = true; }
       for (let k = 0; k < 3; k++) s.pos[k] += s.vel[k] * dt;
       const d = [s.pos[0] - prev[0], s.pos[1] - prev[1], s.pos[2] - prev[2]], dl = Math.hypot(d[0], d[1], d[2]) || 1e-6;
       const dir = d.map((v) => v / dl);
@@ -1420,10 +1430,12 @@ export class HeliGame {
       this.blastAll(p, s.splash ?? S.gun.splash, dmg, 8, 'gun');
       if (h.z) this.hitZombie(h.z, dmg, [s.vel[0] * 0.03, 3, s.vel[2] * 0.03], p, 'gun');
       if (s.pod) { this.fx.sparks(p, 8, [1, 0.6, 0.15], 8, 0.4, 0.08, 1); this.blasts.push({ pos: p, t: 0.25, size: 0.4 }); }
+      else if (s.big) this.boom(p, 1.1);
       else if (s.cannon) { this.boomFx(p, 0.55); this.blasts.push({ pos: p, t: 0.2, size: 0.6 }); }
       else { this.fx.sparks(p, 12, [0.5, 0.95, 1], 7, 0.4, 0.07, 1); this.blasts.push({ pos: p, t: 0.25, size: 0.5, col: [0.5, 0.95, 1] }); }
       return;
     }
+    if (s.kind === 'howitzer') { this.blastAll(p, 15, 1300, 26, 'bomb'); this.boom(p, 2.8); this.shake = Math.max(this.shake || 0, 0.35); this.fires.push({ pos: p, r: 6, t: 4, tick: 0 }); return; }
     if (s.kind === 'rocket') { this.blastAll(p, S.rocketR, S.rocketDmg, 16, 'rocket'); this.boom(p, s.mini ? 0.8 : 1.2); return; }
     if (s.kind === 'flare') return;
     if (s.kind === 'beacon') { this.beacons.push({ pos: [p[0], h.z ? this.groundAt(p[0], p[2]) : p[1], p[2]], t: 25, boom: S.beaconBoom }); this.fx.dust(p, 4); this.feed('BEACON DOWN · THEY\'RE ALL GOING TO IT', 'y'); return; }
@@ -2881,7 +2893,7 @@ export class HeliGame {
     const k = (c) => (ctrl && this.key(c) ? 1 : 0);
     const ctl = {
       coll: H.dead ? 0 : k('KeyW') - k('KeyS'), yaw: k('KeyA') - k('KeyD'),
-      mx: ctrl && this.locked ? this.mx : 0, my: ctrl && this.locked ? this.my : 0,
+      mx: ctrl && this.locked && !this.gunCam ? this.mx : 0, my: ctrl && this.locked && !this.gunCam ? this.my : 0,
       pk: k('ArrowUp') - k('ArrowDown'), rk: k('ArrowRight') - k('ArrowLeft'),
       boost: ctrl && (this.key('ShiftLeft') || this.key('ShiftRight')) && this.fuel > 0,
       mode: this.save.flight || 'easy', assist: this.save.flight !== 'pro', sens: this.save.sens, invert: this.save.invert,
@@ -3090,7 +3102,16 @@ export class HeliGame {
     const f = H.fwd, fl = Math.hypot(f[0], f[2]) || 1, ff = [f[0] / fl, 0, f[2] / fl];
     const sp = Math.hypot(...H.vel);
     let eye, look;
-    if (this.camMode === 3) {
+    if (this.gunCam) {
+      // the gunship's sensor turret, low on the left side, looking wherever you point it
+      const g = this.gs;
+      eye = H.toWorld([-2.6, -1.2, -6]);
+      look = [Math.cos(g.pitch) * Math.sin(g.yaw), Math.sin(g.pitch), Math.cos(g.pitch) * Math.cos(g.yaw)];
+      this.camEye = eye; this.camLook = look;
+      this.eye = eye;
+      this.fovDeg = [44, 22, 10, 5][g.zoom];
+    } else this.fovDeg = 64;
+    if (this.gunCam) { /* aimed above */ } else if (this.camMode === 3) {
       // in the pilot's seat: look out along the nose; the dash and the canopy frame are drawn over the top
       eye = H.toWorld(seatFor(this.save.heli));
       const nf = H.toWorld([0, -0.12, -10]);
@@ -3117,7 +3138,7 @@ export class HeliGame {
     }
     if (this.shake > 0) { const s = this.shake * 0.5; eye = eye.map((c) => c + (Math.random() - 0.5) * s); }
     this.eye = eye;
-    const roll = this.camMode >= 2 ? -H.rollL : -H.rollL * 0.3;
+    const roll = this.gunCam ? 0 : this.camMode >= 2 ? -H.rollL : -H.rollL * 0.3;
     const S = this.S, s = this.save;
     const fr = this.coop ? [...this.coop.friends.values()] : [];
     const st = {
@@ -3134,7 +3155,8 @@ export class HeliGame {
     };
     const parts = this.mode === 'down' || this.camMode === 3 ? [] : chopperParts(capEq(s.eq, s.heli), paintFor(s), st, H.H, s.heli);
     this.lastParts = parts;
-    this.draw(eye, look, roll, parts, this.extraParts(false), H.pos, 0.0038);
+    this.draw(eye, look, roll, this.gunCam ? [] : parts, this.extraParts(false), this.gunCam ? look.map((q, i) => eye[i] + q * 300) : H.pos, 0.0038);
+    if (this.gunCam) this.drawGun();
   }
 
   // survivors, scenarios, turrets, shots, blasts, tracers
@@ -3519,76 +3541,314 @@ export class HeliGame {
     this.raidUpT = 0; this.snd.radio?.();
   }
 
-  // the cockpit: canopy frame, dashboard and dials, drawn on a canvas over the 3D view
+  // SPECTRE GUNSHIP MODE (G): the autopilot flies a steady left-hand circle round where you're looking, and you work
+  // the guns from the sensor turret: 1 the 25 mm Gatling, 2 the 40 mm Bofors, 3 the 105 mm howitzer. Mouse aims,
+  // wheel / X zooms, I flips between daylight TV and white-hot infrared, G hands the controls back.
+  toggleGunship() {
+    const H = this.heli, S = this.S;
+    if (this.gunCam) { this.gunCam = false; H.orbit = null; this.canvas.style.filter = ''; this.horde.ir = false; this.feed('GUNSHIP MODE OFF · YOU HAVE CONTROL', 'y'); this.snd.bolt?.(); return; }
+    if (H.contacts || (this.agl || 0) < 80) { this.feed('CLIMB ABOVE 80 M FOR GUNSHIP MODE', 'y'); return; }
+    // circle round a point off the left wing, at least 450 m up
+    const f = H.fwd, fl = Math.hypot(f[0], f[2]) || 1, lx = f[2] / fl, lz = -f[0] / fl, R0 = 650;
+    const cx = H.pos[0] + lx * R0, cz = H.pos[2] + lz * R0;
+    const gy = this.groundAt(cx, cz);
+    H.orbit = { x: cx, z: cz, r: R0, y: Math.max(H.pos[1], gy + 450), v: Math.max(S.stall * 1.6, 55) };
+    const dx = cx - H.pos[0], dz = cz - H.pos[2], dy = gy - H.pos[1], dh = Math.hypot(dx, dz);
+    this.gs = this.gs || { zoom: 1, ir: false, wpn: 0, t: [0, 0, 0] };
+    this.gs.yaw = Math.atan2(dx, dz); this.gs.pitch = Math.atan2(dy, dh);
+    this.gunCam = true; this.locked = true;
+    this.banner('GUNSHIP', '1 · 25 MM   2 · 40 MM   3 · 105 MM   ·   WHEEL ZOOM   ·   I THERMAL   ·   G EXIT', '', 3);
+    this.snd.bolt?.();
+  }
+  gunshipTick(dt) {
+    const g = this.gs, H = this.heli;
+    if (H.dead || H.contacts) { this.toggleGunship(); return; }
+    const z = [1, 0.5, 0.22, 0.1][g.zoom], k = 0.0021 * (this.save.sens || 1) * z * (this.save.invert ? -1 : 1);
+    g.yaw -= this.mx * 0.0021 * (this.save.sens || 1) * z; g.pitch = clamp(g.pitch - this.my * k, -1.45, 0.1);
+    if (this.hit('KeyX') || this.wheelD) { g.zoom = (g.zoom + (this.wheelD < 0 ? 1 : this.wheelD > 0 ? 3 : 1)) % 4; this.wheelD = 0; }
+    if (this.hit('KeyI')) { g.ir = !g.ir; }
+    this.canvas.style.filter = g.ir ? 'grayscale(1) contrast(1.5) brightness(.8)' : 'saturate(.55) contrast(1.15)';
+    this.horde.ir = g.ir;
+    for (const [key, n] of [['Digit1', 0], ['Digit2', 1], ['Digit3', 2]]) if (this.hit(key) && g.wpn !== n) { g.wpn = n; this.snd.bolt?.(); }
+    for (let i = 0; i < 3; i++) g.t[i] = Math.max(0, g.t[i] - dt);
+    const firing = (this.btn.has(0) || this.clk.has(0) || this.key('KeyF')) && this.locked;
+    if (!firing || g.t[g.wpn] > 0) return;
+    const W = GUNS[g.wpn], look = [Math.cos(g.pitch) * Math.sin(g.yaw), Math.sin(g.pitch), Math.cos(g.pitch) * Math.cos(g.yaw)];
+    const hit = this.rayHit(this.camEye || H.pos, look, 4000);
+    const o = H.toWorld(W.from), spread = W.spread;
+    const tgt = [hit.p[0] + (Math.random() - 0.5) * spread, hit.p[1], hit.p[2] + (Math.random() - 0.5) * spread];
+    const d = norm([tgt[0] - o[0], tgt[1] - o[1], tgt[2] - o[2]]);
+    g.t[g.wpn] = W.reload;
+    if (W.kind === 'how') this.shots.push({ kind: 'howitzer', pos: o, vel: d.map((q) => q * 420), life: 6 });
+    else this.shots.push({ kind: 'plasma', cannon: true, dmg: W.dmg, splash: W.splash, big: W.kind === 'bofors', pos: o, vel: d.map((q) => q * 650), life: 5 });
+    this.snd.boom?.(W.snd); this.shake = Math.max(this.shake || 0, W.shake);
+    this.fx.sparks(o, 5, [1, 0.8, 0.4], 6, 0.2, 0.06, 1);
+  }
+  // the gunship sensor picture: brackets, reticle, the gun list with reload bars, the zoom and mode
+  drawGun() {
+    const cv = this.$('pit');
+    cv.classList.remove('hidden');
+    const W = this.r.cssSize ? this.r.cssSize[0] : innerWidth, Hh = this.r.cssSize ? this.r.cssSize[1] : innerHeight;
+    if (cv.width !== W || cv.height !== Hh) { cv.width = W; cv.height = Hh; }
+    const c = cv.getContext('2d'), g = this.gs, H = this.heli, u = Math.min(W / 1600, Hh / 900);
+    c.clearRect(0, 0, W, Hh);
+    const vg = c.createRadialGradient(W / 2, Hh / 2, Hh * 0.35, W / 2, Hh / 2, Hh * 0.85); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.65)');
+    c.fillStyle = vg; c.fillRect(0, 0, W, Hh);
+    const col = g.ir ? '#fff' : '#bfffbf';
+    c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 2 * u;
+    const cx = W / 2, cy = Hh / 2, b = 60 * u, e = 20 * u;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { c.beginPath(); c.moveTo(cx + sx * b, cy + sy * (b - e)); c.lineTo(cx + sx * b, cy + sy * b); c.lineTo(cx + sx * (b - e), cy + sy * b); c.stroke(); }
+    c.beginPath(); c.moveTo(cx - 30 * u, cy); c.lineTo(cx - 8 * u, cy); c.moveTo(cx + 8 * u, cy); c.lineTo(cx + 30 * u, cy); c.moveTo(cx, cy - 30 * u); c.lineTo(cx, cy - 8 * u); c.moveTo(cx, cy + 8 * u); c.lineTo(cx, cy + 30 * u); c.stroke();
+    // corner frame
+    c.lineWidth = 1.5 * u; c.strokeRect(40 * u, 40 * u, W - 80 * u, Hh - 80 * u);
+    const txt = (s2, x, y, px, al = 'left') => { c.font = `700 ${px * u}px ui-monospace, Menlo, monospace`; c.textAlign = al; c.fillText(s2, x, y); };
+    txt(g.ir ? 'IR  WHT' : 'TV', 60 * u, 70 * u, 18);
+    txt(`ZOOM ${['1×', '2×', '4×', '9×'][g.zoom]}`, 60 * u, 96 * u, 14);
+    txt(`ALT ${Math.round(H.pos[1])} M   ORBIT ${H.orbit ? Math.round(H.orbit.r) : 0} M`, W - 60 * u, 70 * u, 14, 'right');
+    const hit = this.rayHit(this.camEye || H.pos, this.camLook || [0, -1, 0], 4000);
+    txt(`RANGE ${Math.round(hit.t)} M`, W - 60 * u, 96 * u, 14, 'right');
+    // the guns
+    GUNS.forEach((Wp, i) => {
+      const y = Hh - 150 * u + i * 34 * u, x = 60 * u, on = i === g.wpn;
+      c.globalAlpha = on ? 1 : 0.5;
+      txt(`${i + 1}  ${Wp.n}`, x, y, on ? 17 : 14);
+      const rl = g.t[i] / Wp.reload;
+      c.strokeRect(x + 220 * u, y - 12 * u, 120 * u, 12 * u);
+      c.fillRect(x + 220 * u, y - 12 * u, 120 * u * (1 - rl), 12 * u);
+      c.globalAlpha = 1;
+    });
+    txt('G  EXIT GUNSHIP   ·   I  THERMAL   ·   WHEEL / X  ZOOM', W / 2, Hh - 54 * u, 13, 'center');
+    // north arrow
+    const na = -g.yaw + Math.PI;
+    c.save(); c.translate(W - 90 * u, Hh - 110 * u); c.rotate(na); c.beginPath(); c.moveTo(0, -24 * u); c.lineTo(8 * u, 8 * u); c.lineTo(-8 * u, 8 * u); c.closePath(); c.fill(); c.restore();
+    txt('N', W - 90 * u, Hh - 150 * u, 12, 'center');
+  }
+  // THE COCKPIT, drawn over the 3D view. Three kinds:
+  //  helicopter: a two-piece windscreen, overhead console, a glass panel (flight display + moving map), standby
+  //    gauges, a caution panel, the cyclic between your knees, chin windows by your feet, rotor shadows flicking past
+  //  jet: a head-up display (pitch ladder, flight path marker, speed / altitude / heading tapes, g, angle of attack),
+  //    two displays below it, the stick
+  //  propeller transport / gunship: four windscreen panes, a big overhead panel, four displays, a yoke and throttles
   cockpit() {
-    const cv = this.$('pit'), on = this.camMode === 3 && (this.mode === 'fly' || this.mode === 'wing') && !this.heli.dead;
+    const cv = this.$('pit'), on = this.camMode === 3 && (this.mode === 'fly' || this.mode === 'wing') && !this.heli.dead && !this.gunCam;
     cv.classList.toggle('hidden', !on);
     if (!on) return;
     const W = this.r.cssSize ? this.r.cssSize[0] : innerWidth, Hh = this.r.cssSize ? this.r.cssSize[1] : innerHeight;
     if (cv.width !== W || cv.height !== Hh) { cv.width = W; cv.height = Hh; }
-    const c = cv.getContext('2d'), H = this.heli, S = this.S, id = this.save.heli, plane = this.engineKind(id, H) !== 'heli';
+    const c = cv.getContext('2d'), H = this.heli, S = this.S, id = this.save.heli, kind = this.engineKind(id, H);
     c.clearRect(0, 0, W, Hh);
-    const u = Math.min(W, Hh * 1.6) / 1000;
-    // canopy frame
-    c.fillStyle = '#15181b'; c.strokeStyle = '#0b0d0f'; c.lineWidth = 2;
-    const post = (x0, x1, top) => { c.beginPath(); c.moveTo(x0, Hh); c.lineTo(x0 + 40 * u, Hh); c.lineTo(x1 + 18 * u, top); c.lineTo(x1 - 18 * u, top); c.closePath(); c.fill(); c.stroke(); };
-    if (plane) {
-      c.beginPath(); c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, 30 * u); c.quadraticCurveTo(W / 2, 80 * u, 0, 30 * u); c.closePath(); c.fill();
-      post(W * 0.06, W * 0.2, 0); post(W * 0.94 - 40 * u, W * 0.8, 0);
-    } else {
-      c.beginPath(); c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, 60 * u); c.lineTo(0, 60 * u); c.closePath(); c.fill();
-      post(W * 0.02, W * 0.12, 60 * u); post(W * 0.98 - 40 * u, W * 0.88, 60 * u);
-      post(W * 0.5 - 20 * u, W * 0.5, 60 * u);
-    }
-    // the dash
-    const dh = 230 * u, dy = Hh - dh;
-    const g = c.createLinearGradient(0, dy, 0, Hh); g.addColorStop(0, '#2a2f33'); g.addColorStop(1, '#111416');
-    c.fillStyle = g;
-    c.beginPath(); c.moveTo(0, Hh); c.lineTo(0, dy + 40 * u); c.quadraticCurveTo(W / 2, dy - 40 * u, W, dy + 40 * u); c.lineTo(W, Hh); c.closePath(); c.fill();
-    c.strokeStyle = '#444b51'; c.lineWidth = 3 * u; c.stroke();
-    const sp = Math.hypot(...H.vel) * 3.6, alt = Math.min(9999, this.agl || 0), vs = H.vel[1], fuel = this.fuel / S.fuel, hp = this.hp / S.hp;
-    const R = 56 * u, cy = dy + dh * 0.52, xs = [-2.65, -1.6, -0.55, 0.55, 1.6, 2.65].map((k) => W / 2 + k * R * 2.2);
-    const dial = (x, label, v, max, warn, txt) => {
-      c.fillStyle = '#060708'; c.beginPath(); c.arc(x, cy, R, 0, 7); c.fill();
-      c.strokeStyle = '#5b636a'; c.lineWidth = 3 * u; c.stroke();
-      c.strokeStyle = '#cfd6dc'; c.lineWidth = 1.5 * u;
-      for (let k = 0; k <= 10; k++) { const a = Math.PI * 0.75 + (k / 10) * Math.PI * 1.5; c.beginPath(); c.moveTo(x + Math.cos(a) * R * 0.8, cy + Math.sin(a) * R * 0.8); c.lineTo(x + Math.cos(a) * R * 0.93, cy + Math.sin(a) * R * 0.93); c.stroke(); }
-      const a = Math.PI * 0.75 + clamp(v / max, 0, 1) * Math.PI * 1.5;
-      c.strokeStyle = warn ? '#ff4a3a' : '#ffcf3a'; c.lineWidth = 3.5 * u;
-      c.beginPath(); c.moveTo(x, cy); c.lineTo(x + Math.cos(a) * R * 0.78, cy + Math.sin(a) * R * 0.78); c.stroke();
-      c.fillStyle = '#9aa4ab'; c.font = `800 ${11 * u}px sans-serif`; c.textAlign = 'center'; c.fillText(label, x, cy + R * 0.45);
-      c.fillStyle = warn ? '#ff6a5a' : '#fff'; c.font = `900 ${15 * u}px sans-serif`; c.fillText(txt, x, cy + R * 0.75);
+    const u = Math.min(W / 1600, Hh / 900), t = this.t;
+    const sp = Math.hypot(...H.vel), kmh = sp * 3.6, alt = Math.max(0, this.agl || 0), vs = H.vel[1], fuel = clamp(this.fuel / S.fuel, 0, 1), hp = clamp(this.hp / S.hp, 0, 1);
+    const R = (x, y, w, h, r) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
+    const txt = (s2, x, y, px, col, al = 'center', wt = 800) => { c.font = `${wt} ${px * u}px ui-monospace, Menlo, Consolas, monospace`; c.fillStyle = col; c.textAlign = al; c.fillText(s2, x, y); };
+    const metal = (y0, y1, a = '#2b3035', b = '#15181b') => { const g = c.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, a); g.addColorStop(1, b); return g; };
+    // a display: bezel with buttons round it, dark glass
+    const screen = (x, y, w, h) => {
+      c.fillStyle = '#0d0f11'; R(x - 10 * u, y - 10 * u, w + 20 * u, h + 20 * u, 6 * u); c.fill();
+      c.fillStyle = '#2a2f33';
+      for (let k = 0; k < 5; k++) { c.fillRect(x + (k + 0.5) * w / 5 - 6 * u, y - 8 * u, 12 * u, 5 * u); c.fillRect(x + (k + 0.5) * w / 5 - 6 * u, y + h + 3 * u, 12 * u, 5 * u); }
+      c.fillStyle = '#04080a'; c.fillRect(x, y, w, h);
     };
-    dial(xs[0], 'KM/H', sp, plane ? 500 : 300, plane && S.stall && Math.hypot(...H.vel) < S.stall * 1.1 && (this.agl || 0) > 3, Math.round(sp));
-    dial(xs[1], 'ALT M', alt, 400, alt < 15 && vs < -4, Math.round(alt));
-    // artificial horizon
-    { const x = xs[2], r = R * 1.15;
-      c.save(); c.beginPath(); c.arc(x, cy, r, 0, 7); c.clip();
-      c.translate(x, cy); c.rotate(-H.rollL); const py = clamp(H.pitch, -1.2, 1.2) * r * 1.1;
-      c.fillStyle = '#3d8be0'; c.fillRect(-r * 2, -r * 2 + py, r * 4, r * 2);
-      c.fillStyle = '#7a5530'; c.fillRect(-r * 2, py, r * 4, r * 2);
-      c.strokeStyle = '#fff'; c.lineWidth = 2 * u; c.beginPath(); c.moveTo(-r * 2, py); c.lineTo(r * 2, py); c.stroke();
-      for (const k of [-2, -1, 1, 2]) { const yy = py - k * r * 0.25; c.beginPath(); c.moveTo(-r * 0.2, yy); c.lineTo(r * 0.2, yy); c.stroke(); }
+    // a primary flight display: the attitude ball, speed and altitude tapes, heading along the bottom
+    const pfd = (x, y, w, h) => {
+      screen(x, y, w, h);
+      c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip();
+      const cx = x + w / 2, cy = y + h * 0.46, px = h / 1.4;
+      c.translate(cx, cy); c.rotate(-H.rollL);
+      const py = clamp(H.pitch, -1.4, 1.4) * px;
+      c.fillStyle = '#2f7fd6'; c.fillRect(-w, -h * 2 + py, w * 2, h * 2);
+      c.fillStyle = '#8a5a2b'; c.fillRect(-w, py, w * 2, h * 2);
+      c.strokeStyle = '#fff'; c.lineWidth = 1.5 * u; c.beginPath(); c.moveTo(-w, py); c.lineTo(w, py); c.stroke();
+      for (const d of [-20, -10, 10, 20]) { const yy = py - (d / 57.3) * px; c.beginPath(); c.moveTo(-w * 0.12, yy); c.lineTo(w * 0.12, yy); c.stroke(); txt(String(Math.abs(d)), w * 0.18, yy + 4 * u, 10, '#fff'); }
       c.restore();
-      c.strokeStyle = '#5b636a'; c.lineWidth = 3 * u; c.beginPath(); c.arc(x, cy, r, 0, 7); c.stroke();
-      c.strokeStyle = '#ffcf3a'; c.lineWidth = 3 * u; c.beginPath(); c.moveTo(x - r * 0.55, cy); c.lineTo(x - r * 0.15, cy); c.lineTo(x, cy + r * 0.1); c.lineTo(x + r * 0.15, cy); c.lineTo(x + r * 0.55, cy); c.stroke(); }
-    // compass
-    { const x = xs[3];
-      c.fillStyle = '#060708'; c.beginPath(); c.arc(x, cy, R, 0, 7); c.fill(); c.strokeStyle = '#5b636a'; c.lineWidth = 3 * u; c.stroke();
-      const hdg = H.heading;
-      c.fillStyle = '#fff'; c.font = `900 ${13 * u}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-      ['N', 'E', 'S', 'W'].forEach((n, k) => { const a = hdg + k * Math.PI / 2 - Math.PI / 2; c.fillStyle = n === 'N' ? '#ff6a5a' : '#fff'; c.fillText(n, x + Math.cos(a) * R * 0.72, cy + Math.sin(a) * R * 0.72); });
-      c.textBaseline = 'alphabetic';
-      c.strokeStyle = '#ffcf3a'; c.lineWidth = 3 * u; c.beginPath(); c.moveTo(x, cy + R * 0.3); c.lineTo(x, cy - R * 0.45); c.stroke(); }
-    dial(xs[4], 'FUEL', fuel, 1, fuel < 0.2, `${Math.round(fuel * 100)}%`);
-    dial(xs[5], plane ? 'THROTTLE' : 'ROTOR', plane ? H.thr ?? 0 : H.rpm, 1, false, `${Math.round((plane ? H.thr ?? 0 : H.rpm) * 100)}%`);
-    // warning lights
-    const lights = [['HULL', hp < 0.3], ['FUEL', fuel < 0.15], [plane ? 'STALL' : 'LOW', plane ? (S.stall && Math.hypot(...H.vel) < S.stall && (this.agl || 0) > 3) : alt < 6 && vs < -6], ['HOT', this.overT > 0]];
-    lights.forEach(([n, lit], k) => {
-      const x = W / 2 + (k - 1.5) * 74 * u, y = dy + 18 * u;
-      c.fillStyle = lit && (this.t * 3) % 1 < 0.6 ? '#ff3a2a' : '#2a1412'; c.fillRect(x - 32 * u, y - 10 * u, 64 * u, 20 * u);
-      c.fillStyle = lit ? '#fff' : '#6a4a46'; c.font = `900 ${11 * u}px sans-serif`; c.textAlign = 'center'; c.fillText(n, x, y + 4 * u);
-    });
+      c.strokeStyle = '#ffcf3a'; c.lineWidth = 3 * u; c.beginPath(); c.moveTo(cx - w * 0.2, cy); c.lineTo(cx - w * 0.06, cy); c.lineTo(cx, cy + 7 * u); c.lineTo(cx + w * 0.06, cy); c.lineTo(cx + w * 0.2, cy); c.stroke();
+      // tapes
+      const tape = (tx, val, step, label, right) => {
+        c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(tx, y + 6 * u, w * 0.17, h * 0.8);
+        for (let k = -4; k <= 4; k++) { const vv = Math.round(val / step) * step + k * step, yy = cy - (vv - val) / step * h * 0.09; if (yy < y + 8 * u || yy > y + h * 0.84 || vv < 0) continue; txt(String(vv), tx + w * 0.085, yy + 4 * u, 10, '#dfe', 'center', 600); }
+        c.fillStyle = '#000'; c.strokeStyle = '#fff'; c.lineWidth = 1.5 * u; c.fillRect(tx - 2 * u, cy - 10 * u, w * 0.17 + 4 * u, 20 * u); c.strokeRect(tx - 2 * u, cy - 10 * u, w * 0.17 + 4 * u, 20 * u);
+        txt(String(Math.round(val)), tx + w * 0.085, cy + 5 * u, 13, '#fff'); txt(label, tx + w * 0.085, y + h * 0.84 + 12 * u, 9, '#9ab');
+      };
+      tape(x + 4 * u, kmh, 20, 'KM/H'); tape(x + w - w * 0.17 - 4 * u, alt, 20, 'ALT');
+      // heading strip
+      const hd = ((-H.heading * 57.3) % 360 + 360) % 360;
+      c.fillStyle = 'rgba(0,0,0,.6)'; c.fillRect(x, y + h * 0.88, w, h * 0.12);
+      for (let k = -3; k <= 3; k++) { const v2 = (Math.round(hd / 10) + k) * 10, xx = cx + (v2 - hd) * w / 90; const lbl = ((v2 % 360) + 360) % 360; txt(lbl % 90 === 0 ? 'NESW'[lbl / 90] : String(lbl / 10), xx, y + h * 0.97, 10, lbl % 90 === 0 ? '#ffcf3a' : '#dfe'); }
+      c.fillStyle = '#ffcf3a'; c.fillRect(cx - 1 * u, y + h * 0.88, 2 * u, 6 * u);
+      // vertical speed
+      c.fillStyle = vs < -6 ? '#ff5a4a' : '#7dff9a'; c.fillRect(x + w - 6 * u, cy, 4 * u, clamp(-vs * 3, -h * 0.4, h * 0.4) * u);
+    };
+    // a moving map, heading up: zombies, jobs, your friends
+    const map = (x, y, w, h) => {
+      screen(x, y, w, h);
+      c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip();
+      const cx = x + w / 2, cy = y + h * 0.62, sc = (h * 0.55) / 600, hdg = H.heading, P = H.pos;
+      c.strokeStyle = 'rgba(80,200,255,.25)'; c.lineWidth = 1 * u;
+      for (const rr of [150, 300, 600]) { c.beginPath(); c.arc(cx, cy, rr * sc, 0, 7); c.stroke(); }
+      const pt = (wx, wz) => { const dx = wx - P[0], dz = wz - P[2], ca = Math.cos(hdg), sa = Math.sin(hdg); return [cx + (dx * ca - dz * sa) * sc, cy + (dx * sa + dz * ca) * sc]; };
+      const zs = this.client ? [...(this.client.zs ? this.client.zs.values() : [])] : this.horde.list;
+      c.fillStyle = '#ff4a3a';
+      let n = 0;
+      for (const z of zs) { if (z.alive === false) continue; if (Math.abs(z.x - P[0]) > 700 || Math.abs(z.z - P[2]) > 700) continue; const [qx, qy] = pt(z.x, z.z); c.fillRect(qx - 1.2 * u, qy - 1.2 * u, (z.boss ? 6 : 2.4) * u, (z.boss ? 6 : 2.4) * u); if (++n > 900) break; }
+      const evs = this.client ? (this.client.evs || []) : this.director.list.map((e) => ({ mk: e.marker(this) }));
+      for (const e of evs) { const mk = e.mk; if (!mk) continue; const [qx, qy] = pt(mk.p[0], mk.p[2]); c.fillStyle = mk.col || '#7dff9a'; c.beginPath(); c.arc(qx, qy, 4 * u, 0, 7); c.fill(); }
+      c.fillStyle = '#fff'; c.beginPath(); c.moveTo(cx, cy - 9 * u); c.lineTo(cx - 6 * u, cy + 7 * u); c.lineTo(cx + 6 * u, cy + 7 * u); c.closePath(); c.fill();
+      c.restore();
+      txt('MAP 600 M', x + 6 * u, y + 14 * u, 9, '#7cf', 'left');
+    };
+    // engine page: bars
+    const eng = (x, y, w, h, bars) => {
+      screen(x, y, w, h);
+      bars.forEach(([name, v, warn], k) => {
+        const bx = x + 10 * u + k * (w - 20 * u) / bars.length, bw = (w - 20 * u) / bars.length - 10 * u, bh = h - 46 * u;
+        c.fillStyle = '#1a2024'; c.fillRect(bx, y + 14 * u, bw, bh);
+        c.fillStyle = warn ? '#ff5a4a' : '#5aff8a'; c.fillRect(bx, y + 14 * u + bh * (1 - clamp(v, 0, 1)), bw, bh * clamp(v, 0, 1));
+        txt(name, bx + bw / 2, y + h - 18 * u, 9, '#9ab'); txt(`${Math.round(v * 100)}`, bx + bw / 2, y + h - 6 * u, 10, '#fff');
+      });
+    };
+    const caution = (x, y, cols, list) => {
+      list.forEach(([n, lit], k) => {
+        const xx = x + (k % cols) * 66 * u, yy = y + Math.floor(k / cols) * 22 * u;
+        c.fillStyle = lit && (t * 3) % 1 < 0.65 ? (n === 'FUEL' || n === 'HULL' || n === 'STALL' || n === 'VRS' ? '#ff3a2a' : '#ffb21a') : '#231a14';
+        c.fillRect(xx, yy, 60 * u, 18 * u);
+        txt(n, xx + 30 * u, yy + 13 * u, 10, lit ? '#111' : '#5a4a40', 'center', 900);
+      });
+    };
+    const stick = (x, y, sx, sy) => {
+      c.strokeStyle = '#111'; c.lineWidth = 16 * u; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(x, Hh + 10 * u); c.lineTo(x + sx * 30 * u, y + sy * 18 * u); c.stroke();
+      c.fillStyle = '#26292c'; R(x + sx * 30 * u - 14 * u, y + sy * 18 * u - 34 * u, 28 * u, 46 * u, 10 * u); c.fill();
+      c.fillStyle = '#b22'; c.beginPath(); c.arc(x + sx * 30 * u + 6 * u, y + sy * 18 * u - 26 * u, 4 * u, 0, 7); c.fill();
+      c.lineCap = 'butt';
+    };
+    const sx = -(H.stickR || 0), sy = -(H.stickP || 0);
+    const cautions = [['HULL', hp < 0.3], ['FUEL', fuel < 0.15], ['LOW ALT', alt < 8 && vs < -5 && !H.contacts], ['ENG', this.fuel <= 0], ['HOT', this.overT > 0], ['GEAR', !!H.contacts && kind !== 'heli'], ['STALL', !!H.stalled], ['VRS', (H.vrs || 0) > 0.3]];
+
+    if (kind === 'heli') {
+      // rotor blades flicking shadows across the canopy
+      const ra = (H.rotorA || 0) % (Math.PI / 2);
+      c.fillStyle = 'rgba(0,0,0,.07)'; c.save(); c.translate(W / 2, -Hh * 0.6); c.rotate(ra * 4); for (let k = 0; k < 2; k++) { c.rotate(Math.PI); c.fillRect(-W, -20 * u, W * 2, 40 * u); } c.restore();
+      // frame: roof and overhead console, outer pillars, the centre post between the two windscreen halves
+      c.fillStyle = metal(0, 90 * u, '#2a2e32', '#1a1d20');
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, 70 * u); c.quadraticCurveTo(W / 2, 110 * u, 0, 70 * u); c.closePath(); c.fill();
+      c.fillStyle = '#202428'; R(W / 2 - 170 * u, 0, 340 * u, 62 * u, 8 * u); c.fill();
+      for (let k = 0; k < 14; k++) { c.fillStyle = k % 4 === 0 ? '#c33' : '#555b60'; c.fillRect(W / 2 - 150 * u + k * 21 * u, 18 * u, 6 * u, 14 * u); }
+      for (let k = 0; k < 6; k++) { c.fillStyle = '#0c0e10'; c.beginPath(); c.arc(W / 2 - 120 * u + k * 48 * u, 46 * u, 7 * u, 0, 7); c.fill(); }
+      c.fillStyle = '#16191c';
+      c.beginPath(); c.moveTo(0, 70 * u); c.lineTo(70 * u, 70 * u); c.lineTo(140 * u, Hh * 0.72); c.lineTo(0, Hh * 0.72); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(W, 70 * u); c.lineTo(W - 70 * u, 70 * u); c.lineTo(W - 140 * u, Hh * 0.72); c.lineTo(W, Hh * 0.72); c.closePath(); c.fill();
+      for (const fx of [0.3, 0.7]) { c.beginPath(); c.moveTo(W * fx - 6 * u, 90 * u); c.lineTo(W * fx + 6 * u, 90 * u); c.lineTo(W * fx + 10 * u + (fx - 0.5) * 60 * u, Hh * 0.7); c.lineTo(W * fx - 10 * u + (fx - 0.5) * 60 * u, Hh * 0.7); c.closePath(); c.fill(); }
+      // the panel, with the chin windows cut out at the bottom corners
+      const dy = Hh - 300 * u;
+      c.fillStyle = metal(dy, Hh, '#30353a', '#191c1f');
+      c.beginPath(); c.moveTo(0, dy + 50 * u); c.quadraticCurveTo(W / 2, dy - 45 * u, W, dy + 50 * u);
+      c.lineTo(W, Hh - 150 * u); c.lineTo(W - 150 * u, Hh - 150 * u); c.lineTo(W - 230 * u, Hh); c.lineTo(230 * u, Hh); c.lineTo(150 * u, Hh - 150 * u); c.lineTo(0, Hh - 150 * u); c.closePath(); c.fill();
+      c.strokeStyle = '#0c0e10'; c.lineWidth = 8 * u; c.stroke();
+      c.fillStyle = '#121416'; c.beginPath(); c.moveTo(0, dy + 50 * u); c.quadraticCurveTo(W / 2, dy - 45 * u, W, dy + 50 * u); c.lineTo(W, dy + 66 * u); c.quadraticCurveTo(W / 2, dy - 25 * u, 0, dy + 66 * u); c.closePath(); c.fill();   // glare shield
+      const sw = 250 * u, sh = 190 * u, sy0 = dy + 40 * u;
+      pfd(W / 2 - sw - 120 * u, sy0, sw, sh);
+      map(W / 2 + 120 * u, sy0, sw, sh);
+      // centre stack: standby instruments, caution panel
+      const cxm = W / 2;
+      c.fillStyle = '#0a0c0e'; R(cxm - 100 * u, sy0, 200 * u, 112 * u, 6 * u); c.fill();
+      const gauge = (gx, gy, r, v, max, label) => { c.fillStyle = '#050607'; c.beginPath(); c.arc(gx, gy, r, 0, 7); c.fill(); c.strokeStyle = '#4a5055'; c.lineWidth = 2 * u; c.stroke(); const a = Math.PI * 0.75 + clamp(v / max, 0, 1) * Math.PI * 1.5; c.strokeStyle = '#fff'; c.lineWidth = 2.5 * u; c.beginPath(); c.moveTo(gx, gy); c.lineTo(gx + Math.cos(a) * r * 0.8, gy + Math.sin(a) * r * 0.8); c.stroke(); txt(label, gx, gy + r * 0.55, 7, '#9ab'); };
+      gauge(cxm - 60 * u, sy0 + 34 * u, 28 * u, H.rpm, 1.1, 'ROTOR');
+      gauge(cxm, sy0 + 34 * u, 28 * u, clamp(0.4 + (H.thrust || 0.5), 0, 1.2), 1.2, 'TORQUE');
+      gauge(cxm + 60 * u, sy0 + 34 * u, 28 * u, kmh, 300, 'KM/H');
+      caution(cxm - 97 * u, sy0 + 70 * u, 3, cautions.slice(0, 6));
+      eng(cxm - 100 * u, sy0 + 130 * u, 200 * u, 90 * u, [['FUEL', fuel, fuel < 0.15], ['HULL', hp, hp < 0.3], ['GUN', 1 - clamp(this.heat || 0, 0, 1), (this.heat || 0) > 0.8]]);
+      stick(W / 2, Hh - 70 * u, sx, sy);
+      return;
+    }
+
+    if (kind === 'jet') {
+      // canopy bow and the HUD frame
+      c.fillStyle = '#15181b';
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(110 * u, 0); c.quadraticCurveTo(60 * u, Hh * 0.35, 40 * u, Hh * 0.66); c.lineTo(0, Hh * 0.66); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(W, 0); c.lineTo(W - 110 * u, 0); c.quadraticCurveTo(W - 60 * u, Hh * 0.35, W - 40 * u, Hh * 0.66); c.lineTo(W, Hh * 0.66); c.closePath(); c.fill();
+      const hx = W / 2, hw = 300 * u, hy0 = Hh * 0.2, hy1 = Hh - 270 * u;
+      c.fillStyle = 'rgba(120,255,160,.035)'; c.fillRect(hx - hw / 2, hy0, hw, hy1 - hy0);
+      c.fillStyle = '#1a1d20'; c.fillRect(hx - hw / 2 - 6 * u, hy0, 6 * u, hy1 - hy0); c.fillRect(hx + hw / 2, hy0, 6 * u, hy1 - hy0);
+      // HUD symbology, projected onto the world
+      c.save(); c.beginPath(); c.rect(hx - hw / 2, hy0, hw, hy1 - hy0); c.clip();
+      const G2 = '#6dff8a'; c.strokeStyle = G2; c.fillStyle = G2; c.lineWidth = 1.6 * u; c.shadowColor = G2; c.shadowBlur = 4 * u;
+      const E = this.eye || H.pos, hf = [-Math.sin(H.heading), 0, -Math.cos(H.heading)], hr = [Math.cos(H.heading), 0, -Math.sin(H.heading)] ;
+      const proj = (d) => { const q = this.project([E[0] + d[0] * 1000, E[1] + d[1] * 1000, E[2] + d[2] * 1000]); return q.behind ? null : [q.x * W / innerWidth, q.y * Hh / innerHeight]; };
+      for (let deg = -30; deg <= 30; deg += 5) {
+        if (deg === 0) continue;
+        const th = deg / 57.3, ce = Math.cos(th), se = Math.sin(th);
+        const half = deg % 10 ? 0.03 : 0.05;
+        const a0 = proj([hf[0] * ce - hr[0] * half, se, hf[2] * ce - hr[2] * half]), a1 = proj([hf[0] * ce + hr[0] * half, se, hf[2] * ce + hr[2] * half]);
+        if (!a0 || !a1) continue;
+        c.setLineDash(deg < 0 ? [6 * u, 4 * u] : []);
+        c.beginPath(); c.moveTo(a0[0], a0[1]); c.lineTo(a1[0], a1[1]); c.stroke();
+        c.setLineDash([]);
+        if (!(deg % 10)) { c.font = `700 ${10 * u}px monospace`; c.textAlign = 'left'; c.fillText(String(Math.abs(deg)), a1[0] + 4 * u, a1[1] + 3 * u); }
+      }
+      const hz0 = proj([hf[0] - hr[0] * 0.3, 0, hf[2] - hr[2] * 0.3]), hz1 = proj([hf[0] + hr[0] * 0.3, 0, hf[2] + hr[2] * 0.3]);
+      if (hz0 && hz1) { c.beginPath(); c.moveTo(hz0[0], hz0[1]); c.lineTo(hz1[0], hz1[1]); c.stroke(); }
+      // flight path marker: where the plane is actually going
+      if (sp > 3) { const f = proj(H.vel.map((q) => q / sp)); if (f) { c.beginPath(); c.arc(f[0], f[1], 7 * u, 0, 7); c.moveTo(f[0] - 7 * u, f[1]); c.lineTo(f[0] - 18 * u, f[1]); c.moveTo(f[0] + 7 * u, f[1]); c.lineTo(f[0] + 18 * u, f[1]); c.moveTo(f[0], f[1] - 7 * u); c.lineTo(f[0], f[1] - 14 * u); c.stroke(); } }
+      // boresight (where the nose points)
+      const bs = proj(H.fwd);
+      if (bs) { c.beginPath(); c.moveTo(bs[0] - 14 * u, bs[1]); c.lineTo(bs[0] - 5 * u, bs[1]); c.lineTo(bs[0], bs[1] + 5 * u); c.lineTo(bs[0] + 5 * u, bs[1]); c.lineTo(bs[0] + 14 * u, bs[1]); c.stroke(); }
+      c.restore();
+      c.save(); c.strokeStyle = '#6dff8a'; c.lineWidth = 1.6 * u; c.shadowColor = '#6dff8a'; c.shadowBlur = 4 * u;
+      const gtxt = (s2, x, y, px, al = 'center') => txt(s2, x, y, px, '#6dff8a', al, 700);
+      // tapes and readouts
+      c.strokeRect(hx - hw / 2 + 10 * u, (hy0 + hy1) / 2 - 12 * u, 60 * u, 24 * u); gtxt(String(Math.round(kmh)), hx - hw / 2 + 40 * u, (hy0 + hy1) / 2 + 6 * u, 15);
+      c.strokeRect(hx + hw / 2 - 70 * u, (hy0 + hy1) / 2 - 12 * u, 60 * u, 24 * u); gtxt(String(Math.round(this.heli.pos[1])), hx + hw / 2 - 40 * u, (hy0 + hy1) / 2 + 6 * u, 15);
+      gtxt(`R ${Math.round(alt)}`, hx + hw / 2 - 40 * u, (hy0 + hy1) / 2 + 30 * u, 11);
+      gtxt(`G ${(H.gload || 1).toFixed(1)}`, hx - hw / 2 + 40 * u, (hy0 + hy1) / 2 - 22 * u, 11);
+      gtxt(`α ${((H.aoa || 0) * 57.3).toFixed(0)}`, hx - hw / 2 + 40 * u, (hy0 + hy1) / 2 + 30 * u, 11);
+      gtxt(`THR ${Math.round((H.thr || 0) * 100)}${H.boost > 0.3 ? ' AB' : ''}`, hx - hw / 2 + 40 * u, hy1 - 14 * u, 11);
+      const hd = ((-H.heading * 57.3) % 360 + 360) % 360;
+      for (let k = -3; k <= 3; k++) { const v2 = (Math.round(hd / 10) + k) * 10, xx = hx + (v2 - hd) * hw / 80; const lbl = ((v2 % 360) + 360) % 360; gtxt(String(lbl).padStart(3, '0'), xx, hy0 + 20 * u, 10); }
+      gtxt('▼', hx, hy0 + 32 * u, 9);
+      if (H.stalled && (t * 3) % 1 < 0.6) gtxt('STALL', hx, hy1 - 40 * u, 16);
+      if (alt < 30 && vs < -8 && (t * 3) % 1 < 0.6) gtxt('PULL UP', hx, hy1 - 60 * u, 16);
+      c.restore();
+      // the panel
+      const dy = Hh - 250 * u;
+      c.fillStyle = metal(dy, Hh, '#32373c', '#17191c');
+      c.beginPath(); c.moveTo(0, dy + 70 * u); c.lineTo(hx - hw / 2 - 30 * u, dy + 20 * u); c.lineTo(hx + hw / 2 + 30 * u, dy + 20 * u); c.lineTo(W, dy + 70 * u); c.lineTo(W, Hh); c.lineTo(0, Hh); c.closePath(); c.fill();
+      c.fillStyle = '#101214'; c.fillRect(hx - hw / 2 - 30 * u, dy + 20 * u, hw + 60 * u, 14 * u);
+      // up-front controller under the HUD
+      c.fillStyle = '#0b0d0f'; R(hx - 110 * u, dy + 44 * u, 220 * u, 70 * u, 5 * u); c.fill();
+      for (let k = 0; k < 12; k++) { c.fillStyle = '#2c3135'; c.fillRect(hx - 100 * u + (k % 6) * 34 * u, dy + 52 * u + Math.floor(k / 6) * 28 * u, 28 * u, 20 * u); }
+      const sw = 210 * u, sh = 170 * u;
+      eng(hx - hw / 2 - 40 * u - sw, dy + 50 * u, sw, sh, [['THR', H.pwr ?? H.thr ?? 0, false], ['FUEL', fuel, fuel < 0.15], ['HULL', hp, hp < 0.3], ['AB', 1 - (H.boostT ?? 1), false]]);
+      map(hx + hw / 2 + 40 * u, dy + 50 * u, sw, sh);
+      caution(hx - 99 * u, dy + 128 * u, 3, cautions.filter((q) => q[0] !== 'VRS').slice(0, 6));
+      stick(W / 2, Hh - 40 * u, sx, sy);
+      return;
+    }
+
+    // propeller transport / gunship
+    c.fillStyle = metal(0, 160 * u, '#2b2f33', '#1b1e21');
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(W, 130 * u); c.lineTo(0, 130 * u); c.closePath(); c.fill();
+    for (let k = 0; k < 30; k++) { c.fillStyle = k % 7 === 0 ? '#c33' : k % 3 ? '#4a5055' : '#ddd'; c.fillRect(W * 0.18 + k * W * 0.022, 30 * u + (k % 2) * 40 * u, 8 * u, 18 * u); }
+    c.fillStyle = '#16191c';
+    for (const fx of [0.05, 0.36, 0.64, 0.95]) { c.beginPath(); c.moveTo(W * fx - 14 * u, 120 * u); c.lineTo(W * fx + 14 * u, 120 * u); c.lineTo(W * fx + 22 * u, Hh * 0.62); c.lineTo(W * fx - 22 * u, Hh * 0.62); c.closePath(); c.fill(); }
+    const dy = Hh - 290 * u;
+    c.fillStyle = metal(dy, Hh, '#33383d', '#16191b');
+    c.beginPath(); c.moveTo(0, dy + 30 * u); c.lineTo(W, dy + 30 * u); c.lineTo(W, Hh); c.lineTo(0, Hh); c.closePath(); c.fill();
+    c.fillStyle = '#101214'; c.fillRect(0, dy + 22 * u, W, 16 * u);
+    const sw = Math.min(200 * u, W / 5.3), sh = 160 * u, gap = 24 * u, x0 = W / 2 - (sw * 4 + gap * 3) / 2, sy0 = dy + 54 * u;
+    pfd(x0, sy0, sw, sh);
+    map(x0 + (sw + gap), sy0, sw, sh);
+    eng(x0 + (sw + gap) * 2, sy0, sw, sh, [['PROP', H.pwr ?? H.thr ?? 0, false], ['FUEL', fuel, fuel < 0.15], ['HULL', hp, hp < 0.3], ['THR', H.thr || 0, false]]);
+    pfd(x0 + (sw + gap) * 3, sy0, sw, sh);
+    caution(W / 2 - 99 * u, sy0 + sh + 14 * u, 3, cautions.filter((q) => q[0] !== 'VRS').slice(0, 6));
+    // the yoke, turning with the roll
+    const yx = W * 0.3, yy = Hh - 40 * u - sy * 14 * u;
+    c.save(); c.translate(yx, yy); c.rotate(-sx * 0.5);
+    c.strokeStyle = '#141618'; c.lineWidth = 18 * u; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(-90 * u, -40 * u); c.lineTo(-90 * u, 10 * u); c.lineTo(90 * u, 10 * u); c.lineTo(90 * u, -40 * u); c.stroke();
+    c.fillStyle = '#222'; c.fillRect(-26 * u, -8 * u, 52 * u, 30 * u); c.restore(); c.lineCap = 'butt';
+    c.fillStyle = '#141618'; c.fillRect(yx - 12 * u, yy + 20 * u, 24 * u, Hh - yy);
+    // the throttle levers
+    for (let k = 0; k < 4; k++) { const lx = W * 0.62 + k * 26 * u, ly = Hh - 30 * u - (H.thr || 0) * 70 * u; c.fillStyle = '#111'; c.fillRect(lx - 3 * u, ly, 6 * u, Hh - ly); c.fillStyle = k < 2 ? '#ddd' : '#333'; R(lx - 10 * u, ly - 12 * u, 20 * u, 16 * u, 4 * u); c.fill(); }
   }
   hud(dt) {
     if (!this.run || this.mode === 'hangar') return;
@@ -3826,7 +4086,7 @@ export class HeliGame {
     }
     if ((this.ql || 0) >= 4) fog = Math.max(fog, 0.0075);
     const aspect = r.resize();
-    const vfov = (64 * Math.PI) / 180;
+    const vfov = ((this.fovDeg || 64) * Math.PI) / 180;
     perspective(this.proj, vfov, aspect, 0.5, this.mode === 'hangar' ? 1100 : 4200);
     lookDir(this.view, eye, fwd, [0, 1, 0], roll);
     mul(this.vp, this.proj, this.view);

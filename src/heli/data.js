@@ -213,9 +213,9 @@ export const HELIS = {
   alligator: { n: 'ALLIGATOR', cost: 7000, d: 'A heavy attack helicopter with two rotors stacked on one mast (no tail rotor), two pilots side by side, and six pylons. Chin gun +25%, rockets +40%, armoured.', seats: [2],
     hp: 1.55, mass: 1.15, lift: 1.3, speed: 1.25, agility: 1.35, fuel: 1.05, gunMul: 1.25, rocketMul: 1.4, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0, rotor: 0 } },
   warthog: { n: 'WARTHOG', cost: 8500, d: 'A PLANE built around a gun: the GAU-8 30 mm cannon (+60% damage), armour round the pilot (+120% health), eleven pylons. Takes off from the runway, needs speed to stay up.', seats: [1],
-    hp: 2.2, mass: 1.2, lift: 1.2, speed: 1, agility: 1.0, fuel: 1.4, gunMul: 1.6, rocketMul: 1.5, plane: true, stall: 26, vmax: 82, thrust: 8, cap: { cabin: 0, door: 0 } },
-  spectre: { n: 'SPECTRE', cost: 11000, d: 'A flying gunship PLANE: four propellers and a row of guns sticking out of the left side. Fly circles round a crowd and the gunners (miniguns fitted) hose it down. Huge, tough, slow to turn.', seats: [4],
-    hp: 2.4, mass: 1.8, lift: 1.5, speed: 1, agility: 0.55, fuel: 2.2, plane: true, stall: 30, vmax: 70, thrust: 6.5, min: { door: 3 }, cap: { cabin: 0, rockets: 0, pods: 0 } },
+    hp: 2.2, mass: 1.2, lift: 1.2, speed: 1, agility: 1.0, fuel: 1.4, gunMul: 1.6, rocketMul: 1.5, plane: true, jet: true, stall: 26, vmax: 82, thrust: 8, cap: { cabin: 0, door: 0 } },
+  spectre: { n: 'SPECTRE', cost: 11000, d: 'A flying GUNSHIP: four propellers, and a 25 mm Gatling, a 40 mm Bofors and a 105 mm howitzer pointing out of the left side. Climb above 80 m and press G: the autopilot circles and you aim the guns through the sensor camera (1 / 2 / 3 picks the gun, wheel zooms, I for thermal). Huge, tough, slow to turn.', seats: [4],
+    hp: 2.4, mass: 1.8, lift: 1.5, speed: 1, agility: 0.55, fuel: 2.2, plane: true, gunship: true, stall: 30, vmax: 70, thrust: 6.5, min: { door: 3 }, cap: { cabin: 0, rockets: 0, pods: 0 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
     hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0, pods: 0 } },
 };
@@ -445,7 +445,7 @@ export function statsFor(eq0, kind = 'warhorse') {
   S.floats = !!HK.floats; S.heavy = !!HK.heavy;
   // planes: stall speed, top speed, thrust; flaps lower the stall, the afterburner is the boost
   if (HK.plane) {
-    Object.assign(S, { plane: true, vtol: !!HK.vtol, stall: HK.stall * [1, 0.8, 0.65][S.flaps], vmax: HK.vmax * [1, 1.08, 1.16, 1.22, 1.32][en], thrust: HK.thrust * [1, 1.1, 1.2, 1.25, 1.35][en] });
+    Object.assign(S, { plane: true, jet: !!HK.jet, gunship: !!HK.gunship, vtol: !!HK.vtol, stall: HK.stall * [1, 0.8, 0.65][S.flaps], vmax: HK.vmax * [1, 1.08, 1.16, 1.22, 1.32][en], thrust: HK.thrust * [1, 1.1, 1.2, 1.25, 1.35][en] });
     S.boost = S.reheat > 0 || S.boost; S.boostMul = S.reheat ? [1, 1.6, 2.1][S.reheat] : S.boostMul;
     const hm = [1, 1.5, 2][S.hardpoints];
     S.rockets = Math.round(S.rockets * hm); S.bombs = Math.round(S.bombs * hm);

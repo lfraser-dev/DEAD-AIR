@@ -1300,7 +1300,21 @@ export class Chopper {
     // out of fuel: the rotor windmills (autorotation) and you sink slowly; S sinks faster, W slows it a little
     const T = ctl.noFuel && !this.dead ? G * comp * Math.min(1, this.rpm / 0.62) * (0.84 + 0.1 * ctl.coll - this.extraMass * 0.5)
       : G * this.rpm * this.rpm * comp * (this.dead ? 0.55 : Math.max(0, 1 - this.extraMass + 0.85 * c * lr));
-    const a = [up[0] * T, up[1] * T - G, up[2] * T];
+    // real rotor behaviour:
+    //  - translational lift: moving through clean air (15-25 m/s) the rotor works better, so it climbs better there
+    //  - ground effect: hovering low, the air cushion under the rotor gives a bit of free lift
+    //  - vortex ring state: sink straight down too fast and the rotor flies into its own downwash and loses lift
+    const hv = Math.hypot(this.vel[0], this.vel[2]), vy = this.vel[1];
+    const ss = (a0, b0, x) => { const t = clamp((x - a0) / (b0 - a0), 0, 1); return t * t * (3 - 2 * t); };
+    const etl = 1 + 0.1 * ss(8, 18, hv) - 0.06 * ss(45, 75, hv);
+    if (first) {
+      const P = this.pos, b = world.firstOverlap([P[0] - 0.4, P[1] - 12, P[2] - 0.4], [P[0] + 0.4, P[1] - 1.2, P[2] + 0.4]);
+      this.gfx = b ? clamp(1 - (P[1] - b.max[1]) / 12, 0, 1) : 0;
+    }
+    const ige = 1 + 0.09 * (this.gfx || 0);
+    this.vrs = !this.dead && vy < -5 && hv < 9 && !this.contacts ? clamp((-vy - 5) / 5, 0, 1) * (1 - hv / 9) : 0;
+    const rotorK = etl * ige * (1 - this.vrs * 0.3);
+    const a = [up[0] * T * rotorK, up[1] * T * rotorK - G, up[2] * T * rotorK];
     // afterburner
     this.boost += ((ctl.boost && S.boost && this.boostT > 0 && !this.dead ? 1 : 0) - this.boost) * damp(6, dt);
     if (this.boost > 0.05) {
@@ -1320,18 +1334,36 @@ export class Chopper {
     this.collide(dt, world);
   }
 
-  // ---- fixed-wing flight. W / S set the throttle; the mouse pitches and rolls (in EASY it banks you into turns and
-  // levels out when you let go); A / D is the rudder. The wings only lift with speed: below the stall speed the nose
-  // drops and you sink. The plane flies where it's pointed, and turns by banking.
+  // FIXED-WING FLIGHT. The wing makes lift from its angle of attack (how far the nose points above where the plane is
+  // actually going) and the airspeed squared, up to about 15 degrees; past that it stalls: the lift falls away, the
+  // drag shoots up and the nose drops. Lift pulls at right angles to the airflow, so banking the wing is what turns the
+  // plane, and pulling hard costs speed (induced drag). Jets spool up slowly; propellers bite hard at low speed and
+  // run out of push near their top speed. The controls get heavier at speed and go soft when it's slow.
+  // FLIGHT ASSIST is a fly-by-wire computer: the stick asks for a climb angle and a bank angle, it keeps the turn
+  // coordinated and won't let you pull into a stall. Without it you fly the control surfaces yourself.
   planeSub(dt, ctl, world, first) {
     const S = this.stats, ag = S.agility || 1, v = this.vel, w = this.w;
     const want = this.dead ? 0.3 : ctl.noFuel ? 0 : ctl.engineOn ? 1 : 0;
     this.rpm += (want - this.rpm) * damp(1.2, dt);
-    this.rotorA += this.rpm * 30 * dt; this.tailA += this.rpm * 70 * dt;
+    this.rotorA += this.rpm * (0.25 + (this.pwr || 0)) * 40 * dt; this.tailA += this.rpm * 70 * dt;
     this.thr = clamp((this.thr ?? 0) + (this.dead ? -1 : ctl.coll) * 0.55 * dt, 0, 1);
+    const jet = !!S.jet;
+    // the engine follows the throttle: a jet takes a few seconds to spool, a propeller answers quickly
+    this.pwr = (this.pwr ?? this.thr) + (this.thr * this.rpm - (this.pwr ?? this.thr)) * damp(jet ? 0.55 : 1.8, dt);
     const fwd = this.fwd, up = this.up, right = this.right, sp = Math.hypot(v[0], v[1], v[2]);
-    const vf = v[0] * fwd[0] + v[1] * fwd[1] + v[2] * fwd[2], stall = S.stall || 30;
-    const k = clamp(vf / stall, 0, 2), auth = clamp(k, 0.2, 1.1), onGround = this.contacts >= 2;
+    const vf = v[0] * fwd[0] + v[1] * fwd[1] + v[2] * fwd[2], vr = v[0] * right[0] + v[1] * right[1] + v[2] * right[2], vu = v[0] * up[0] + v[1] * up[1] + v[2] * up[2];
+    const Vs = S.stall || 30, onGround = this.contacts >= 2;
+    // angle of attack and sideslip
+    const aoa = sp > 3 ? Math.atan2(-vu, Math.max(0.1, vf)) : 0, beta = sp > 3 ? Math.atan2(vr, Math.max(0.1, vf)) : 0;
+    const qb = clamp((vf / Vs) * (vf / Vs), 0, 5);         // dynamic pressure, 1 = at the stall speed
+    const auth = clamp(Math.sqrt(qb) * 0.9, 0.12, 1.25) * ag;
+    const A_C = 0.26, A_0 = 0.06;                          // stalls at ~15 degrees; the wing still lifts a bit at zero
+    let cl;                                                // lift as a fraction of the most it can make
+    if (aoa < -A_0) cl = Math.max(-0.65, (aoa + A_0) / (A_C + A_0));
+    else if (aoa <= A_C) cl = (aoa + A_0) / (A_C + A_0);
+    else cl = Math.max(0.35, 1 - (aoa - A_C) * 2.4);
+    const stalled = aoa > A_C && !onGround && sp > 5;
+    this.aoa = aoa; this.stalled = stalled;
     const easy = ctl.mode === 'easy', assist = ctl.assist || easy, inv = ctl.invert ? -1 : 1;
     // the stick
     if (first) {
@@ -1341,52 +1373,87 @@ export class Chopper {
     }
     this.stickP = clamp(this.stickP + ctl.pk * 1.4 * dt, -1, 1);
     this.stickR = clamp(this.stickR - ctl.rk * 1.6 * dt, -1, 1);
-    const roll = this.rollL;
-    if (assist) {
-      // the stick sets a climb / dive angle and a bank angle; the bank eases back to level when you let go, and the
-      // plane turns the way it's banked
+    const roll = this.rollL, pitch = this.pitch;
+    // rates the airframe wants: pitch (nose up +), yaw, roll
+    let tp, tr, ty = ctl.yaw * 0.55 * Math.min(1, auth);
+    if (this.orbit) {
+      // gunship orbit: the autopilot holds a steady left-hand circle at this height (see the game's gunship mode)
+      const O = this.orbit, dx = this.pos[0] - O.x, dz = this.pos[2] - O.z, r = Math.hypot(dx, dz) || 1;
+      const tang = [dz / r, 0, -dx / r];                    // anticlockwise from above = turning left
+      const err = (r - O.r) / O.r, hd = Math.atan2(-fwd[0], -fwd[2]), want2 = Math.atan2(-(tang[0] - dx / r * err * 1.5), -(tang[2] - dz / r * err * 1.5));
+      let dh = want2 - hd; while (dh > Math.PI) dh -= Math.PI * 2; while (dh < -Math.PI) dh += Math.PI * 2;
+      const bankT = clamp(-Math.atan((sp * sp) / (G * O.r)) * -1 + dh * 1.2, -0.75, 0.75);
+      tr = (bankT - roll) * 2.2 * auth;
+      const climbT = clamp((O.y - this.pos[1]) * 0.012, -0.15, 0.15);
+      const gam = sp > 1 ? Math.asin(clamp(v[1] / sp, -1, 1)) : 0;
+      tp = ((climbT - gam) * 2.5 + Math.abs(Math.sin(roll)) * 0.18) * auth;
+      this.thr = clamp(this.thr + ((O.v - vf) * 0.05) * dt * 4, 0.25, 1);
+      this.stickP = 0; this.stickR = 0;
+    } else if (assist) {
+      // fly-by-wire: stick = climb angle and bank angle
       this.stickP *= Math.exp(-0.25 * dt); this.stickR *= Math.exp(-(ctl.mx || ctl.rk ? 0.2 : 0.9) * dt);
-      const bank = this.stickR * 1.3, pitchT = clamp(this.stickP * 1.1, -1.1, 1.1) + Math.abs(Math.sin(roll)) * 0.12;
-      w[2] += ((bank - roll) * 3.2 * ag * auth - w[2]) * damp(8, dt);
-      w[0] += ((pitchT - this.pitch) * 2.6 * ag * auth - w[0]) * damp(8, dt);
+      const bankT = this.stickR * 1.25, gamT = clamp(this.stickP * 1.0, -1.0, 1.0);
+      const gam = sp > 1 ? Math.asin(clamp(v[1] / sp, -1, 1)) : pitch;
+      // holding the climb angle through a bank needs extra pull
+      tp = ((gamT - gam) * 3.0 + Math.abs(Math.sin(roll)) * 0.25 * qb) * auth;
+      if (aoa > A_C * 0.82 && tp > 0) tp = Math.min(tp, (A_C * 0.82 - aoa) * 6);   // stall protection
+      tr = (bankT - roll) * 3.0 * auth;
+      ty -= beta * 2.2;                                    // auto rudder
     } else {
       this.stickP *= Math.exp(-3 * dt); this.stickR *= Math.exp(-3 * dt);
-      w[2] += (this.stickR * 2.6 * ag * auth - w[2]) * damp(8, dt);
-      w[0] += (this.stickP * 1.6 * ag * auth - w[0]) * damp(8, dt);
+      tp = this.stickP * 1.5 * auth;
+      tr = this.stickR * 2.8 * auth;
     }
-    // rudder, and the nose weathervaning into the airflow (that's what makes it turn when it banks)
-    let wy = ctl.yaw * 0.7 * auth;
-    if (sp > 4 && !onGround) {
-      const l = qrot([-this.q[0], -this.q[1], -this.q[2], this.q[3]], v);
-      wy -= (l[0] / sp) * 3.2 * clamp(sp / stall, 0, 1.5);
-      if (assist) wy += roll * 0.9 * clamp(k, 0, 1.2) * ag;       // a coordinated turn
+    if (onGround) {
+      // nose wheel steering; the nose only lifts once it's fast enough to rotate
+      ty = ctl.yaw * 0.9 + (assist ? this.stickR * 0.4 : 0);
+      if (vf < Vs * 0.85) tp = Math.min(tp, 0);
     }
-    if (onGround) wy = ctl.yaw * 0.9;                      // steer the nose wheel
-    w[1] += (wy - w[1]) * damp(6, dt);
-    // stalled: the nose drops
-    if (!onGround && vf < stall * 0.9 && (!S.vtol || this.tiltK > 0.97)) w[0] -= (1 - vf / (stall * 0.9)) * 2.2 * dt * 8;
-    if (this.dead) { w[2] += 2 * dt; w[0] -= 0.6 * dt; }
-    w[0] = clamp(w[0], -2.5, 2.5); w[1] = clamp(w[1], -2, 2); w[2] = clamp(w[2], -3.5, 3.5);
+    // the airframe's own behaviour: it weathercocks into the airflow (pitch and yaw stability), damps out rates,
+    // and drops its nose (and often a wing) in a stall
+    const stab = clamp(qb, 0, 2.5);
+    // trimmed for level flight at this speed (the angle of attack that holds 1 g), so it doesn't fight you
+    const lf = clamp((S.lift || 1) / (S.mass || 1), 0.85, 1.05), aTrim = clamp((1 / Math.max(qb * lf, 0.3)) * (A_C + A_0) - A_0, -0.08, A_C * 0.85);
+    tp -= (aoa - aTrim) * 1.6 * stab * (onGround ? 0 : 1);
+    ty -= beta * 2.4 * stab * (onGround ? 0 : 1);
+    if (stalled) {
+      tp -= (aoa - A_C) * 7;
+      if (!assist) tr += Math.sin(this.wob = (this.wob || 0) + dt * 2.3) * 1.4 * (aoa - A_C) * 4;
+    }
+    if (this.dead) { tr += 2; tp -= 0.6; }
+    w[0] += (clamp(tp, -2.2, 2.2) - w[0]) * damp(5 * Math.min(1.2, 0.4 + auth), dt);
+    w[1] += (clamp(ty, -1.5, 1.5) - w[1]) * damp(4, dt);
+    w[2] += (clamp(tr, -3.5, 3.5) - w[2]) * damp(7 * Math.min(1.2, 0.4 + auth), dt);
     const wl = Math.hypot(w[0], w[1], w[2]);
     if (wl > 1e-6) this.q = qnorm(qmul(this.q, qaxis([w[0] / wl, w[1] / wl, w[2] / wl], wl * dt)));
-    // forces: thrust along the nose, lift off the wings (with speed), drag, and the wings resisting moving sideways
-    // or up and down through the air
-    this.boost += ((ctl.boost && S.boost && this.boostT > 0 && !this.dead ? 1 : 0) - this.boost) * damp(5, dt);
+    // ---- forces
+    this.boost += ((ctl.boost && S.boost && this.boostT > 0 && !this.dead ? 1 : 0) - this.boost) * damp(jet ? 3 : 5, dt);
     if (this.boost > 0.05) this.boostT = Math.max(0, this.boostT - dt * 0.12 * this.boost); else this.boostT = Math.min(1, this.boostT + dt * 0.08);
-    const T = (S.thrust || 8) * this.thr * this.rpm * (1 + ((S.boostMul || 1) - 1) * this.boost);
-    let lift = G * Math.min(1, k * k) * clamp((S.lift || 1) / (S.mass || 1), 0.85, 1.05);
-    if (S.vtol) lift = Math.max(lift, G * (1 - (this.tiltK || 0)) * 1.06 + lift * (this.tiltK || 0));     // the nozzles / rotors still holding it up mid-change
-    const vr = v[0] * right[0] + v[1] * right[1] + v[2] * right[2], vu = v[0] * up[0] + v[1] * up[1] + v[2] * up[2];
-    const a = [0, -G, 0];
-    const kq = (S.thrust || 8) / ((S.vmax || 80) * (S.vmax || 80));
+    let T = (S.thrust || 8) * this.pwr * (1 + ((S.boostMul || 1) - 1) * this.boost);
+    if (!jet) T *= clamp(1.3 - 0.55 * vf / (S.vmax || 80), 0.55, 1.3);          // a propeller pushes hardest slow
+    // lift: at right angles to the airflow, in the plane of the wings' "up"
+    const vh = sp > 0.5 ? [v[0] / sp, v[1] / sp, v[2] / sp] : fwd;
+    const ud = up[0] * vh[0] + up[1] * vh[1] + up[2] * vh[2];
+    let ld = [up[0] - vh[0] * ud, up[1] - vh[1] * ud, up[2] - vh[2] * ud];
+    const ll = Math.hypot(ld[0], ld[1], ld[2]) || 1; ld = ld.map((q) => q / ll);
+    const L = G * qb * cl * clamp((S.lift || 1) / (S.mass || 1), 0.85, 1.05) * (onGround ? 1 : 1);
+    // drag: the airframe (sized so full throttle tops out at vmax), plus induced drag from lift, plus a stalled wing
+    const kq = (S.thrust || 8) * 0.9 / ((S.vmax || 80) * (S.vmax || 80));
+    let Dmag = kq * sp * sp + 0.09 * G * qb * cl * cl + (stalled ? 0.55 * G * qb * (aoa - A_C) : 0) + 0.15;
     let brake = 0;
     if (ctl.coll < 0 && this.thr <= 0.01 && S.airbrake) brake = onGround && S.airbrake === 2 ? 1.6 : 0.5;
+    Dmag += brake * sp;
+    const a = [0, -G, 0];
+    // a VTOL still part-way through its conversion: the nozzles / rotors carry what the wing can't
+    const tk = this.tiltK || 0;
+    const hold = S.vtol ? Math.max(G * (1 - tk) * 1.06, Math.max(0, G * 1.02 - L * ld[1]) * (1 - tk * tk * tk)) : 0;
     for (let i = 0; i < 3; i++) {
-      a[i] += fwd[i] * T + up[i] * lift;
-      a[i] -= v[i] * (kq * sp + 0.01 + brake);
-      a[i] -= right[i] * vr * 1.6 * Math.min(1, k + (onGround ? 3 : 0));
-      a[i] -= up[i] * vu * 0.9 * Math.min(1, k);
+      a[i] += fwd[i] * T + ld[i] * L + up[i] * hold;
+      a[i] -= vh[i] * Dmag;
+      a[i] -= right[i] * vr * 0.9 * Math.min(1, Math.sqrt(qb) + (onGround ? 3 : 0));   // the fuselage and fin resist sideslip
     }
+    // g-load felt in the seat
+    this.gload = ((a[0]) * up[0] + (a[1] + G) * up[1] + (a[2]) * up[2]) / G;
     for (let i = 0; i < 3; i++) { v[i] += a[i] * dt; this.pos[i] += v[i] * dt; }
     this.collide(dt, world);
   }
@@ -1414,7 +1481,10 @@ export class Chopper {
     if (this.contacts && rolling) {
       const f = Math.exp(-(this.thr <= 0.01 ? 0.9 : 0.04) * dt);
       v[0] *= f; v[2] *= f;
-      this.w[0] *= Math.exp(-8 * dt); this.w[2] *= Math.exp(-8 * dt);
+      // the wheels stop it rocking, but let the nose come up once it's fast enough to rotate
+      const vfw = v[0] * this.fwd[0] + v[1] * this.fwd[1] + v[2] * this.fwd[2];
+      if (!(this.w[0] > 0 && vfw > (this.stats.stall || 30) * 0.85)) this.w[0] *= Math.exp(-8 * dt);
+      this.w[2] *= Math.exp(-8 * dt);
       this.w[2] -= this.rollL * 6 * dt;
       if (this.pitch < -0.05) this.w[0] -= this.pitch * 6 * dt;
     } else if (this.contacts) {
