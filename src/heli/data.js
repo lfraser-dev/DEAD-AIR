@@ -345,23 +345,14 @@ export const HELIS = {
 const VAR = (base, o) => { const B = HELIS[base]; return { ...B, ...o, base, cap: { ...B.cap, ...(o.cap || {}) }, min: { ...(B.min || {}), ...(o.min || {}) } }; };
 Object.assign(HELIS, {
   sparrow: VAR('hornet', { n: 'SPARROW', cost: 1200, d: 'A police scout: the Hornet with a NightSun searchlight and night vision already fitted. Quick, cheap and great at night.', hp: 0.65, speed: 1.32, min: { light: 2, nvg: 1 } }),
-  medic: VAR('huey', { n: 'DUSTOFF', cost: 1900, d: 'The classic Huey as a flying ambulance: medical bay and rescue winch fitted, room for 8 to 16, and rescues come with blankets (+25% scrap each).', seats: [8, 10, 13, 16], hp: 1.05, min: { medbay: 1, winch: 1, pad: 1 }, cap: { gun: 2, rockets: 1 } }),
+  medic: VAR('huey', { n: 'DUSTOFF', cost: 1900, d: 'The classic Huey as a flying ambulance: medical bay and rescue winch fitted, room for 8 to 16.', seats: [8, 10, 13, 16], hp: 1.05, min: { medbay: 1, winch: 1 }, cap: { gun: 2, rockets: 1 } }),
   gunslinger: VAR('huey', { n: 'HUEY GUNSLINGER', cost: 2600, d: 'A Huey bristling with guns: two door gunners, rocket pods and machine-gun pods all fitted. Cheap firepower.', seats: [4, 6, 8, 10], hp: 1.1, gunMul: 1.1, min: { door: 2, rockets: 1, pods: 1 } }),
-  wildcat: VAR('lynx', { n: 'WILDCAT', cost: 4200, d: 'The navy\'s Lynx: tougher, faster, with a thermal camera and long-range radio fitted. Fits more upgrades than the Lynx.', seats: [4, 6, 8, 10], hp: 1.2, speed: 1.28, agility: 1.38, min: { flir: 1, radio: 1 }, cap: { gun: 4, rockets: 3, armor: 3 } }),
-  cobra: VAR('viper', { n: 'COBRA', cost: 4000, d: 'The first gunship ever: slim, two seats, a chin gun 25% harder and rocket pods fitted. Tougher than the Viper but a little slower.', hp: 1.15, speed: 1.3, gunMul: 1.25, rocketMul: 1.3, min: { rockets: 1 } }),
   apache: VAR('reaper', { n: 'APACHE', cost: 9500, d: 'The king of attack helicopters: Hellfire rails, a laser targeting pod and thermal camera all fitted, armoured like a tank, chin gun +40%.', hp: 1.95, speed: 1.18, gunMul: 1.4, rocketMul: 1.6, min: { rockets: 3, tpod: 1, flir: 1 } }),
-  blackshark: VAR('alligator', { n: 'BLACK SHARK', cost: 9000, d: 'The one-seat version of the Alligator: lighter, quicker, nastier. Chin gun +35%, rockets +50%, and an ejection-seat-tough cockpit.', seats: [1], hp: 1.45, mass: 1.05, speed: 1.32, agility: 1.5, gunMul: 1.35, rocketMul: 1.5 }),
   nightstalker: VAR('stallion', { n: 'NIGHT STALKER', cost: 7800, d: 'Special forces Stallion: night vision, quiet rotors and a thermal camera fitted, door guns, and it barely makes a sound. Zombies hear you from half as far.', hp: 1.6, speed: 1.18, min: { door: 2, nvg: 1, quiet: 2, flir: 1 } }),
-  kestrel2: VAR('kestrel', { n: 'KESTREL MK2', cost: 9800, d: 'The Kestrel rebuilt: twin-turbo engines fitted, a stronger frame, faster and tougher, up to 28 seats.', seats: [14, 18, 22, 28], hp: 1.7, speed: 1.18, lift: 1.55, min: { engine: 2, frame: 1 } }),
-  seahawk: VAR('seaking', { n: 'SEA HAWK', cost: 7400, d: 'An armed Sea King: lands on water, hoist fitted, plus door guns and rocket pods. Search and destroy.', hp: 1.7, speed: 1.05, min: { winch: 1, door: 2, rockets: 1 } }),
   hook: VAR('mule', { n: 'HOOK', cost: 6200, d: 'The super-heavy Mule: a cargo hook and big fuel tanks fitted, up to 48 seats, and even harder to knock down.', seats: [20, 30, 40, 48], hp: 2.4, lift: 1.9, speed: 0.9, min: { winch: 2, fuel: 1 } }),
-  valor: VAR('osprey', { n: 'VALOR', cost: 12000, d: 'The next tiltrotor: faster and nimbler than the Osprey, door guns and rocket pods fitted. Press V to switch between hover and plane.', seats: [12, 16, 20, 24], hp: 1.55, speed: 1.35, agility: 0.85, vmax: 110, thrust: 10.5, min: { door: 2, rockets: 1 } }),
-  harrier2: VAR('harrier', { n: 'HARRIER II', cost: 13000, d: 'The second-generation jump jet: more thrust, cannon pods and extra pylons fitted, tougher. Hovers, then V to fly like a fighter.', hp: 1.05, vmax: 125, thrust: 12, gunMul: 1.3, min: { pods: 1, hardpoints: 1 } }),
-  tucano: VAR('bronco', { n: 'TUCANO', cost: 7200, d: 'A turboprop attack PLANE: faster than the Bronco, .50 cal gun pods fitted, armoured cockpit. Flies low and slow over a fight.', hp: 1.3, vmax: 92, thrust: 8.5, gunMul: 1.2, min: { pods: 1 } }),
-  hog2: VAR('warthog', { n: 'WARTHOG II', cost: 12500, d: 'The upgraded Warthog: the cannon hits 80% harder, extra pylons fitted, even more armour. A flying tank with a gun.', hp: 2.6, gunMul: 1.8, rocketMul: 1.7, thrust: 9, vmax: 88, min: { hardpoints: 1 } }),
-  raptor: VAR('falcon', { n: 'RAPTOR', cost: 20000, d: 'The ultimate fighter JET: the big afterburner fitted, faster than anything, turns like nothing else. One seat, no mercy.', hp: 1.1, speed: 1.5, agility: 2.1, vmax: 170, thrust: 16, gunMul: 1.3, rocketMul: 1.5, min: { reheat: 2 } }),
-  ghostrider: VAR('spectre', { n: 'GHOSTRIDER', cost: 17000, d: 'The newest gunship: high-rate Gatling, autoloader Bofors, extra magazines and the target tracker all fitted. Climb above 80 m and press G.', hp: 2.7, speed: 1.1, vmax: 78, thrust: 7.5, min: { door: 3, gsgat: 1, gsbof: 1, gsmag: 1, gssens: 1 } }),
 });
+const PERKS = { 'warhorse': 'FIELD PATCHING: the crew patch it up in the air, healing back up to half health.', 'hornet': 'TOO SMALL TO GRAB: zombies can barely hang on to the skids.', 'reaper': 'BATHTUB ARMOUR: takes 25% less damage from everything.', 'viper': 'SPRINT: SHIFT boost works even with the stock engine.', 'kestrel': 'THRIFTY: burns 30% less fuel.', 'huey': 'LOUD AND PROUD: the dead come running to that two-blade thump: +25% scrap from kills.', 'seaking': 'BOAT HULL: lands on water.', 'osprey': 'TILTROTOR: hovers like a helicopter, V to fly like a plane.', 'harrier': 'JUMP JET: hovers on its nozzles, V to fly like a fighter.', 'alligator': 'EJECTION SEATS: crash safety fitted, so nobody aboard is lost if you go down.', 'warthog': 'GAU-8: the biggest gun in the game.', 'spectre': 'GUNSHIP: press G above 80 m to circle and fire the side guns.', 'lynx': 'QUICK HANDS: people climb aboard twice as fast.', 'stallion': 'GUN CREW: its door gunners fire 30% faster.', 'bronco': 'LOW AND SLOW: stalls at only 80 km/h, takes off in no distance.', 'falcon': 'SUPERSONIC: afterburner fitted, the fastest thing in the sky.', 'mule': 'THE BUS: up to 40 people.', 'sparrow': 'NIGHT HUNTER: kills at night pay double scrap.', 'medic': 'MEDEVAC: every rescue pays double.', 'gunslinger': 'ARSENAL: door guns, rocket pods and gun pods all fitted.', 'apache': 'HELLFIRE: guided missiles and a laser targeting pod fitted.', 'nightstalker': 'SILENT: zombies can hardly hear it at all.', 'hook': 'SKY CRANE: cargo hook fitted, and supply crates pay double.' };
+for (const k of Object.keys(HELIS)) HELIS[k].pk = PERKS[k] || '';
 for (const k of Object.keys(HELIS)) if (!HELIS[k].min || !Object.keys(HELIS[k].min).length) delete HELIS[k].min;
 export const MODEL = (k) => (HELIS[k] && HELIS[k].base) || k;
 // is this upgrade one for helicopters, planes or both? (the VTOLs count as both)
@@ -542,6 +533,8 @@ export function loadSave() {
   if (s.seed == null) s.seed = 0;
   s.base = Object.assign({ bunks: 0, guns: 0, depot: 0, works: 0, clinic: 0, radar: 0 }, s.base || {});
   s.story = Object.assign({ ch: 0, prog: {}, masts: [], fort: false, seen: -1, done: false }, s.story || {});
+  const GONE = { wildcat: 4200, cobra: 4000, blackshark: 9000, kestrel2: 9800, seahawk: 7400, valor: 12000, harrier2: 13000, tucano: 7200, hog2: 12500, raptor: 20000, ghostrider: 17000 };
+  for (const k of Object.keys(GONE)) if ((s.helis || []).includes(k)) { s.helis = s.helis.filter((q) => q !== k); s.scrap = (s.scrap || 0) + GONE[k]; s.refundMsg = (s.refundMsg || 0) + GONE[k]; s.refundPending = true; }
   s.helis = s.helis || ['warhorse']; if (!HELIS[s.heli] || !s.helis.includes(s.heli)) s.heli = 'warhorse';
   if (s.refundPending) { delete s.refundPending; saveSave(s); }
   return s;
@@ -600,7 +593,10 @@ export function statsFor(eq0, kind = 'warhorse') {
   if (S.sight) S.gun = { ...S.gun, spread: S.gun.spread * [1, 0.5, 0.33][S.sight], dmg: Math.round(S.gun.dmg * (S.sight === 2 ? 1.1 : 1)) };
   if (S.cooling) S.gun = { ...S.gun, heat: S.gun.heat * 0.6, cool: S.gun.cool * (S.cooling === 2 ? 2 : 1), rate: S.gun.rate * (S.cooling === 2 ? 1.1 : 1) };
   // the airframe
-  S.floats = !!HK.floats; S.heavy = !!HK.heavy;
+  S.floats = !!HK.floats; S.heavy = !!HK.heavy; S.perk = HK.base ? Object.keys(HELIS).find((k) => HELIS[k] === HK) : kind;
+  if (S.perk === 'hornet') S.skidGuard = true;
+  if (S.perk === 'viper' && !S.boost) { S.boost = true; S.boostMul = 1.2; }
+  if (S.perk === 'alligator') S.crash = Math.max(S.crash, 2);
   // planes: stall speed, top speed, thrust; flaps lower the stall, the afterburner is the boost
   if (HK.plane) {
     Object.assign(S, { plane: true, jet: !!HK.jet, gunship: !!HK.gunship, vtol: !!HK.vtol, stall: HK.stall * [1, 0.8, 0.65][S.flaps], vmax: HK.vmax * [1, 1.08, 1.16, 1.22, 1.32][en] * [1, 1.05, 1.1, 1.16][v('fairing', 3)], thrust: HK.thrust * [1, 1.1, 1.2, 1.25, 1.35][en] });
