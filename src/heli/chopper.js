@@ -11,6 +11,7 @@
 import { compose, mul, mat4, clamp, damp } from '../math.js';
 import { DECAL_COLS } from './hulls.js';
 import { WATER } from './terrain.js';
+import { MODEL } from './data.js';
 
 // ---------------------------------------------------------------- quaternions
 export const qmul = (a, b) => [
@@ -163,10 +164,11 @@ export const AIRFRAMES = {
   },
 };
 // where an upgrade's point (in the Warhorse's frame) ends up on another airframe (gun muzzles, pods, doors...)
-export function mountAt(kind, slot, p) { const of = (AIRFRAMES[kind] || AIRFRAMES.warhorse).off[slot]; return of ? [p[0] * of[0], p[1] + of[1], p[2] + of[2]] : p; }
+export function mountAt(kind, slot, p) { kind = MODEL(kind); const of = (AIRFRAMES[kind] || AIRFRAMES.warhorse).off[slot]; return of ? [p[0] * of[0], p[1] + of[1], p[2] + of[2]] : p; }
 // st: { rotorA, tailA, rpm, spin, t, install: {slot: 0..1}, riders, rockets (left), rocketMax, bombs, bombMax,
 //       boost (0..1), doorAim: [[yaw, pitch], [yaw, pitch]], flash }
 export function chopperParts(eq, paint, st, H, kind = 'warhorse') {
+  kind = MODEL(kind);
   const out = [], loc = mat4();
   const AF = AIRFRAMES[kind] || AIRFRAMES.warhorse;
   const body = paint.body, trim = paint.trim, pm = paint.mat || 'paint', glow = paint.glow, camo = paint.camo || 0;
@@ -1590,7 +1592,7 @@ export class Chopper {
     const v = this.vel;
     this.contacts = 0; let on = null;
     // the skids: stand on whatever is under them
-    for (const s of SKIDSETS[this.stats.kind] || SKIDSETS.warhorse) {
+    for (const s of SKIDSETS[MODEL(this.stats.kind)] || SKIDSETS.warhorse) {
       const p = this.toWorld(s);
       const b = world.firstOverlap([p[0] - 0.05, p[1] - 0.05, p[2] - 0.05], [p[0] + 0.05, p[1] + 0.05, p[2] + 0.05])
         || (this.stats.floats && p[1] < WATER + 0.05 ? WATER_TOP : null);
@@ -1624,7 +1626,7 @@ export class Chopper {
     }
     this.landed = this.contacts >= 3 && Math.hypot(v[0], v[1], v[2]) < 3 ? on : null;
     // the body: push out of buildings, and hurt
-    for (const [x, y, z, r] of BODIES[this.stats.kind] || BODIES.warhorse) {
+    for (const [x, y, z, r] of BODIES[MODEL(this.stats.kind)] || BODIES.warhorse) {
       const p = this.toWorld([x, y, z]);
       for (let it = 0; it < 2; it++) {
         const b = world.firstOverlap([p[0] - r, p[1] - r, p[2] - r], [p[0] + r, p[1] + r, p[2] + r]);
@@ -1651,7 +1653,7 @@ export class Chopper {
     // the rotor tips hitting walls
     if (this.rpm > 0.3) {
       const [, R0, hy0] = ROTOR[(this.stats.rotorTier) || 0];
-      hubs: for (const [hy1, hz, rs] of (AIRFRAMES[this.stats.kind] || AIRFRAMES.warhorse).hubs) {
+      hubs: for (const [hy1, hz, rs] of (AIRFRAMES[MODEL(this.stats.kind)] || AIRFRAMES.warhorse).hubs) {
         const hy = hy1 ?? hy0, R = R0 * rs;
         for (let i = 0; i < 8; i++) {
           const a = (i / 8) * Math.PI * 2;

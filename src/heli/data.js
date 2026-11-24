@@ -218,6 +218,88 @@ export const SLOTS = [
     { n: 'EXTRA RACKS', cost: 900, d: 'Bigger ammo racks: +50% rockets and 2 more bombs.' },
     { n: 'FULL LOADOUT', cost: 2000, d: 'Every rack full: double rockets and 4 more bombs.' },
   ] },
+  // ---- more upgrades: no new parts on the outside, but they all change how it flies, fights or pays
+  { id: 'barrel', name: 'GUN BARRELS', icon: '═', tiers: [
+    { n: 'STOCK BARRELS', cost: 0, d: 'The barrels it came with.' },
+    { n: 'MATCH BARRELS', cost: 600, d: 'Hand-fitted barrels: the nose gun hits 10% harder.' },
+    { n: 'LONG BARRELS', cost: 1600, d: 'Longer barrels: 20% harder, and 20% tighter spread.' },
+    { n: 'CHROME-LINED', cost: 3500, d: 'Chrome-lined long barrels: 30% harder, 30% tighter, and they heat up 20% slower.' },
+  ] },
+  { id: 'warhead', name: 'WARHEADS', icon: '▲', tiers: [
+    { n: 'STANDARD', cost: 0, d: 'Ordinary rocket warheads.' },
+    { n: 'HE-FRAG', cost: 700, d: 'High-explosive fragmentation: rockets hit 25% harder with a 15% bigger blast.' },
+    { n: 'BLAST-FRAG', cost: 1800, d: '50% harder, 30% bigger blast.' },
+    { n: 'TANDEM CHARGE', cost: 4000, d: 'Two charges in every rocket: 80% harder, 40% bigger blast.' },
+  ] },
+  { id: 'rkx', name: 'ROCKET STORAGE', icon: '⋙', tiers: [
+    { n: 'STANDARD', cost: 0, d: 'The usual number of rockets.' },
+    { n: 'SPARE PODS', cost: 900, d: 'Spare rockets stowed inside: 25% more rockets.' },
+    { n: 'DOUBLE-STACK', cost: 2200, d: 'Double-stacked pods: 50% more rockets.' },
+  ] },
+  { id: 'belts', name: 'DOOR GUN BELTS', icon: '⁞', tiers: [
+    { n: 'BOX MAGAZINES', cost: 0, d: 'The door gunners stop to change boxes.' },
+    { n: 'LONG BELTS', cost: 800, d: 'Belts from big ammo cans: door gunners fire 30% faster.' },
+    { n: 'LINKLESS FEED', cost: 2000, d: 'A powered feed straight from the cabin: door gunners fire 60% faster.' },
+  ] },
+  { id: 'spall', name: 'SPALL LINERS', icon: '▤', tiers: [
+    { n: 'NONE', cost: 0, d: 'Bare metal inside.' },
+    { n: 'KEVLAR LINERS', cost: 700, d: 'Kevlar blankets inside the cabin: you take 10% less damage from everything.' },
+    { n: 'HEAVY LINERS', cost: 1800, d: 'Thicker liners: 20% less damage.' },
+    { n: 'FULL TUB', cost: 3800, d: 'A kevlar tub all round the crew: 30% less damage.' },
+  ] },
+  { id: 'frame', name: 'AIRFRAME', icon: '⌗', tiers: [
+    { n: 'STOCK FRAME', cost: 0, d: 'Factory standard.' },
+    { n: 'REINFORCED', cost: 800, d: 'Doubled-up ribs and stringers: +10% health.' },
+    { n: 'HEAVY-DUTY', cost: 2000, d: 'A heavy-duty frame: +20% health.' },
+    { n: 'BATTLE FRAME', cost: 4500, d: 'Built for war: +35% health.' },
+  ] },
+  { id: 'glass', name: 'WINDSCREEN', icon: '◇', tiers: [
+    { n: 'STOCK GLASS', cost: 0, d: 'Birds hurt. So does lightning.' },
+    { n: 'BIRD-PROOF GLASS', cost: 400, d: 'Thick layered glass and wire cutters: bird strikes do no damage.' },
+    { n: 'LIGHTNING PROTECTION', cost: 1200, d: 'Plus metal mesh in the skin: lightning can\'t hurt you in storms.' },
+  ] },
+  { id: 'fairing', name: 'AERO FAIRINGS', icon: '⌒', tiers: [
+    { n: 'NONE', cost: 0, d: 'Bits sticking out everywhere.' },
+    { n: 'SMOOTH COVERS', cost: 700, d: 'Covers over the bumps: 5% faster.' },
+    { n: 'SLEEK FAIRINGS', cost: 1800, d: 'Proper fairings: 10% faster.' },
+    { n: 'RACING BODY KIT', cost: 3800, d: 'A whole smooth body kit: 16% faster.' },
+  ] },
+  { id: 'strip', name: 'WEIGHT SAVING', icon: '⇡', tiers: [
+    { n: 'NONE', cost: 0, d: 'Every seat cushion and coffee machine still aboard.' },
+    { n: 'STRIPPED OUT', cost: 600, d: 'Everything you don\'t need comes out: 6% lighter, so it climbs and turns better.' },
+    { n: 'CARBON PANELS', cost: 1700, d: 'Carbon-fibre panels too: 12% lighter.' },
+  ] },
+  { id: 'tailr', only: 'heli', name: 'TAIL ROTOR', icon: '✢', tiers: [
+    { n: 'STOCK TAIL ROTOR', cost: 0, d: 'Turns it round. Eventually.' },
+    { n: 'HIGH-AUTHORITY', cost: 700, d: 'Bigger, faster tail rotor: turns 10% quicker.' },
+    { n: 'FENESTRON', cost: 1900, d: 'A shrouded fan in the tail: turns 20% quicker.' },
+  ] },
+  { id: 'gyro', name: 'STABILITY', icon: '⊜', tiers: [
+    { n: 'NONE', cost: 0, d: 'Wind and storms throw you about.' },
+    { n: 'STABILITY AUGMENTATION', cost: 600, d: 'A gyro system that fights the wind: half the wind push and turbulence.' },
+    { n: 'ACTIVE GUST DAMPING', cost: 1500, d: 'Sensors feel the gust coming: wind and turbulence barely touch you.' },
+  ] },
+  { id: 'bladder', name: 'FUEL BLADDERS', icon: '⛽', tiers: [
+    { n: 'NONE', cost: 0, d: 'Just the tanks.' },
+    { n: 'FUEL BLADDERS', cost: 500, d: 'Rubber fuel bags in every gap: 15% more fuel.' },
+    { n: 'BIG BLADDERS', cost: 1300, d: '30% more fuel.' },
+  ] },
+  { id: 'scav', name: 'SCAVENGER CREW', icon: '⚙', tiers: [
+    { n: 'NONE', cost: 0, d: 'Nobody picking through what\'s left.' },
+    { n: 'SCAVENGER', cost: 1000, d: 'Someone who knows what\'s worth taking: 15% more scrap from every kill.' },
+    { n: 'SALVAGE TEAM', cost: 2500, d: '30% more scrap from every kill.' },
+    { n: 'STRIP-MINERS', cost: 5000, d: '50% more scrap from every kill.' },
+  ] },
+  { id: 'nets', name: 'CARGO NETS', icon: '#', tiers: [
+    { n: 'NONE', cost: 0, d: 'Crates rattle about.' },
+    { n: 'CARGO NETS', cost: 600, d: 'Nothing falls out: supply crates pay 50% more.' },
+    { n: 'CARGO MASTER', cost: 1500, d: 'A loadmaster aboard: supply crates pay double.' },
+  ] },
+  { id: 'pad', name: 'PADDED CABIN', icon: '♥', tiers: [
+    { n: 'BARE FLOOR', cost: 0, d: 'Survivors sit on the floor.' },
+    { n: 'BLANKETS & WATER', cost: 500, d: 'Happy survivors tell their friends: 25% more scrap for every rescue.' },
+    { n: 'COMFY SEATS', cost: 1400, d: '50% more scrap for every rescue.' },
+  ] },
 ];
 export const SLOT = Object.fromEntries(SLOTS.map((s) => [s.id, s]));
 
@@ -258,6 +340,30 @@ export const HELIS = {
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
     hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0, pods: 0 } },
 };
+// ---- VARIANTS: the same airframe as one above, but built for a different job: different numbers, and kit that comes
+// fitted (and shows on the outside). base = the airframe it's built on.
+const VAR = (base, o) => { const B = HELIS[base]; return { ...B, ...o, base, cap: { ...B.cap, ...(o.cap || {}) }, min: { ...(B.min || {}), ...(o.min || {}) } }; };
+Object.assign(HELIS, {
+  sparrow: VAR('hornet', { n: 'SPARROW', cost: 1200, d: 'A police scout: the Hornet with a NightSun searchlight and night vision already fitted. Quick, cheap and great at night.', hp: 0.65, speed: 1.32, min: { light: 2, nvg: 1 } }),
+  medic: VAR('huey', { n: 'DUSTOFF', cost: 1900, d: 'The classic Huey as a flying ambulance: medical bay and rescue winch fitted, room for 8 to 16, and rescues come with blankets (+25% scrap each).', seats: [8, 10, 13, 16], hp: 1.05, min: { medbay: 1, winch: 1, pad: 1 }, cap: { gun: 2, rockets: 1 } }),
+  gunslinger: VAR('huey', { n: 'HUEY GUNSLINGER', cost: 2600, d: 'A Huey bristling with guns: two door gunners, rocket pods and machine-gun pods all fitted. Cheap firepower.', seats: [4, 6, 8, 10], hp: 1.1, gunMul: 1.1, min: { door: 2, rockets: 1, pods: 1 } }),
+  wildcat: VAR('lynx', { n: 'WILDCAT', cost: 4200, d: 'The navy\'s Lynx: tougher, faster, with a thermal camera and long-range radio fitted. Fits more upgrades than the Lynx.', seats: [4, 6, 8, 10], hp: 1.2, speed: 1.28, agility: 1.38, min: { flir: 1, radio: 1 }, cap: { gun: 4, rockets: 3, armor: 3 } }),
+  cobra: VAR('viper', { n: 'COBRA', cost: 4000, d: 'The first gunship ever: slim, two seats, a chin gun 25% harder and rocket pods fitted. Tougher than the Viper but a little slower.', hp: 1.15, speed: 1.3, gunMul: 1.25, rocketMul: 1.3, min: { rockets: 1 } }),
+  apache: VAR('reaper', { n: 'APACHE', cost: 9500, d: 'The king of attack helicopters: Hellfire rails, a laser targeting pod and thermal camera all fitted, armoured like a tank, chin gun +40%.', hp: 1.95, speed: 1.18, gunMul: 1.4, rocketMul: 1.6, min: { rockets: 3, tpod: 1, flir: 1 } }),
+  blackshark: VAR('alligator', { n: 'BLACK SHARK', cost: 9000, d: 'The one-seat version of the Alligator: lighter, quicker, nastier. Chin gun +35%, rockets +50%, and an ejection-seat-tough cockpit.', seats: [1], hp: 1.45, mass: 1.05, speed: 1.32, agility: 1.5, gunMul: 1.35, rocketMul: 1.5 }),
+  nightstalker: VAR('stallion', { n: 'NIGHT STALKER', cost: 7800, d: 'Special forces Stallion: night vision, quiet rotors and a thermal camera fitted, door guns, and it barely makes a sound. Zombies hear you from half as far.', hp: 1.6, speed: 1.18, min: { door: 2, nvg: 1, quiet: 2, flir: 1 } }),
+  kestrel2: VAR('kestrel', { n: 'KESTREL MK2', cost: 9800, d: 'The Kestrel rebuilt: twin-turbo engines fitted, a stronger frame, faster and tougher, up to 28 seats.', seats: [14, 18, 22, 28], hp: 1.7, speed: 1.18, lift: 1.55, min: { engine: 2, frame: 1 } }),
+  seahawk: VAR('seaking', { n: 'SEA HAWK', cost: 7400, d: 'An armed Sea King: lands on water, hoist fitted, plus door guns and rocket pods. Search and destroy.', hp: 1.7, speed: 1.05, min: { winch: 1, door: 2, rockets: 1 } }),
+  hook: VAR('mule', { n: 'HOOK', cost: 6200, d: 'The super-heavy Mule: a cargo hook and big fuel tanks fitted, up to 48 seats, and even harder to knock down.', seats: [20, 30, 40, 48], hp: 2.4, lift: 1.9, speed: 0.9, min: { winch: 2, fuel: 1 } }),
+  valor: VAR('osprey', { n: 'VALOR', cost: 12000, d: 'The next tiltrotor: faster and nimbler than the Osprey, door guns and rocket pods fitted. Press V to switch between hover and plane.', seats: [12, 16, 20, 24], hp: 1.55, speed: 1.35, agility: 0.85, vmax: 110, thrust: 10.5, min: { door: 2, rockets: 1 } }),
+  harrier2: VAR('harrier', { n: 'HARRIER II', cost: 13000, d: 'The second-generation jump jet: more thrust, cannon pods and extra pylons fitted, tougher. Hovers, then V to fly like a fighter.', hp: 1.05, vmax: 125, thrust: 12, gunMul: 1.3, min: { pods: 1, hardpoints: 1 } }),
+  tucano: VAR('bronco', { n: 'TUCANO', cost: 7200, d: 'A turboprop attack PLANE: faster than the Bronco, .50 cal gun pods fitted, armoured cockpit. Flies low and slow over a fight.', hp: 1.3, vmax: 92, thrust: 8.5, gunMul: 1.2, min: { pods: 1 } }),
+  hog2: VAR('warthog', { n: 'WARTHOG II', cost: 12500, d: 'The upgraded Warthog: the cannon hits 80% harder, extra pylons fitted, even more armour. A flying tank with a gun.', hp: 2.6, gunMul: 1.8, rocketMul: 1.7, thrust: 9, vmax: 88, min: { hardpoints: 1 } }),
+  raptor: VAR('falcon', { n: 'RAPTOR', cost: 20000, d: 'The ultimate fighter JET: the big afterburner fitted, faster than anything, turns like nothing else. One seat, no mercy.', hp: 1.1, speed: 1.5, agility: 2.1, vmax: 170, thrust: 16, gunMul: 1.3, rocketMul: 1.5, min: { reheat: 2 } }),
+  ghostrider: VAR('spectre', { n: 'GHOSTRIDER', cost: 17000, d: 'The newest gunship: high-rate Gatling, autoloader Bofors, extra magazines and the target tracker all fitted. Climb above 80 m and press G.', hp: 2.7, speed: 1.1, vmax: 78, thrust: 7.5, min: { door: 3, gsgat: 1, gsbof: 1, gsmag: 1, gssens: 1 } }),
+});
+for (const k of Object.keys(HELIS)) if (!HELIS[k].min || !Object.keys(HELIS[k].min).length) delete HELIS[k].min;
+export const MODEL = (k) => (HELIS[k] && HELIS[k].base) || k;
 // is this upgrade one for helicopters, planes or both? (the VTOLs count as both)
 export function slotFits(id, kind) {
   const sl = SLOT[id], HK = HELIS[kind] || HELIS.warhorse;
@@ -480,13 +586,24 @@ export function statsFor(eq0, kind = 'warhorse') {
     crewMax: [2, 3, 4, 4][v('cabin', 3)],
     pods: v('pods', 2), sniper: v('sniper', 2),
   };
+  // the extra upgrades
+  const br = v('barrel', 3), wh = v('warhead', 3);
+  Object.assign(S, { spall: v('spall', 3), glass: v('glass', 2), gyro: v('gyro', 2), scav: v('scav', 3), nets: v('nets', 2), pad: v('pad', 2), belts: v('belts', 2) });
+  if (br) S.gun = { ...S.gun, dmg: Math.round(S.gun.dmg * [1, 1.1, 1.2, 1.3][br]), spread: S.gun.spread * [1, 1, 0.8, 0.7][br], heat: S.gun.heat * (br === 3 ? 0.8 : 1) };
+  if (wh) { S.rocketDmg = Math.round(S.rocketDmg * [1, 1.25, 1.5, 1.8][wh]); S.rocketR *= [1, 1.15, 1.3, 1.4][wh]; }
+  S.rockets = Math.round(S.rockets * [1, 1.25, 1.5][v('rkx', 2)]);
+  S.hp = Math.round(S.hp * [1, 1.1, 1.2, 1.35][v('frame', 3)]);
+  S.speed *= [1, 1.05, 1.1, 1.16][v('fairing', 3)];
+  S.mass *= [1, 0.94, 0.88][v('strip', 2)];
+  S.agility *= [1, 1.1, 1.2][v('tailr', 2)];
+  S.fuel = Math.round(S.fuel * [1, 1.15, 1.3][v('bladder', 2)]);
   if (S.sight) S.gun = { ...S.gun, spread: S.gun.spread * [1, 0.5, 0.33][S.sight], dmg: Math.round(S.gun.dmg * (S.sight === 2 ? 1.1 : 1)) };
   if (S.cooling) S.gun = { ...S.gun, heat: S.gun.heat * 0.6, cool: S.gun.cool * (S.cooling === 2 ? 2 : 1), rate: S.gun.rate * (S.cooling === 2 ? 1.1 : 1) };
   // the airframe
   S.floats = !!HK.floats; S.heavy = !!HK.heavy;
   // planes: stall speed, top speed, thrust; flaps lower the stall, the afterburner is the boost
   if (HK.plane) {
-    Object.assign(S, { plane: true, jet: !!HK.jet, gunship: !!HK.gunship, vtol: !!HK.vtol, stall: HK.stall * [1, 0.8, 0.65][S.flaps], vmax: HK.vmax * [1, 1.08, 1.16, 1.22, 1.32][en], thrust: HK.thrust * [1, 1.1, 1.2, 1.25, 1.35][en] });
+    Object.assign(S, { plane: true, jet: !!HK.jet, gunship: !!HK.gunship, vtol: !!HK.vtol, stall: HK.stall * [1, 0.8, 0.65][S.flaps], vmax: HK.vmax * [1, 1.08, 1.16, 1.22, 1.32][en] * [1, 1.05, 1.1, 1.16][v('fairing', 3)], thrust: HK.thrust * [1, 1.1, 1.2, 1.25, 1.35][en] });
     S.boost = S.reheat > 0 || S.boost; S.boostMul = S.reheat ? [1, 1.6, 2.1][S.reheat] : S.boostMul;
     const hm = [1, 1.5, 2][S.hardpoints];
     S.rockets = Math.round(S.rockets * hm); S.bombs = Math.round(S.bombs * hm);
