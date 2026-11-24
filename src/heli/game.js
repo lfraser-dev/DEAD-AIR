@@ -551,6 +551,7 @@ export class HeliGame {
       this.tod = 0.3;
       this.director.start(this);
       this.story = new Story(this.save, this.map);
+      this.syncVats();
       this.story.ensure(this);
       this.incomeT = 0;
       this.banner('DEAD AIR', this.story.done ? 'THE SPIRE · FREE FLIGHT · HELP WHO YOU CAN' : `THE SPIRE · CHAPTER ${this.save.story.ch + 1}: ${CHAPTERS[this.save.story.ch].n}`, '', 3);
@@ -651,6 +652,7 @@ export class HeliGame {
       const v = [C.x - eye[0], C.y + 40 - eye[1], C.z - eye[2]], l = Math.hypot(...v);
       this.draw(eye, v.map((c) => c / l), 0, [], [], [C.x, 0, C.z], 0.0032);
     }
+    if (this.mode === 'fly' || this.mode === 'wing' || this.mode === 'gunner') { this.bossFeel(dt); this.siteTick(dt); }
     this.musicTick(dt);
     this.hitKeys.clear(); this.clk.clear(); this.mx = 0; this.my = 0;
   }
@@ -920,7 +922,7 @@ export class HeliGame {
     let t = w ? w.t : max, res = { t, w };
     const zh = this.horde.hitRay(o, d, t);
     if (zh) { t = zh.t; res = { t, z: zh.z }; }
-    for (const sh of this.director.shootables()) {
+    for (const sh of this.shootList()) {
       const oc = [sh.pos[0] - o[0], sh.pos[1] - o[1], sh.pos[2] - o[2]], tc = oc[0] * d[0] + oc[1] * d[1] + oc[2] * d[2];
       if (tc < 0) continue;
       const d2 = oc[0] * oc[0] + oc[1] * oc[1] + oc[2] * oc[2] - tc * tc;
@@ -1180,7 +1182,7 @@ export class HeliGame {
       const w = this.world.raycast(o, dir, 450), end = w ? w.t : 450;
       let n = 0;
       for (const z of this.rayAll(o, dir, end)) { if (this.horde.damage(z, G.dmg, [dir[0] * 14, 4, dir[2] * 14], 'gun')) n++; }
-      for (const sh of this.director.shootables()) { const v = [sh.pos[0] - o[0], sh.pos[1] - o[1], sh.pos[2] - o[2]], tc = v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2]; if (tc > 0 && tc < end && Math.hypot(v[0] - dir[0] * tc, v[1] - dir[1] * tc, v[2] - dir[2] * tc) < sh.r) sh.hit(G.dmg, this); }
+      for (const sh of this.shootList()) { const v = [sh.pos[0] - o[0], sh.pos[1] - o[1], sh.pos[2] - o[2]], tc = v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2]; if (tc > 0 && tc < end && Math.hypot(v[0] - dir[0] * tc, v[1] - dir[1] * tc, v[2] - dir[2] * tc) < sh.r) sh.hit(G.dmg, this); }
       const to = o.map((c, i) => c + dir[i] * end);
       this.beam(o, to, [0.5, 0.9, 1], 0.32, 0.35);
       if (w) { this.fx.sparks(to, 16, [0.5, 0.9, 1], 9, 0.5, 0.08, 1); this.fx.impact(to, w.normal, w.box.color); }
@@ -1355,7 +1357,7 @@ export class HeliGame {
   }
   blastAll(p, r, dmg, force, cause) {
     const n = this.horde.blast(p, r, dmg, force, cause);
-    for (const sh of this.director.shootables()) { const d = Math.hypot(sh.pos[0] - p[0], sh.pos[1] - p[1], sh.pos[2] - p[2]); if (d < r + sh.r) sh.hit(dmg * (1 - clamp((d - sh.r) / r, 0, 0.8)), this); }
+    for (const sh of this.shootList()) { const d = Math.hypot(sh.pos[0] - p[0], sh.pos[1] - p[1], sh.pos[2] - p[2]); if (d < r + sh.r) sh.hit(dmg * (1 - clamp((d - sh.r) / r, 0, 0.8)), this); }
     if (n) this.hitMark(true);
     return n;
   }
@@ -2302,6 +2304,9 @@ export class HeliGame {
         const e = this.director.list.find((q) => q.id === m.id);
         if (e && !(this.dustoffs || []).some((d) => d.ev === e) && (((e.kind === 'rescue' || e.kind === 'crash') && e.roof && e.roof.active && e.roof.count > 0) || (e.kind === 'crate' && e.landed && !e.carried && !e.dust && !e.done))) this.callDustoff(e, f.name);
         else tr.sendTo(id, { k: 'cr' });
+      } else if (m.k === 'vh' && f.pilot) {
+        const e = this.director.list.find((q) => q.kind === 'vats'), v = e && e.vats[m.i | 0];
+        if (v) e.hit(v, clamp(+m.d || 0, 0, 3000), this);
       } else if (m.k === 'mast' && f.pilot) {
         const e = this.director.list.find((q) => q.id === m.id && q.kind === 'mast' && !q.working);
         if (e) { e.start(this); this.feed(`${f.name}'S ENGINEER IS ON THE WAY DOWN`, 'g'); }
@@ -2428,6 +2433,92 @@ export class HeliGame {
     let d = Math.hypot(x - this.heli.pos[0], z - this.heli.pos[2]);
     if (this.coop) for (const f of this.coop.friends.values()) if (f.pilot && f.wh && !f.wh.dead) d = Math.min(d, Math.hypot(x - f.wh.pos[0], z - f.wh.pos[2]));
     return d;
+  }
+  // things you can shoot that aren't zombies (the growth vats): the host's own, or, for friends, stand-ins that tell the host
+  shootList() {
+    if (!this.client) return this.director.shootables(this);
+    const out = [];
+    for (const e of this.client.evs || []) if (e.k === 'vats' && Array.isArray(e.v)) for (let i = 0; i < e.v.length; i++) {
+      const v = e.v[i]; if (!(v[3] > 0)) continue;
+      out.push({ pos: [v[0], v[1], v[2]], r: 4.5, hit: (d) => { this.vatHits = (this.vatHits || 0) + d; this.vatI = i; } });
+    }
+    return out;
+  }
+  // smashed growth vats stay smashed: hide them (from the save, or for friends from what the host says)
+  syncVats(evs) {
+    const L = this.map.lab; if (!L) return;
+    const gone = new Set((this.save.story && this.save.story.vats) || []);
+    if (evs) for (const e of evs) if (e.k === 'vats' && Array.isArray(e.v)) e.v.forEach((v, i) => { if (!(v[3] > 0)) gone.add(i); });
+    L.vats.forEach((v, i) => { for (const b of v.parts) b.hidden = gone.has(i); });
+  }
+  // a deep roar: low growl swept down, plus a rush of noise
+  roar(vol = 0.5, dist = 0) {
+    const c = this.snd.ctx; if (!c || this.save.sfx === false) return;
+    const k = vol * (dist ? Math.max(0.15, 1 - dist / 900) : 1), t = c.currentTime;
+    const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(32, t + 2);
+    const o2 = c.createOscillator(); o2.type = 'square'; o2.frequency.setValueAtTime(103, t); o2.frequency.exponentialRampToValueAtTime(45, t + 1.8);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(180, t + 2);
+    const n = c.createBufferSource(); n.buffer = this.snd.noise; const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.setValueAtTime(600, t); bp.frequency.exponentialRampToValueAtTime(150, t + 2); bp.Q.value = 1.5;
+    const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.55 * k, t + 0.25); g.gain.setTargetAtTime(0, t + 1.4, 0.35);
+    o.connect(lp); o2.connect(lp); n.connect(bp).connect(g); lp.connect(g); g.connect(this.snd.master);
+    o.start(t); o2.start(t); n.start(t, Math.random()); o.stop(t + 3); o2.stop(t + 3); n.stop(t + 3);
+  }
+  // the giants: their footsteps shake the ground (and you), leave prints and kick up dust; you hear them coming
+  bossFeel(dt) {
+    const cl = this.client, me = cl ? (cl.heli || this.heli) : this.heli;
+    if (!me) return;
+    const list = cl ? [...(cl.zs ? cl.zs.values() : [])].filter((z) => z.boss) : this.horde.list.filter((z) => z.boss && z.alive);
+    if (cl) for (const e of cl.evs || []) if (e.k === 'boss' && e.w) { const z = list.sort((a, b) => Math.hypot(a.x - e.x, a.z - e.z) - Math.hypot(b.x - e.x, b.z - e.z))[0]; if (z && !(z.atk > 0)) z.atk = 1; }
+    this.prints = this.prints || [];
+    for (const z of list) {
+      if (cl && z.atk > 0) z.atk = Math.max(0, z.atk - dt / 0.8);
+      if (z.lx != null) { const d = Math.hypot(z.x - z.lx, z.z - z.lz); if (d < 20) z.walkD = (z.walkD || 0) + d; }
+      z.lx = z.x; z.lz = z.z;
+      const stride = z.s * (z.type === 'mother' ? 0.35 : 0.55);
+      z.bph = (z.walkD || 0) / stride;
+      const step = Math.floor(z.bph / Math.PI);
+      const dist = Math.hypot(z.x - me.pos[0], z.y - me.pos[1], z.z - me.pos[2]);
+      if (z.lastStep != null && step !== z.lastStep) {
+        const sd = step % 2 ? 1 : -1, c = Math.cos(z.yaw), sn = Math.sin(z.yaw), fx = z.x + sd * 0.45 * z.s * c, fz = z.z - sd * 0.45 * z.s * sn;
+        if (dist < 650) {
+          this.shake = Math.max(this.shake || 0, 0.55 * (1 - dist / 650) * (z.type === 'goliath' ? 1 : 0.6));
+          this.snd.boom?.(0.35 * (1 - dist / 700));
+          for (let k = 0; k < 2; k++) this.smokes.push({ pos: [fx + (Math.random() - 0.5) * z.s, z.y + 1, fz + (Math.random() - 0.5) * z.s], t: 0, life: 2.5 + Math.random() * 1.5, size: z.s * 0.35, drift: [(Math.random() - 0.5), (Math.random() - 0.5)] });
+        }
+        if (z.type !== 'mother') { this.prints.push([fx, this.groundAt(fx, fz) + 0.05, fz, z.yaw, z.s]); if (this.prints.length > 70) this.prints.shift(); }
+      }
+      z.lastStep = step;
+      // first time you see one: its name in big letters, and a roar
+      const key = z.nid || z.id;
+      this.bossSeen = this.bossSeen || new Set();
+      if (dist < 750 && !this.bossSeen.has(key)) {
+        this.bossSeen.add(key);
+        const B = BOSSES[z.type];
+        if (B) { this.banner(`☠ ${B.n} ☠`, B.sub, 'bad', 4.5); this.roar(0.8, dist); this.shake = Math.max(this.shake || 0, 0.6); }
+      }
+    }
+    // friends: send the damage they did to the vats to the host
+    if (cl && this.vatHits > 0 && (this.vatT = (this.vatT || 0) + dt) > 0.25) { cl.tr.send({ k: 'vh', i: this.vatI, d: Math.round(this.vatHits) }); this.vatHits = 0; this.vatT = 0; }
+  }
+  // flying over the places in the story for the first time: the radio tells you what you're looking at
+  siteTick(dt) {
+    if ((this.siteT = (this.siteT || 0) - dt) > 0) return;
+    this.siteT = 0.5;
+    const P = (this.client ? this.client.heli : this.heli)?.pos, M = this.map, seen = this.save.sites = this.save.sites || {};
+    if (!P) return;
+    const sites = [];
+    if (M.lab) sites.push(['lab', M.lab, "That's Halden Biolab. Army research. Look at the hall: something tore its way out through the wall. Something big. And those footprints... pilot, they're the size of cars."]);
+    const L = M.lairs || {};
+    if (L.goliath) sites.push(['goliath', L.goliath, "Red Rock Quarry. The cars down there have been crushed flat and stacked like firewood. Something's been carrying them here. That's a den, pilot."]);
+    if (L.spitter) sites.push(['spitter', L.spitter, "Kessler Chemicals. That green stuff has eaten right through the concrete... and there are tracks going in and out of it. Whatever lives here drinks it."]);
+    if (L.mother) sites.push(['mother', L.mother, "Those are... eggs. Hundreds of them, inside a wall of cars. Pilot, get some height. I don't want to meet whatever laid them."]);
+    for (const [k, site, text] of sites) {
+      if (seen[k] || Math.hypot(site.x - P[0], site.z - P[2]) > 380) continue;
+      seen[k] = 1; saveSave(this.save);
+      this.radio(text, 10);
+      this.feed(`FOUND: ${site.name}`, 'g');
+      if (k !== 'lab') this.storyHit('lair', 1);
+    }
   }
   // everyone flying who a boss can throw things at: you, and friends flying their own aircraft
   pilots() {
@@ -2644,7 +2735,7 @@ export class HeliGame {
       }
       for (const [id, p] of cl.zs) if (!seen.has(id)) { p.alive = false; cl.zs.delete(id); }
       this.horde.list = this.horde.list.filter((q) => q.alive);
-    } else if (m.k === 'ev') { cl.evAt = this.t; cl.evs = m.e || []; cl.shots = m.sh || []; cl.dos = Array.isArray(m.do) ? m.do.slice(0, 6) : []; }
+    } else if (m.k === 'ev') { cl.evAt = this.t; cl.evs = m.e || []; this.syncVats(cl.evs); cl.shots = m.sh || []; cl.dos = Array.isArray(m.do) ? m.do.slice(0, 6) : []; }
     else if (m.k === 'fx') {
       for (const f of m.f || []) {
         if (f[0] === 't') { if (f[8] !== (cl.wing ? 10 + (cl.pad || 0) : cl.seat)) this.tracers.push({ from: [f[1], f[2], f[3]], dir: [f[4], f[5], f[6]], len: f[7], d: 0 }); }
@@ -3171,6 +3262,7 @@ export class HeliGame {
     this.parkedParts(out);
     this.wingParts(out);
     this.dustoffParts(out);
+    for (const q of this.prints || []) P([q[0], q[1], q[2]], [0, q[3], 0], [q[4] * 0.28, 0.06, q[4] * 0.5], [0.1, 0.085, 0.07], { shape: 'sphere' });
     for (const b of this.blasts || []) {
       const k = b.t / 0.5;
       if (b.ring) { const s = (3 + k * 16) * b.size; P(b.pos, [0, 0, 0], [s, 0.15, s], [1, 0.85, 0.6], { em: 1, shape: 'cylY', alpha: (1 - k) * 0.35 }); continue; }
@@ -3368,6 +3460,9 @@ export class HeliGame {
       if (M.airfield) label('✈ AIRFIELD', X(M.airfield.x), Z(M.airfield.z), 12, '#5ab4ff');
       if (M.hospital) label("✚ ST MARY'S", X(M.hospital.x), Z(M.hospital.z), 11, '#ff9ac0');
       for (const m of M.masts || []) label(`${m.on ? '◉' : '○'} ${m.name}`, X(m.x), Z(m.z), 10, m.on ? '#7dff9a' : '#ffd23a');
+      const seen = this.save.sites || {};
+      if (M.lab) label('☣ HALDEN BIOLAB', X(M.lab.x), Z(M.lab.z), 12, '#ffd23a');
+      for (const k of ['goliath', 'spitter', 'mother']) { const L = (M.lairs || {})[k]; if (L) label(seen[k] ? `☠ ${L.name}` : '☠ ? ? ?', X(L.x), Z(L.z), 11, seen[k] ? '#ff6a4a' : 'rgba(255,120,90,.7)'); }
       // north arrow and a 1 km bar
       c.save(); c.translate(W - 30, 34); c.fillStyle = 'rgba(0,0,0,.45)'; c.beginPath(); c.arc(0, 0, 18, 0, 6.3); c.fill();
       c.fillStyle = '#fff'; c.beginPath(); c.moveTo(0, -13); c.lineTo(6, 6); c.lineTo(0, 2); c.lineTo(-6, 6); c.closePath(); c.fill(); label('N', 0, 16, 10, '#fff'); c.restore();
@@ -3767,7 +3862,7 @@ export class HeliGame {
       for (const c of this.terrain.chunks) if (near(c.center, c.S / 2)) r.shadowMesh(c.mesh, c.model);
       for (const c of this.forest.visible) if (near(c.center, 64)) { for (const b of c.batches) r.shadowBatch(b); if (c.trunks) r.shadowBatch(c.trunks); }
     }
-    for (const b of this.live) if (!b.noShadow && near(b.center, 10)) r.shadowDraw(b.model, b.shape, b.scale);
+    for (const b of this.live) if (!b.noShadow && !b.hidden && near(b.center, 10)) r.shadowDraw(b.model, b.shape, b.scale);
     for (const p of solid) r.shadowDraw(p.model, p.shape, p.scale);
     for (const p of exS) r.shadowDraw(p.model, p.shape, p.scale);
     if (zn) for (const b of zb) r.shadowBatch(b);
@@ -3789,7 +3884,7 @@ export class HeliGame {
       }
       r.endBatches();
     }
-    for (const b of this.live) if ((b.alpha ?? 1) >= 1 && view(b.center, 0.5 * Math.hypot(...b.scale))) r.drawBox(b);
+    for (const b of this.live) if ((b.alpha ?? 1) >= 1 && !b.hidden && view(b.center, 0.5 * Math.hypot(...b.scale))) r.drawBox(b);
     if (zn) { for (const b of zb) r.drawBatch(b); r.endBatches(); }
     for (const p of solid) r.drawPart(p, 0);
     for (const p of exS) r.drawPart(p, 0);

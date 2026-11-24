@@ -23,6 +23,7 @@ export function makeBox(min, max, o = {}) {
                                   // 10 plaster, 11 tiled slab, 12 wood slab, 13 brick facade
     mat: o.mat,                   // material name or [metalness, roughness]
     tag: o.tag || null,
+    dynamic: !!o.dynamic,         // never put in a static batch (it gets hidden / changed later)
     ref: o.ref || null,
     model: new Float32Array(16),
     scale: [0, 0, 0],

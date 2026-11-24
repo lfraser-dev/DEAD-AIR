@@ -10,6 +10,7 @@
 // THOUSANDS: the streets fill up to how busy a place was (the city is packed, the countryside isn't). Zombies near you
 // are worked out every frame in full; ones further off shuffle along more simply a few times a second, and are drawn as
 // fewer shapes the further away they are (a full body close up, two boxes further out, one box in the distance).
+import { bossParts } from './bossmodel.js';
 import { compose, mat4, clamp } from '../math.js';
 import { INST_FLOATS } from '../renderer.js';
 import { WORLD } from './map.js';
@@ -456,7 +457,7 @@ export class Horde {
     for (const z of this.list) {
       if (!z.alive) continue;
       const crawl = z.type === 'crawler' && z.st === 'walk';
-      const r = 0.55 * z.s, cy = z.y + (crawl ? 0.35 : 1.0) * z.s;
+      const r = (z.boss ? 0.8 : 0.55) * z.s, cy = z.y + (crawl ? 0.35 : 1.0) * z.s;
       const ox = z.x - o[0], oy = cy - o[1], oz = z.z - o[2];
       const tc = ox * d[0] + oy * d[1] + oz * d[2];
       if (tc < 0 || tc - r > bt) continue;
@@ -511,6 +512,7 @@ export class Horde {
 
   // the shapes a zombie is made of: [{ pos, rot, size, col, em, mesh }]
   parts(z, out, lod = 1) {
+    if (z.boss) return bossParts(z, out, performance.now() / 1000);
     const s = z.s, c = Math.cos(z.yaw), sn = Math.sin(z.yaw);
     const flash = z.hitT > 0;
     const tint = (col) => flash ? [Math.min(1, col[0] + 0.5), Math.min(1, col[1] + 0.4), Math.min(1, col[2] + 0.4)] : col;
