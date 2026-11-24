@@ -308,8 +308,9 @@ export function buildWorld(seed = 1337) {
       spots.push({ x, z, r: 20, kind: 'mast', y: h });
     }
   }
-  place(20, 70, 420, 'town');
-  place(38, 42, 260, 'village');
+  place(20, 112, 440, 'town');
+  place(38, 64, 280, 'village');
+  for (const q of spots) if (q.kind === 'village') q.axis = R() < 0.5 ? 0 : 1;
 
   // ---- roads: join everything up (a spanning tree, plus a few loops), each one winding round the hills
   const LAIR = new Set(['quarry', 'chem', 'nest']);
@@ -325,22 +326,35 @@ export function buildWorld(seed = 1337) {
     if (near && Math.hypot(near.x - a.x, near.z - a.z) < 1100 && R() < 0.45) edges.push([a.i, near.i]);
   }
   const inSpot = (x, z, m = 0) => spots.find((s) => Math.hypot(s.x - x, s.z - z) < s.r * (LAIR.has(s.kind) ? 1.3 : 0.85) + m);
+  // towns and villages: a road leaves along one of their own streets (so it lines up with the houses), not at any angle
+  const streetDir = (S, ang) => {
+    if (S.kind !== 'town' && S.kind !== 'village' && S.kind !== 'small') return ang;
+    const opts = S.kind !== 'village' ? [0, Math.PI / 2, Math.PI, -Math.PI / 2] : S.axis ? [Math.PI / 2, -Math.PI / 2] : [0, Math.PI];
+    let best = opts[0], bd = 9;
+    for (const o of opts) { const d = Math.abs(((o - ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI); if (d < bd) { bd = d; best = o; } }
+    return best;
+  };
+  const streetEnd = (S) => (S.kind === 'town' || S.kind === 'village' ? S.r * 0.98 : S.kind === 'small' ? S.r * 1.05 : S.r * 0.8);
   const route = (A, B) => {
     // start and finish at the edge of each place, then step across the land, picking the gentlest way that still heads there
-    const ang = Math.atan2(B.z - A.z, B.x - A.x);
-    let x = A.x + Math.cos(ang) * A.r * 0.8, z = A.z + Math.sin(ang) * A.r * 0.8;
-    const ex = B.x - Math.cos(ang) * B.r * 0.8, ez = B.z - Math.sin(ang) * B.r * 0.8;
+    const ang = Math.atan2(B.z - A.z, B.x - A.x), aOut = streetDir(A, ang), aIn = streetDir(B, ang + Math.PI);
+    let x = A.x + Math.cos(aOut) * streetEnd(A), z = A.z + Math.sin(aOut) * streetEnd(A);
+    const ex = B.x + Math.cos(aIn) * streetEnd(B), ez = B.z + Math.sin(aIn) * streetEnd(B);
     const pts = [[A.x, A.z], [x, z]];
-    let heading = ang;
+    // a short straight bit out of town before it starts winding
+    if (aOut !== ang) { x += Math.cos(aOut) * 40; z += Math.sin(aOut) * 40; pts.push([x, z]); }
+    let heading = aOut;
     for (let s = 0; s < 120; s++) {
       const d = Math.hypot(ex - x, ez - z);
       if (d < 70) break;
+      // coming into a town or village: line up with its street first
+      if (aIn !== ang + Math.PI && d < 160) { pts.push([ex + Math.cos(aIn) * 40, ez + Math.sin(aIn) * 40]); break; }
       const want = Math.atan2(ez - z, ex - x), h0 = T.natural(x, z);
       let bc = Infinity, bh = want;
       for (let k = -5; k <= 5; k++) {
         const a = want + k * 0.13, nx = x + Math.cos(a) * 55, nz = z + Math.sin(a) * 55, h = Math.min(T.natural(nx, nz), T.heightAt(nx, nz));
         const turn = Math.abs(((a - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-        const c = Math.abs(h - h0) * 2.2 + Math.abs(k) * 1.2 + turn * 8 + (h < WATER + 1 ? 140 : 0) + (h > 120 ? 40 : 0) + (inSpot(nx, nz) && inSpot(nx, nz) !== B && inSpot(nx, nz) !== A ? (LAIR.has(inSpot(nx, nz).kind) ? 400 : 50) : 0);
+        const c = Math.abs(h - h0) * 2.2 + Math.abs(k) * 1.2 + turn * 8 + (h < WATER + 1 ? 140 : 0) + (h > 120 ? 40 : 0) + (inSpot(nx, nz, 15) && inSpot(nx, nz, 15) !== B && inSpot(nx, nz, 15) !== A ? (LAIR.has(inSpot(nx, nz, 15).kind) || inSpot(nx, nz, 15).kind === 'town' || inSpot(nx, nz, 15).kind === 'village' ? 400 : 60) : 0);
         if (c < bc) { bc = c; bh = a; }
       }
       heading = bh; x += Math.cos(bh) * 55; z += Math.sin(bh) * 55;
@@ -348,10 +362,17 @@ export function buildWorld(seed = 1337) {
     }
     pts.push([ex, ez], [B.x, B.z]);
     // smooth the bends
-    for (let it = 0; it < 2; it++) for (let i = 2; i < pts.length - 2; i++) { pts[i][0] = (pts[i - 1][0] + pts[i][0] * 2 + pts[i + 1][0]) / 4; pts[i][1] = (pts[i - 1][1] + pts[i][1] * 2 + pts[i + 1][1]) / 4; }
+    const fixed = (i) => i <= 2 || i >= pts.length - 3;
+    for (let it = 0; it < 2; it++) for (let i = 2; i < pts.length - 2; i++) if (!fixed(i)) { pts[i][0] = (pts[i - 1][0] + pts[i][0] * 2 + pts[i + 1][0]) / 4; pts[i][1] = (pts[i - 1][1] + pts[i][1] * 2 + pts[i + 1][1]) / 4; }
     // heights: follow the land but never steeper than about 1 in 9; held up out of the water (a causeway)
-    const hs = pts.map(([px, pz], i) => (i === 0 ? A.y : i === pts.length - 1 ? B.y : Math.max(WATER + 1.6, T.natural(px, pz))));
-    for (let it = 0; it < 3; it++) for (let i = 1; i < hs.length - 1; i++) hs[i] = Math.max(WATER + 1.6, (hs[i - 1] + hs[i] * 2 + hs[i + 1]) / 4);
+    // heights: the ground as it really is now (towns and farms are flattened), smoothed a little, but never far above
+    // or below it, so the road sits on the land instead of riding along on a bank
+    const inA = (px, pz) => Math.hypot(px - A.x, pz - A.z) < A.r * 1.02, inB = (px, pz) => Math.hypot(px - B.x, pz - B.z) < B.r * 1.02;
+    const gr = pts.map(([px, pz], i) => (i === 0 || inA(px, pz) ? A.y : i === pts.length - 1 || inB(px, pz) ? B.y : Math.max(WATER + 1.6, T.heightAt(px, pz))));
+    const lock = pts.map(([px, pz], i) => i === 0 || i === pts.length - 1 || inA(px, pz) || inB(px, pz));
+    const hs = gr.slice();
+    for (let it = 0; it < 3; it++) for (let i = 1; i < hs.length - 1; i++) if (!lock[i]) hs[i] = Math.max(WATER + 1.6, (hs[i - 1] + hs[i] * 2 + hs[i + 1]) / 4);
+    for (let i = 0; i < hs.length; i++) if (!lock[i]) hs[i] = Math.max(gr[i] - 2.5, Math.min(gr[i] + 2, hs[i]));
     // over water the road goes on a bridge (a deck on piers), not a dam across the river
     const DECK = WATER + 6.5;
     const wetPt = pts.map(([px, pz], i) => i > 0 && i < pts.length - 1 && Math.min(T.heightAt(px, pz), T.natural(px, pz)) < WATER + 0.6);
@@ -494,13 +515,19 @@ export function buildWorld(seed = 1337) {
     const st = h > 40 ? pick(['glass', 'office', 'deco']) : pick(['brick', 'brick', 'office', 'deco']);
     return tower(x0, z0, x1, z1, base, Math.max(h, 7), { style: st, kind, neon: h > 18 && R() < 0.3 });
   }
+  // a house facing `yaw` (its front door is on its local -z side): walls, a gabled roof, door, windows, chimney, sometimes a garage
   const house = (x, y, z, yaw = 0) => {
-    const sx = 9, sz = 8, hh = 4 + R() * 2.5, col = HOUSES[Math.floor(R() * HOUSES.length)], rc = ROOFS[Math.floor(R() * ROOFS.length)];
-    at(x, y - 0.6, z, sx, hh + 0.6, sz, { color: col, tex: 10 });
-    const half = sx / 2 + 0.4, rise = 2.2, sl = Math.hypot(half, rise), ang = Math.atan2(rise, half);
-    for (const sd of [-1, 1]) rot(x + sd * half / 2, y + hh + rise / 2 - 0.15, z, [0, 0, -sd * ang], sl, 0.22, sz + 0.8, { color: rc, shape: 0.05, solid: false });
-    at(x + 2.2, y + hh - 0.2, z + 1.5, 0.9, 2.2, 0.9, { color: [0.45, 0.3, 0.25], tex: 13 });          // chimney
-    if (R() < 0.5) tree(x + 7, z + 6, 0.9);
+    const sx = 9 + Math.floor(R() * 2) * 2, sz = 8, hh = 4 + R() * 2.5, col = HOUSES[Math.floor(R() * HOUSES.length)], rc = ROOFS[Math.floor(R() * ROOFS.length)];
+    const c = Math.cos(yaw), s2 = Math.sin(yaw), W = (lx, lz) => [x + lx * c + lz * s2, z - lx * s2 + lz * c];
+    rot(x, y - 0.6, z, [0, yaw, 0], sx, hh + 0.6, sz, { color: col, tex: 10 });
+    const half = sx / 2 + 0.4, rise = 2.2 + sx * 0.05, sl = Math.hypot(half, rise), ang = Math.atan2(rise, half);
+    for (const sd of [-1, 1]) { const [px, pz] = W(sd * half / 2, 0); rot(px, y + hh + rise / 2 - 0.15, pz, [0, yaw, -sd * ang], sl, 0.22, sz + 0.8, { color: rc, shape: 0.05, solid: false }); }
+    for (const sd of [-1, 1]) { const [px, pz] = W(sd * (sx / 2 - 0.05), 0); rot(px, y + hh - 0.1, pz, [0, yaw, 0], 0.12, rise * 0.95, sz * 0.2, { color: col, solid: false, noShadow: true }); }
+    const [dx, dz] = W(-sx * 0.15, -sz / 2 - 0.04); rot(dx, y, dz, [0, yaw, 0], 1.2, 2.2, 0.1, { color: [0.35, 0.22, 0.14], solid: false, noShadow: true });
+    for (const lx of [-sx * 0.36, sx * 0.2]) { const [wx, wz] = W(lx, -sz / 2 - 0.04); rot(wx, y + 1.1, wz, [0, yaw, 0], 1.6, 1.3, 0.08, { color: [0.2, 0.26, 0.3], mat: 'glass', solid: false, noShadow: true }); }
+    const [cx2, cz2] = W(sx * 0.25, 1.5); at(cx2, y + hh - 0.2, cz2, 0.9, 2.2, 0.9, { color: [0.45, 0.3, 0.25], tex: 13 });   // chimney
+    if (R() < 0.3) { const [gx, gz] = W(sx / 2 + 2.6, 0.5); rot(gx, y - 0.3, gz, [0, yaw, 0], 4.2, 3, 6, { color: col.map((v) => v * 0.9), tex: 10 }); }
+    else if (R() < 0.5) { const [tx, tz] = W(sx / 2 + 3, sz / 2 + 2); tree(tx, tz, 0.9); }
   };
 
   // a line of something between two points (cables, ramps): a box stretched along it
@@ -1216,37 +1243,95 @@ export function buildWorld(seed = 1337) {
     towns.push({ x: t.x, z: t.z, y, r: t.r, kind: t.kind, name: TOWN_NAMES.splice(Math.floor(R() * TOWN_NAMES.length), 1)[0] || 'NOWHERE' });
     ground.town(t.x, t.z, t.r * 0.75, t.r * 0.4);
     open.push([t.x, t.z, y]);
+    townLayout(t, y);
+  }
+  // ---- towns and villages, laid out along proper streets. Roads from outside come in down the main streets
+  // (see route), every lot faces a street, and nothing is ever built on a road.
+  function roadGap(x, z, m) {
+    for (const r of roads) { const dx = r[2] - r[0], dz = r[3] - r[1], L = dx * dx + dz * dz || 1, tt = Math.max(0, Math.min(1, ((x - r[0]) * dx + (z - r[1]) * dz) / L)); if (Math.hypot(x - r[0] - dx * tt, z - r[1] - dz * tt) < m) return false; }
+    return true;
+  }
+  function townLayout(t, y) {
+    const streets = [];
+    const street = (x0, z0, x1, z1) => { streets.push([x0, z0, x1, z1]); ground.road(x0, z0, x1, z1); };
+    const dStreet = (x, z) => { let best = [1e9, 0, 0]; for (const q of streets) { const dx = q[2] - q[0], dz = q[3] - q[1], L = dx * dx + dz * dz || 1, tt = Math.max(0, Math.min(1, ((x - q[0]) * dx + (z - q[1]) * dz) / L)); const px = q[0] + dx * tt, pz = q[1] + dz * tt, d = Math.hypot(x - px, z - pz); if (d < best[0]) best = [d, px, pz]; } return best; };
+    // a lot: clear of every road and street (and of other lots), facing its street
+    const used = [];
+    const lotOk = (x, z, r) => roadGap(x, z, r * 0.75 + 3) && dStreet(x, z)[0] > r * 0.75 + 3 && used.every((u) => Math.hypot(u[0] - x, u[1] - z) > u[2] + r) && Math.hypot(x - t.x, z - t.z) < t.r - 4;
+    const face = (x, z) => { const [, px, pz] = dStreet(x, z); return Math.atan2(-(px - x), -(pz - z)); };
+    const R0 = t.r * 0.98, cx = t.x, cz = t.z;
     if (t.kind === 'town') {
-      ground.road(t.x - 60, t.z, t.x + 60, t.z); ground.road(t.x, t.z - 60, t.x, t.z + 60);
-      const lots = [];
-      for (const qx of [-1, 1]) for (const qz of [-1, 1]) for (const k of [0, 1]) lots.push([t.x + qx * (13 + k * 22), t.z + qz * 14], [t.x + qx * 14, t.z + qz * 36]);
-      const kinds = ['gas', 'market', 'pharmacy', 'police', 'hardware', 'gunshop'];
+      // a grid: the high street and the cross street right through, back streets around the middle
+      const G = 46, S2 = R0 * 0.62;
+      street(cx - R0, cz, cx + R0, cz); street(cx, cz - R0, cx, cz + R0);
+      for (const o of [-G, G]) { street(cx - S2, cz + o, cx + S2, cz + o); street(cx + o, cz - S2, cx + o, cz + S2); }
+      // the square: a little park with a statue in one of the middle blocks
+      const sq = [cx - G / 2, cz - G / 2];
+      ground.town(sq[0], sq[1], 14, 4);
+      at(sq[0], y - 0.2, sq[1], 3, 1.2, 3, { color: [0.6, 0.6, 0.58], tex: 3 });
+      at(sq[0], y + 1, sq[1], 1, 3.2, 1, { color: [0.35, 0.45, 0.38], mat: 'metal', shape: 'cylY' });
+      for (const [dx, dz] of [[-11, -11], [11, -11], [-11, 11], [11, 11]]) tree(sq[0] + dx, sq[1] + dz, 1.1);
+      for (const [dx, dz, yw] of [[-6, 0, 0], [6, 0, 0], [0, -6, Math.PI / 2], [0, 6, Math.PI / 2]]) rot(sq[0] + dx, y, sq[1] + dz, [0, yw, 0], 0.6, 0.5, 2.4, { color: [0.4, 0.28, 0.18], solid: false });
+      used.push([sq[0], sq[1], 17]);
+      // the church, on a corner of the high street
+      const ch = [cx + G / 2, cz - G / 2 - 2];
+      at(ch[0], y - 0.5, ch[1], 12, 10, 18, { color: [0.72, 0.7, 0.64], tex: 3 });
+      for (const sd of [-1, 1]) rot(ch[0] + sd * 3.4, y + 9.5 + 1.6, ch[1], [0, 0, -sd * 0.75], 9, 0.3, 18.6, { color: [0.3, 0.3, 0.33], solid: false });
+      at(ch[0], y - 0.5, ch[1] + 10, 5, 20, 5, { color: [0.72, 0.7, 0.64], tex: 3 });
+      at(ch[0], y + 19.5, ch[1] + 10, 3.6, 6, 3.6, { color: [0.3, 0.3, 0.32], shape: { taper: [1, 1] } });
+      used.push([ch[0], ch[1] + 3, 15]);
+      // shops along the high street and the cross street, houses everywhere else
+      const kinds = ['gas', 'market', 'pharmacy', 'police', 'hardware', 'gunshop', 'market', 'pharmacy'];
       for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
-      lots.forEach(([x, z], n) => {
-        if (n < 4) {
-          const kind = kinds[n];
-          if (kind === 'gas') gasStation(x, y, z);
-          else building(x - 9, z - 7, x + 9, z + 7, y, 4 + Math.floor(R() * 3) * 3.6, 1, kind);
-          return;
-        }
-        if (R() < 0.15) { tree(x, z, 1.2); return; }
-        house(x, y, z);
-      });
-      const ch = [t.x - 30, t.z + 40];
-      at(ch[0], y - 0.5, ch[1], 10, 9.5, 16, { color: [0.7, 0.68, 0.62], tex: 3 });
-      at(ch[0], y - 0.5, ch[1] - 9, 5, 20.5, 5, { color: [0.7, 0.68, 0.62], tex: 3 });
-      at(ch[0], y + 20, ch[1] - 9, 3.4, 5, 3.4, { color: [0.3, 0.3, 0.32], shape: { taper: [1, 1] } });
-      for (let n = 0; n < 4; n++) car(t.x + (R() - 0.5) * 80, y, t.z + (R() < 0.5 ? -1 : 1) * 2.5, Math.PI / 2 + (R() - 0.5) * 0.5, R() < 0.2);
-    } else {
-      // a village: a row of houses either side of the road through it, and one shop
-      const a = R() * Math.PI, c = Math.cos(a), sn = Math.sin(a);
-      ground.road(t.x - c * 45, t.z - sn * 45, t.x + c * 45, t.z + sn * 45);
-      for (let k = -2; k <= 2; k++) for (const side of [-1, 1]) {
-        const x = t.x + c * k * 16 - sn * side * 13, z = t.z + sn * k * 16 + c * side * 13;
-        if (k === 0 && side === 1) { building(x - 8, z - 6, x + 8, z + 6, y, 4 + Math.floor(R() * 2) * 3.6, 1, ['market', 'pharmacy', 'hardware'][Math.floor(R() * 3)]); continue; }
-        if (R() < 0.75) house(x, y, z); else tree(x, z, 1.1);
+      let shop = 0;
+      for (const along of [-1, 1]) for (let k = 0; k < 2; k++) for (const sd of [-1, 1]) for (const axis of [0, 1]) {
+        const d = 14 + k * 21 + (along > 0 ? 0 : 0), off = 13 * sd;
+        const x = axis ? cx + off : cx + along * d, z = axis ? cz + along * d : cz + off;
+        if (!lotOk(x, z, 9)) continue;
+        const kind = kinds[shop % kinds.length]; shop++;
+        if (kind === 'gas') { if (!lotOk(x, z, 12)) continue; gasStation(x, y, z); used.push([x, z, 13]); continue; }
+        const w = 8.5, dd = 6.5, h = 4 + Math.floor(R() * 3) * 3.6;
+        building(x - w, z - dd, x + w, z + dd, y, h, 1, kind); used.push([x, z, 10]);
       }
-      if (R() < 0.6) car(t.x + c * (R() - 0.5) * 50, y, t.z + sn * (R() - 0.5) * 50, Math.PI / 2 - a, R() < 0.3);
+      // houses: walk every street and put one each side every 17 m or so
+      for (const q of streets) {
+        const L = Math.hypot(q[2] - q[0], q[3] - q[1]), ux = (q[2] - q[0]) / L, uz = (q[3] - q[1]) / L;
+        for (let d = 9; d < L - 5; d += 16 + R() * 3) for (const sd of [-1, 1]) {
+          const x = q[0] + ux * d - uz * sd * 13, z = q[1] + uz * d + ux * sd * 13;
+          if (!lotOk(x, z, 7)) continue;
+          used.push([x, z, 8]);
+          const r = R();
+          if (r < 0.08) { tree(x, z, 1.2); continue; }
+          if (r < 0.13) { car(x, y, z, face(x, z), R() < 0.3); continue; }
+          house(x, y, z, face(x, z));
+        }
+      }
+      // parked cars along the high street
+      for (let n = 0; n < 6; n++) { const d = (R() - 0.5) * 2 * (R0 - 10), sd = R() < 0.5 ? -1 : 1, ax = R() < 0.5; car(ax ? cx + sd * 4.2 : cx + d, y, ax ? cz + d : cz + sd * 4.2, ax ? 0 : Math.PI / 2, R() < 0.15); }
+    } else {
+      // a village: one street right through, houses facing it both sides, a shop, sometimes a chapel and a lane
+      const ax = t.axis ? 1 : 0, u = ax ? [0, 1] : [1, 0], v = ax ? [1, 0] : [0, 1];
+      street(cx - u[0] * R0, cz - u[1] * R0, cx + u[0] * R0, cz + u[1] * R0);
+      const lane = R() < 0.6 ? (R() < 0.5 ? -1 : 1) * (12 + Math.floor(R() * 2) * 16) : null, lsd = R() < 0.5 ? -1 : 1;
+      if (lane != null) street(cx + u[0] * lane, cz + u[1] * lane, cx + u[0] * lane + v[0] * lsd * 42, cz + u[1] * lane + v[1] * lsd * 42);
+      let shopDone = false;
+      for (const q of streets) {
+        const L = Math.hypot(q[2] - q[0], q[3] - q[1]), ux = (q[2] - q[0]) / L, uz = (q[3] - q[1]) / L;
+        for (let d = 8; d < L - 4; d += 15 + R() * 3) for (const sd of [-1, 1]) {
+          const x = q[0] + ux * d - uz * sd * 12.5, z = q[1] + uz * d + ux * sd * 12.5;
+          if (!shopDone && Math.abs(d - L / 2) < 12 && q === streets[0]) {
+            if (!lotOk(x, z, 9)) continue;
+            building(x - 8, z - 6, x + 8, z + 6, y, 4 + Math.floor(R() * 2) * 3.6, 1, ['market', 'pharmacy', 'hardware'][Math.floor(R() * 3)]);
+            used.push([x, z, 10]); shopDone = true; continue;
+          }
+          if (!lotOk(x, z, 7)) continue;
+          used.push([x, z, 8]);
+          if (R() < 0.12) { tree(x, z, 1.1); continue; }
+          house(x, y, z, face(x, z));
+        }
+      }
+      if (R() < 0.45) { const x = cx - u[0] * 30 + v[0] * 22, z = cz - u[1] * 30 + v[1] * 22; if (lotOk(x, z, 9)) { at(x, y - 0.5, z, ax ? 9 : 14, 8, ax ? 14 : 9, { color: [0.72, 0.7, 0.64], tex: 3 }); at(x, y - 0.5, z, 3.5, 13, 3.5, { color: [0.72, 0.7, 0.64], tex: 3 }); at(x, y + 12.5, z, 2.6, 4, 2.6, { color: [0.3, 0.3, 0.32], shape: { taper: [1, 1] } }); } }
+      if (R() < 0.6) car(cx + u[0] * (R() - 0.5) * 60 + v[0] * 4, y, cz + u[1] * (R() - 0.5) * 60 + v[1] * 4, ax ? 0 : Math.PI / 2, R() < 0.3);
     }
   }
   function gasStation(x, y, z) {
