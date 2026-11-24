@@ -121,6 +121,29 @@ export const AIRFRAMES = {
       cabin: [1.05, -0.1, 0.2], winch: [1.05, 0.1, 0.0], flir: [1, 0.25, -2.7], skids: [1.25, 0, 0], light: [1, 0.25, -2.7], medbay: [1.05, -0.1, 0.2], drops: [1.0, 0, 0],
       radio: [1, 0.5, 2.8], racks: [1.15, 0.05, -0.2], nvg: [1, 0.25, -2.7], suppress: [1.0, 0.3, -0.4], repair: [1.05, 0, 0], ammo: [1, 0.25, -2.7], sniper: [1.05, -0.1, 0.2] },
   },
+  lynx: {
+    hubs: [[2.15, -0.3, 1.0, 4]], tail: [0.3, 1.45, 7.25, 0.9], cam: 1.05,
+    off: { gun: [1, 0.05, -0.6], door: [1.0, 0, -0.4], cabin: [1.0, 0, -0.3], winch: [1.0, 0, -0.4], medbay: [1.0, 0, -0.4], fuel: [1.0, 0, 0], armor: [1.0, 0, -0.3],
+      rockets: [0.95, 0, -0.3], racks: [0.95, 0, -0.3], bombs: [0.95, 0, -0.3], flir: [1, 0.05, -0.9], light: [1, 0.05, -0.9], nvg: [1, 0.05, -0.9], ammo: [1, 0.05, -0.6], skids: [0.95, 0, -0.2], engine: [0.9, -0.05, -0.5] },
+  },
+  stallion: {
+    hubs: [[2.2, -0.6, 1.1, 4]], tail: [0.32, 1.85, 9.5, 1.0], cam: 1.25,
+    off: { gun: [1, 0.1, -2.0], rockets: [1.1, -0.1, -0.6], bombs: [1.05, -0.05, -0.4], armor: [1.05, 0, -0.6], engine: [1.1, 0.1, -0.8], door: [1.02, 0, -1.6], fuel: [1.1, 0.05, -0.4],
+      cabin: [1.02, 0, -0.4], winch: [1.02, 0.1, -0.9], flir: [1, 0.1, -2.0], speaker: [1.05, 0.1, -1.2], skids: [0.95, 0.1, -0.4], light: [1, 0.12, -2.0], medbay: [1.02, 0, -0.9], drops: [1.05, 0, -0.4],
+      radio: [1, -0.15, 2.0], racks: [1.1, -0.1, -0.6], nvg: [1, 0.12, -2.0], flares: [1, 0.2, 1.8], beacon: [1, 0.2, 1.8], suppress: [1.05, 0.2, -0.8], repair: [1.02, 0, -0.6], ammo: [1, 0.1, -2.0], sniper: [1.02, 0, -1.6] },
+  },
+  bronco: {
+    hubs: [], tail: null, cam: 1.05,
+    off: { gun: [0.55, 0.35, -1.0], rockets: [1.3, 0.3, -0.4], bombs: [0.8, -0.1, -0.2], armor: [0.6, 0.05, -0.6], engine: [1.0, 0.2, -0.6], fuel: [1.3, 0.3, -0.4],
+      flir: [0.8, 0.3, -1.2], light: [0.8, 0.3, -1.2], drops: [0.6, 0, 0], radio: [0.7, -0.3, 0.5], racks: [1.3, 0.3, -0.4], nvg: [0.8, 0.3, -1.2], suppress: [0.6, -0.2, -0.5],
+      repair: [0.6, 0, -0.5], ammo: [0.55, 0.35, -1.0], pods: [1.3, 0.3, -0.4] },
+  },
+  falcon: {
+    hubs: [], tail: null, cam: 1.15,
+    off: { gun: [0.55, 0.2, -1.2], rockets: [1.45, 0.4, 0.6], bombs: [0.7, -0.05, 0.4], armor: [0.6, 0.05, -1.2], engine: [0.8, -0.9, 0.0], fuel: [1.4, 0.4, 0.4],
+      flir: [0.8, 0.3, -3.0], light: [0.8, 0.3, -3.0], drops: [0.6, 0, 0], radio: [0.8, -0.6, 1.5], racks: [1.45, 0.4, 0.6], nvg: [0.8, 0.3, -3.0], suppress: [0.6, -0.2, -0.5],
+      repair: [0.6, 0, -0.5], ammo: [0.55, 0.2, -1.2], pods: [1.45, 0.4, 0.6] },
+  },
   warthog: {
     hubs: [], tail: null, cam: 1.15,
     off: { gun: [0.6, 0.3, -2.6], rockets: [1.7, 0.1, 0.2], bombs: [1.0, -0.15, 0.3], armor: [0.7, 0.05, -1.0], engine: [1.1, -0.2, 1.5], fuel: [1.6, 0.1, 0.2],
@@ -1001,6 +1024,97 @@ function hullFor(kind, B, add, st, eq, paint, M) {
     tailRotor(0.32, 2.25, 9.65, 1.05);
     strobe([0, 2.7, 9.9]);
     if (paint.stripe) B([0, -0.35, 0.2], [2.43, 0.2, 4.0], paint.stripe, { em: glow ? 0.8 : 0 });
+  } else if (kind === 'lynx') {
+    // LYNX: a sleek utility helicopter on wheels: a four-blade rotor, twin exhausts, a swept fin with the tail rotor
+    M('h_lynx'); M('h_lynx_cowl'); M('g_lynx', GLASS);
+    for (const x of [-1, 1]) {
+      B([x * 0.55, 1.25, 1.9], [0.3, 0.3, 0.5], GUNM, { shape: 'cyl', mat: 'metal' });                              // exhausts
+      B([x * 1.01, -0.1, -1.1], [0.03, 1.6, 1.6], [0.06, 0.06, 0.07], { mat: 'metal' });                            // door
+      B([x * 1.02, 0.7, -1.1], [0.04, 0.05, 2.0], GUNM, { mat: 'metal' });
+      B([x * 1.05, -0.95, 0.4], [0.32, 0.55, 1.1], body, { shape: 0.2 });                                           // wheel fairing
+      if (!st.gearUp) { B([x * 1.1, -1.62, 0.4], [0.22, 0.6, 0.6], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' }); }
+      B([x * 1.0, -0.1, 0.9], [0.1, 0.1, 0.1], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
+    }
+    B([0, -1.1, -3.6], [0.08, 0.7, 0.08], GUNM, { mat: 'metal' });
+    B([0, -1.62, -3.6], [0.18, 0.5, 0.5], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+    B([0, 1.15, 7.0], [0.12, 1.5, 1.0], body, { r: [-0.45, 0, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });     // fin
+    B([0, 0.6, 6.2], [2.0, 0.07, 0.55], trim, { shape: 0.03 });
+    tailRotor(0.3, 1.45, 7.25, 0.9);
+    strobe([0, 1.55, 1.8]);
+    if (paint.stripe) B([0, 0.35, 3.6], [0.55, 0.58, 0.45], paint.stripe, { shape: 0.2, em: glow ? 0.8 : 0 });
+  } else if (kind === 'stallion') {
+    // STALLION: a twin-engine troop carrier: engines either side of the rotor mast with exhaust suppressors, a tail
+    // wheel, stub wings with pylons, a canted tail rotor and a big tailplane right at the back
+    M('h_stallion'); M('h_stallion_cowl'); M('g_stallion', GLASS);
+    for (const x of [-1, 1]) {
+      B([x * 0.85, 1.2, 0.0], [0.62, 0.62, 2.6], body, { shape: { cap: [0.3, 0.3] }, tex: camo ? 80 + camo : 65 });   // engine nacelles
+      B([x * 0.85, 1.2, -1.32], [0.5, 0.5, 0.04], DARK, { shape: 'cyl' });
+      B([x * 1.05, 1.25, 1.6], [0.36, 0.3, 0.9], GUNM, { shape: 0.1, mat: 'metal', r: [0, x * 0.4, 0] });            // exhaust suppressor
+      B([x * 1.16, -0.15, -0.9], [0.03, 1.7, 2.2], [0.06, 0.06, 0.07], { mat: 'metal' });                           // big sliding door
+      B([x * 1.17, 0.78, -0.9], [0.04, 0.05, 3.0], GUNM, { mat: 'metal' });
+      B([x * 1.17, 0.3, -2.9], [0.03, 0.6, 0.7], [0.12, 0.16, 0.2], { mat: 'glass' });                               // gunner window
+      B([x * 1.9, 0.5, 0.4], [1.5, 0.12, 0.8], body, { shape: 0.05, r: [0, 0, x * 0.15], tex: camo ? 80 + camo : 65 });   // stub wing
+      B([x * 2.4, 0.25, 0.4], [0.1, 0.45, 0.1], GUNM, { mat: 'metal' });
+      if (!st.gearUp) {
+        B([x * 1.3, -1.1, -3.0], [0.12, 0.9, 0.12], GUNM, { mat: 'metal', r: [0.3, 0, 0] });
+        B([x * 1.3, -1.62, -3.0], [0.26, 0.6, 0.6], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+      }
+      B([x * 1.17, -0.2, 1.2], [0.1, 0.1, 0.1], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
+    }
+    B([0, -0.6, 8.4], [0.08, 0.9, 0.08], GUNM, { mat: 'metal' });                                                    // tail wheel
+    B([0, -1.62, 8.4], [0.18, 0.45, 0.45], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' });
+    B([0, 1.55, 9.3], [0.14, 2.0, 1.2], body, { r: [-0.35, 0, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });        // fin
+    B([0, 1.05, 9.6], [3.2, 0.08, 0.8], trim, { shape: 0.03 });                                                      // tailplane
+    tailRotor(0.32, 1.85, 9.5, 1.0);
+    strobe([0, 1.7, 2.6]);
+    if (paint.stripe) B([0, 0.25, 4.6], [0.7, 0.7, 0.5], paint.stripe, { shape: 0.2, em: glow ? 0.8 : 0 });
+  } else if (kind === 'bronco') {
+    // BRONCO: a twin-boom propeller attack plane: a glass-bubble pod for two, the propellers at the front of the booms,
+    // a tailplane joining the twin fins, sponsons under the pod for guns and rockets
+    M('h_bronco'); M('g_bronco_c', GLASS);
+    B([0, 1.15, -0.6], [12.4, 0.2, 1.9], body, { shape: 0.06, tex: camo ? 80 + camo : 65 });                         // the wing
+    B([0, -0.55, -0.8], [2.8, 0.16, 1.2], body, { shape: 0.06 });                                                    // sponson
+    for (const x of [-1, 1]) {
+      M('h_bronco_boom', body, { p: [x * 1.9, 0.75, 0] });
+      B([x * 1.9, 0.75, -2.55], [0.4, 0.4, 0.4], STEEL, { shape: 'sphere', mat: 'steel' });                           // spinner
+      if ((st.rpm || 0) > 0.3) B([x * 1.9, 0.75, -2.62], [3.0, 3.0, 0.03], [0.15, 0.15, 0.15], { shape: 'cyl', alpha: 0.12 * st.rpm });
+      for (let k = 0; k < 3; k++) B([x * 1.9, 0.75, -2.62], [0.2, 2.9, 0.05], DARK, { r: [0, 0, (st.rotorA || 0) * x + k * Math.PI / 1.5], mat: 'metal' });
+      B([x * 1.9, 1.5, 6.1], [0.12, 1.5, 1.1], body, { r: [-0.25, 0, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });   // fins
+      B([x * 1.9, 1.5, 6.75], [0.06, 1.3, 0.4], trim, { r: [-0.25, (st.rud || 0) * -0.4, 0], shape: 0.02 });          // rudders
+      B([x * 4.0, 1.15, 0.2], [2.6, 0.1, 0.36], trim, { r: [x * (st.ail || 0) * 0.45, 0, 0], shape: 0.02 });            // ailerons
+      if (!st.gearUp) { B([x * 1.9, -0.6, 0.3], [0.1, 1.3, 0.1], GUNM, { mat: 'metal' }); B([x * 1.9, -1.62, 0.3], [0.24, 0.6, 0.6], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' }); }
+      B([x * 6.2, 1.15, -0.6], [0.1, 0.1, 0.1], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
+    }
+    B([0, 2.2, 6.6], [4.1, 0.1, 0.9], trim, { shape: 0.03 });                                                        // tailplane
+    B([0, 2.2, 7.15], [3.9, 0.06, 0.35], trim, { r: [-(st.elev || 0) * 0.45, 0, 0], shape: 0.02 });                  // elevator
+    if (!st.gearUp) { B([0, -1.0, -3.2], [0.08, 0.9, 0.08], GUNM, { mat: 'metal' }); B([0, -1.62, -3.2], [0.18, 0.5, 0.5], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' }); }
+    strobe([0, 2.3, 6.6]);
+    if (paint.stripe) B([0, 0.3, -1.0], [1.2, 0.2, 2.4], paint.stripe, { shape: 0.1, em: glow ? 0.8 : 0 });
+  } else if (kind === 'falcon') {
+    // FALCON: a fighter: a long pointed nose, bubble canopy, the intake under the belly, a swept wing with missiles
+    // on the tips, all-moving tailplanes, one big fin, and the afterburner nozzle
+    M('h_falcon'); M('g_falcon_c', GLASS); M('h_falcon_intake', body, { p: [0, -0.75, -0.4] });
+    B([0, -0.75, -3.55], [0.9, 0.55, 0.05], DARK, { shape: 0.2 });
+    for (const x of [-1, 1]) {
+      B([x * 2.6, -0.05, 1.7], [3.6, 0.12, 2.6], body, { r: [0, -x * 0.42, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });   // wing (swept)
+      B([x * 1.6, -0.02, -1.0], [1.2, 0.1, 3.4], body, { r: [0, -x * 0.25, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });  // leading-edge extension
+      B([x * 2.6, -0.05, 2.95], [2.4, 0.07, 0.42], trim, { r: [x * (st.ail || 0) * 0.4, -x * 0.12, 0], shape: 0.02 });       // flaperons
+      B([x * 4.45, -0.05, 2.2], [0.14, 0.14, 2.8], [0.92, 0.92, 0.9], { shape: 'cyl', mat: 'paint' });                       // wingtip missiles
+      B([x * 4.45, -0.05, 0.75], [0.14, 0.14, 0.2], [0.85, 0.2, 0.15], { shape: 'sphere' });
+      B([x * 1.9, 0.0, 6.4], [2.2, 0.08, 1.4], trim, { r: [-(st.elev || 0) * 0.35, -x * 0.45, 0], shape: 0.02 });            // all-moving tailplane
+      if (!st.gearUp) { B([x * 1.0, -1.05, 0.6], [0.1, 1.0, 0.1], GUNM, { mat: 'metal' }); B([x * 1.0, -1.62, 0.6], [0.24, 0.62, 0.62], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' }); }
+      B([x * 4.45, 0.12, 1.0], [0.08, 0.08, 0.08], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
+    }
+    B([0, 1.55, 5.6], [0.14, 2.4, 2.0], body, { r: [-0.5, 0, 0], shape: 0.05, tex: camo ? 80 + camo : 65 });           // fin
+    B([0, 1.5, 6.55], [0.06, 1.8, 0.5], trim, { r: [-0.5, (st.rud || 0) * -0.4, 0], shape: 0.02 });                   // rudder
+    B([0, 0.05, 7.25], [0.9, 0.9, 0.6], GUNM, { shape: 'cyl', mat: 'metal' });                                         // nozzle
+    const ab = st.boost || 0;
+    B([0, 0.05, 7.56], [0.6, 0.6, 0.04], [1, 0.5, 0.15], { shape: 'cyl', em: 0.35 + (st.rpm || 0) * 0.3 + ab * 0.6 });
+    if (ab > 0.1) for (let k = 0; k < 3; k++) B([0, 0.05, 8.0 + k * 0.9], [0.55 - k * 0.12, 0.55 - k * 0.12, 0.9], k ? [1, 0.55, 0.2] : [0.6, 0.7, 1], { shape: 'cyl', em: ab, alpha: 0.6 - k * 0.15 });   // afterburner
+    if (!st.gearUp) { B([0, -1.0, -4.3], [0.08, 0.9, 0.08], GUNM, { mat: 'metal' }); B([0, -1.62, -4.3], [0.18, 0.5, 0.5], DARK, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'rubber' }); }
+    B([-0.55, 0.35, -2.8], [0.06, 0.06, 0.5], GUNM, { shape: 'cyl', mat: 'metal' });                                  // the gun port
+    strobe([0, 2.6, 6.4]);
+    if (paint.stripe) B([0, 0.66, 1.6], [0.03, 0.2, 4.5], paint.stripe, { em: glow ? 0.8 : 0 });
   } else if (kind === 'warthog') {
     // WARTHOG: a straight-winged attack plane: two big engines on pods high on the back, twin fins, the long cannon
     // sticking out under the nose, wheels in fairings under the wing
@@ -1019,6 +1133,8 @@ function hullFor(kind, B, add, st, eq, paint, M) {
       B([x * 7.6, -0.32, 0.3], [0.1, 0.1, 0.1], x < 0 ? [1, 0.1, 0.05] : [0.1, 1, 0.2], { em: 1, shape: 'sphere' });
     }
     B([0, 0.6, 7.0], [5.6, 0.1, 1.4], trim, { shape: 0.03 });                                                       // tail plane
+    B([0, 0.6, 7.85], [5.4, 0.06, 0.4], trim, { r: [-(st.elev || 0) * 0.45, 0, 0], shape: 0.02 });                   // elevator
+    for (const x of [-1, 1]) { B([x * 6.2, -0.35, 1.65], [2.6, 0.07, 0.36], trim, { r: [x * (st.ail || 0) * 0.45, 0, 0], shape: 0.02 }); B([x * 2.7, 1.2, 7.75], [0.06, 1.6, 0.4], trim, { r: [0, (st.rud || 0) * -0.4, 0], shape: 0.02 }); }
     // the GAU-8: seven barrels poking out of the nose
     B([0, -0.55, -6.9], [0.36, 0.36, 1.0], GUNM, { shape: 'cyl', mat: 'metal' });
     for (let i = 0; i < 7; i++) { const a = (st.spin || 0) + i * 0.9; B([Math.cos(a) * 0.11, -0.55 + Math.sin(a) * 0.11, -7.45], [0.05, 0.05, 0.4], STEEL, { shape: 'cyl', mat: 'steel' }); }
@@ -1114,6 +1230,10 @@ function hullFor(kind, B, add, st, eq, paint, M) {
     skycrane: { dash: [0, -0.3, -5.2, 1.5], pitot: [0.45, -0.3, -6.0], ae: [[0, 1.2, 4.5], [0, -1.3, -1.0]], bc: [[0, 1.8, 2.8], [0, -1.32, 1.2]], in: [0.75, 1.5, -1.2] },
     warthog: { dash: [0, 0.35, -4.4, 0.7], pitot: [0.35, -0.2, -6.3], ae: [[0, 0.95, 1.0], [0, -0.85, -1.0]], bc: [[0, 0.88, 2.0], [0, -0.86, 1.0]], in: [0.6, 0.3, -1.5] },
     spectre: { dash: [0, -0.2, -8.2, 2.0], pitot: [0.8, -0.3, -9.0], ae: [[0, 1.75, 3.0], [0, -1.6, -3.0]], bc: [[0, 1.9, 2.5], [0, -1.62, 1.5]], in: [1.0, 1.4, -5.0] },
+    lynx: { dash: [0, -0.35, -3.7, 1.3], pitot: [0.3, -0.3, -4.4], ae: [[0, 1.05, 3.0], [0, -1.05, -1.5]], bc: [[0, 1.5, 0.6], [0, -1.05, 0.8]], in: [0.6, 1.2, -0.6] },
+    stallion: { dash: [0, -0.35, -4.6, 1.6], pitot: [0.45, -0.4, -5.3], ae: [[0, 1.15, 3.6], [0, -1.1, -2.0]], bc: [[0, 1.6, 2.5], [0, -1.1, 1.5]], in: [0.85, 1.3, -1.0] },
+    bronco: { dash: [0, 0.35, -3.0, 0.8], pitot: [0.3, -0.2, -4.3], ae: [[0, 0.95, 0.4], [0, -0.75, -1.0]], bc: [[0, 0.88, 1.0], [0, -0.76, 0.5]], in: [0.5, 0.4, -1.0] },
+    falcon: { dash: [0, 0.45, -4.4, 0.6], pitot: [0, 0, -7.9], ae: [[0, 0.75, 1.5], [0, -0.75, 0.0]], bc: [[0, 0.8, 3.0], [0, -0.72, 0.5]], in: [0.3, 0.6, 0.5] },
     mule: { dash: [0, -0.2, -7.0, 1.9], pitot: [0.7, -0.6, -7.5], ae: [[0, 1.42, 1.0], [0, -1.52, -3.0]], bc: [[0, 2.25, -5.2], [0, -1.55, 1.5]], in: [0.75, 2.35, 3.6] },
   }[kind];
   if (D) {
@@ -1157,6 +1277,10 @@ const BODIES = {
   warthog: [[0, 0, -4.4, 0.8], [0, 0, -1.4, 0.9], [0, 0.1, 1.8, 0.85], [0, 0.3, 5.0, 0.6], [0, 1.0, 7.0, 0.7], [-6.0, -0.35, 0.3, 0.5], [6.0, -0.35, 0.3, 0.5], [-3.0, -0.35, 0.3, 0.5], [3.0, -0.35, 0.3, 0.5]],
   spectre: [[0, 0, -7.0, 1.6], [0, 0, -3.5, 1.7], [0, 0, 0, 1.7], [0, 0.1, 3.5, 1.7], [0, 0.8, 7.5, 1.1], [0, 3.0, 9.6, 1.0], [-12, 1.7, -1.0, 0.8], [12, 1.7, -1.0, 0.8], [-6.5, 1.7, -1.0, 0.8], [6.5, 1.7, -1.0, 0.8]],
   mule: [[0, 0, -5.4, 1.5], [0, 0, -2.0, 1.5], [0, 0, 1.4, 1.5], [0, 0.2, 4.8, 1.5], [0, 2.1, 4.8, 1.0]],
+  lynx: [[0, 0, -2.6, 1.05], [0, 0, -0.2, 1.1], [0, 0.45, 3.2, 0.5], [0, 0.55, 5.8, 0.42], [0, 1.0, 7.2, 0.55], [0, 1.25, 0.3, 0.7]],
+  stallion: [[0, 0, -3.8, 1.1], [0, 0, -1.0, 1.2], [0, 0, 1.6, 1.2], [0, 0.45, 4.6, 0.55], [0, 0.6, 7.2, 0.45], [0, 1.3, 9.5, 0.6], [0, 1.3, 0, 0.9]],
+  bronco: [[0, 0, -3.0, 0.7], [0, 0, -0.6, 0.8], [0, 0, 1.8, 0.6], [-1.9, 0.7, -0.6, 0.5], [1.9, 0.7, -0.6, 0.5], [-1.9, 0.75, 3.0, 0.4], [1.9, 0.75, 3.0, 0.4], [0, 1.45, 6.2, 0.5], [-5.0, 1.1, -0.6, 0.35], [5.0, 1.1, -0.6, 0.35]],
+  falcon: [[0, 0, -5.6, 0.6], [0, 0, -3.0, 0.8], [0, 0, -0.2, 0.85], [0, 0, 2.8, 0.8], [0, 0.2, 5.6, 0.7], [0, 1.5, 6.0, 0.5], [-3.4, 0, 1.8, 0.4], [3.4, 0, 1.8, 0.4]],
 };
 const SKIDSETS = {
   warhorse: [[-1.25, -1.92, -1.9], [1.25, -1.92, -1.9], [-1.25, -1.92, 2.4], [1.25, -1.92, 2.4]],
@@ -1173,6 +1297,10 @@ const SKIDSETS = {
   warthog: [[-3.0, -1.92, 0.2], [3.0, -1.92, 0.2], [-0.2, -1.92, -4.6], [0.2, -1.92, -4.6]],
   spectre: [[-1.85, -1.92, -0.6], [1.85, -1.92, 1.2], [-0.2, -1.92, -7.0], [0.2, -1.92, -7.0]],
   mule: [[-1.4, -1.92, -4.3], [1.4, -1.92, -4.3], [-1.4, -1.92, 3.6], [1.4, -1.92, 3.6]],
+  lynx: [[-1.1, -1.92, 0.4], [1.1, -1.92, 0.4], [-0.2, -1.92, -3.6], [0.2, -1.92, -3.6]],
+  stallion: [[-1.3, -1.92, -3.0], [1.3, -1.92, -3.0], [-0.2, -1.92, 8.4], [0.2, -1.92, 8.4]],
+  bronco: [[-1.9, -1.92, 0.3], [1.9, -1.92, 0.3], [-0.2, -1.92, -3.2], [0.2, -1.92, -3.2]],
+  falcon: [[-1.0, -1.92, 0.6], [1.0, -1.92, 0.6], [-0.2, -1.92, -4.3], [0.2, -1.92, -4.3]],
 };
 
 const WATER_TOP = { water: true, min: [-1e6, -1e4, -1e6], max: [1e6, WATER, 1e6] };

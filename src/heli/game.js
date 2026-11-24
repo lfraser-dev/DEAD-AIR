@@ -81,7 +81,7 @@ const GUNS = [
   { n: '105 MM HOWITZER', kind: 'how', dmg: 1300, splash: 15, reload: 3.5, spread: 0.5, from: [-3.4, -0.2, 6], snd: 0.9, shake: 0.5 },
 ];
 // where the pilot's eyes are in each aircraft (for the cockpit camera)
-const SEATS = { warhorse: [0.3, 0.25, -2.6], hornet: [0, 0.15, -0.9], reaper: [0, 0.65, -3.0], kestrel: [0.42, 0.45, -3.2], viper: [0, 0.75, -2.6], huey: [0.4, 0.35, -2.4], seaking: [0.42, 0.45, -3.9], osprey: [0.42, 0.45, -4.8], harrier: [0, 0.95, -3.3], alligator: [0, 0.65, -2.9], warthog: [0, 1.0, -3.5], spectre: [0.5, 0.5, -7.2], mule: [0.5, 0.45, -6.0] };
+const SEATS = { warhorse: [0.3, 0.25, -2.6], hornet: [0, 0.15, -0.9], reaper: [0, 0.65, -3.0], kestrel: [0.42, 0.45, -3.2], viper: [0, 0.75, -2.6], huey: [0.4, 0.35, -2.4], seaking: [0.42, 0.45, -3.9], osprey: [0.42, 0.45, -4.8], harrier: [0, 0.95, -3.3], alligator: [0, 0.65, -2.9], warthog: [0, 1.0, -3.5], spectre: [0.5, 0.5, -7.2], mule: [0.5, 0.45, -6.0], lynx: [0.4, 0.35, -3.1], stallion: [0.42, 0.4, -4.2], bronco: [0, 0.85, -2.6], falcon: [0, 0.95, -3.6] };
 const seatFor = (id) => SEATS[id] || SEATS.warhorse;
 // which tab of the hangar each upgrade is on
 const TABS = {
@@ -3060,6 +3060,7 @@ export class HeliGame {
     if (this.shake > 0) eye = eye.map((c) => c + (Math.random() - 0.5) * this.shake * 0.4);
     this.eye = eye;
     const st = {
+      ail: H.stickR || 0, elev: H.stickP || 0, rud: (H.w && H.w[1]) || 0, gearUp: !!(this.S.plane && (!this.S.vtol || H.planeMode) && !H.contacts && (this.agl || 0) > 12),
       rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), tk: H.stats && H.stats.vtol ? H.tiltK : null, spin: hs ? hs.sp : 0, t: this.t, riders: hs ? hs.rd : 0, boost: H.boost,
       crew: hs ? hs.cr.map((r) => ({ col: (ROLES[ROLE_IDS[r]] || ROLES.rifleman).col })) : [],
       doorAim: [0, 1].map((sd) => (sd === cl.seat ? cl.aim : hs && hs.da[sd] ? hs.da[sd] : [sd === 0 ? -1.57 : 1.57, -0.3])),
@@ -3991,7 +3992,7 @@ export class HeliGame {
   engineKind(id, H) {
     const st = HELIS[id] || {};
     if (!st.plane || (st.vtol && !H.planeMode)) return 'heli';
-    return id === 'warthog' || id === 'harrier' ? 'jet' : 'prop';
+    return st.jet ? 'jet' : 'prop';
   }
   audio() {
     if (!this.au) { if ((this.mode === 'fly' || this.mode === 'gunner' || this.mode === 'wing') && this.snd.ctx) this.startAudio(); return; }
