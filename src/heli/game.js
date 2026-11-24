@@ -776,7 +776,7 @@ export class HeliGame {
       this.tut = (!this.save.tutDone && (this.save.rescued || 0) < 5) || this.tutAsk ? { i: 0, t: 0, n: 0 } : null; this.tutAsk = false;
       if (this.tut) this.helpT = 0;
       this.riders = 0; this.fuel = S.fuel;
-      this.shots = []; this.tracers = []; this.blasts = []; this.fires = []; this.runners = [];
+      this.piper = null; this.shots = []; this.tracers = []; this.blasts = []; this.fires = []; this.runners = [];
     } else {
       // back out of the hangar at the same base, fixed up and refuelled
       this.heli.stats = S;
@@ -930,7 +930,7 @@ export class HeliGame {
       const roofs = this.director.list.filter((e) => e.kind === 'rescue').map((e) => e.roof);
       if (this.raid && this.raid.roofT) roofs.push(this.raid.roofT);
       if (this.raid) this.raidTick(dt);
-      this.horde.update(dt, { heli: H, heliAlt: this.agl, noHeap: !!this.atFob, roofs, others: this.coop ? this.wingSpots() : null, noise: [1, 0.67, 0.42][S.quiet || 0], lure: this.siren > 0 ? this.lure : this.beaconLure(), lureR: this.siren > 0 ? 0 : 260, skidGuard: S.skidGuard });
+      this.horde.update(dt, { heli: H, heliAlt: this.agl, noHeap: !!this.atFob, roofs, others: this.coop ? this.wingSpots() : null, noise: [1, 0.67, 0.42][S.quiet || 0], lure: this.piper || (this.siren > 0 ? this.lure : this.beaconLure()), lureR: this.piper ? 320 : this.siren > 0 ? 0 : 260, skidGuard: S.skidGuard });
       this.hordeEvents();
       this.ambient(dt);
       this.fx.update(dt);
@@ -2798,7 +2798,6 @@ export class HeliGame {
     const P = (this.client ? this.client.heli : this.heli)?.pos, M = this.map, seen = this.save.sites = this.save.sites || {};
     if (!P) return;
     const sites = [];
-    if (M.lab) sites.push(['lab', M.lab, "That's Halden Biolab. Army research. Look at the hall: something clawed its way out through the wall. And the marks on the fence... those are claw marks, pilot. Like the black ones."]);
     const L = M.lairs || {};
     if (L.goliath) sites.push(['goliath', L.goliath, "Red Rock Quarry. The cars down there have been crushed flat and stacked like firewood. Something's been carrying them here. That's a den, pilot."]);
     if (L.spitter) sites.push(['spitter', L.spitter, "Kessler Chemicals. That green stuff has eaten right through the concrete... and there are tracks going in and out of it. Whatever lives here drinks it."]);
@@ -3764,7 +3763,6 @@ export class HeliGame {
       if (M.hospital) label("✚ ST MARY'S", X(M.hospital.x), Z(M.hospital.z), 11, '#ff9ac0');
       for (const m of M.masts || []) label(`${m.on ? '◉' : '○'} ${m.name}`, X(m.x), Z(m.z), 10, m.on ? '#7dff9a' : '#ffd23a');
       const seen = this.save.sites || {};
-      if (M.lab) label('☣ HALDEN BIOLAB', X(M.lab.x), Z(M.lab.z), 12, '#ffd23a');
       for (const k of ['goliath', 'spitter', 'mother']) { const L = (M.lairs || {})[k]; if (L) label(seen[k] ? `☠ ${L.name}` : '☠ ? ? ?', X(L.x), Z(L.z), 11, seen[k] ? '#ff6a4a' : 'rgba(255,120,90,.7)'); }
       // north arrow and a 1 km bar
       c.save(); c.translate(W - 30, 34); c.fillStyle = 'rgba(0,0,0,.45)'; c.beginPath(); c.arc(0, 0, 18, 0, 6.3); c.fill();

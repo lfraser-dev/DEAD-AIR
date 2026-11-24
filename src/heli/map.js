@@ -1075,135 +1075,6 @@ export function buildWorld(seed = 1337) {
     open.push([x - 40, z - 50, y]);
     return { x, z, y, roof: main, name: "ST MARY'S HOSPITAL" };
   }
-  // giant footprints: a trail of dark prints from (x, z) heading off at angle a
-  function prints(x, z, a, n, step = 9) {
-    for (let k = 0; k < n; k++) {
-      const sd = k % 2 ? 1 : -1, d = 20 + k * step, px = x + Math.cos(a) * d - Math.sin(a) * sd * 3.2, pz = z + Math.sin(a) * d + Math.cos(a) * sd * 3.2;
-      const py = T.heightAt(px, pz);
-      rot(px, py + 0.02, pz, [0, Math.atan2(Math.cos(a), Math.sin(a)) * -1 + Math.PI / 2, 0], 2.6, 0.05, 4.6, { color: [0.13, 0.11, 0.1], solid: false, noShadow: true, shape: 'sphere' });
-      for (const t of [-1, 0, 1]) rot(px + Math.cos(a) * 2.8 - Math.sin(a) * t * 0.9, py + 0.03, pz + Math.sin(a) * 2.8 + Math.cos(a) * t * 0.9, [0, 0, 0], 0.7, 0.05, 0.9, { color: [0.11, 0.09, 0.08], solid: false, noShadow: true, shape: 'sphere' });
-    }
-  }
-  const HAZ = [0.95, 0.78, 0.1];
-  const bioSign = (x, y, z, yaw) => {
-    rot(x, y, z, [0, yaw, 0], 3, 3, 0.15, { color: HAZ, solid: false, mat: 'paint' });
-    rot(x + Math.sin(yaw) * 0.09, y + 0.7, z + Math.cos(yaw) * 0.09, [Math.PI / 2, yaw, 0], 1.6, 0.06, 1.6, { color: [0.08, 0.08, 0.08], shape: 'cylY', solid: false, noShadow: true });
-    rot(x + Math.sin(yaw) * 0.1, y + 1.15, z + Math.cos(yaw) * 0.1, [Math.PI / 2, yaw, 0], 0.55, 0.06, 0.55, { color: HAZ, shape: 'cylY', solid: false, noShadow: true });
-  };
-  // HALDEN BIOLAB: a fenced army research site. Project ATLAS: three growth vats in the containment hall,
-  // and a fourth one smashed open, a hole torn through the wall, and huge footprints leading away
-  function labSite(s) {
-    const { x, z, y } = s, F = 92, M = [0.6, 0.62, 0.6];
-    ground.town(x, z, 115, 30);
-    // the fence (with a gate on the south side and a section trampled flat on the east)
-    for (const [ax, az, bx, bz] of [[-F, -F, F, -F], [F, -F, F, F], [F, F, -F, F], [-F, F, -F, -F]]) {
-      const L = Math.hypot(bx - ax, bz - az), n = Math.round(L / 12);
-      for (let k = 0; k < n; k++) {
-        const t0 = k / n, t1 = (k + 1) / n, px = x + ax + (bx - ax) * t0, pz = z + az + (bz - az) * t0, qx = x + ax + (bx - ax) * t1, qz = z + az + (bz - az) * t1;
-        const gate = az === F && bz === F && Math.abs((px + qx) / 2 - x) < 10, broken = ax === F && bx === F && Math.abs((pz + qz) / 2 - z - 20) < 16;
-        at(px, y - 0.3, pz, 0.25, 3.4, 0.25, { color: M, mat: 'metal' });
-        if (broken) { rot((px + qx) / 2 + 3, y + 0.1, (pz + qz) / 2, [0, 0, 1.45], 0.1, 3, 12, { color: M, mat: 'metal', solid: false }); continue; }
-        if (gate) continue;
-        seg([px, y + 2.9, pz], [qx, y + 2.9, qz], 0.06, 0.06, { color: M });
-        const mx = (px + qx) / 2, mz = (pz + qz) / 2;
-        rot(mx, y + 0.1, mz, [0, Math.atan2(qx - px, qz - pz), 0], 0.06, 2.8, 12, { color: [0.55, 0.57, 0.55], mat: 'metal', noBullet: true });
-      }
-    }
-    for (const [sx, sz, yaw] of [[-12, F + 0.3, 0], [12, F + 0.3, 0], [F + 0.3, -30, Math.PI / 2], [-F - 0.3, 0, -Math.PI / 2]]) bioSign(x + sx, y + 1.2, z + sz, yaw);
-    // the office block (the survivor holes up on its roof)
-    const main = tower(x - 70, z - 70, x - 20, z - 38, y, 17, { style: 'office', lootChance: 0 });
-    at(x - 45, y + 17.3, z - 54, 5, 0.1, 5, { color: HAZ, solid: false, noShadow: true });
-    // the containment hall, with a giant's hole through its east wall
-    const hx = x + 22, hz = z + 18, HW = 34, HD = 24, HH = 20, C = [0.62, 0.63, 0.6];
-    add([hx - HW, y - 0.3, hz - HD], [hx + HW, y + HH, hz - HD + 1], { color: C, tex: 3 });
-    add([hx - HW, y - 0.3, hz + HD - 1], [hx + HW, y + HH, hz + HD], { color: C, tex: 3 });
-    add([hx - HW, y - 0.3, hz - HD], [hx - HW + 1, y + HH, hz + HD], { color: C, tex: 3 });
-    add([hx + HW - 1, y - 0.3, hz - HD], [hx + HW, y + HH, hz - 9], { color: C, tex: 3 });
-    add([hx + HW - 1, y - 0.3, hz + 9], [hx + HW, y + HH, hz + HD], { color: C, tex: 3 });
-    add([hx + HW - 1, y + 16, hz - 9], [hx + HW, y + HH, hz + 9], { color: C, tex: 3 });
-    // the roof: half of it fell in
-    add([hx - HW, y + HH, hz - HD], [hx + 4, y + HH + 0.8, hz + HD], { color: [0.4, 0.4, 0.42], mat: 'metal' });
-    rot(hx + 18, y + 9, hz, [0, 0, 0.55], 30, 0.8, 40, { color: [0.38, 0.38, 0.4], mat: 'metal' });
-    for (let k = 0; k < 14; k++) rot(hx + HW + 4 + R() * 16, y, hz + (R() - 0.5) * 22, [R(), R() * 3, R()], 1.5 + R() * 3, 1 + R() * 2, 1.5 + R() * 3, { color: C, shape: 0.3 });
-    // the vats: three still running, glowing; one smashed open from the inside
-    const vats = [];
-    for (let k = 0; k < 4; k++) {
-      const vx = hx - 22 + k * 13, vz = hz - 6, dead = k === 3;
-      at(vx, y - 0.3, vz, 9, 1.8, 9, { color: [0.3, 0.32, 0.34], mat: 'metal', shape: 'cylY' });
-      if (dead) {
-        for (let j = 0; j < 7; j++) { const a = j * 0.9; rot(vx + Math.cos(a) * 3.6, y + 1.5, vz + Math.sin(a) * 3.6, [0.2, -a, 0.4 + R() * 0.5], 0.15, 3 + R() * 5, 2.4, { color: [0.6, 0.8, 0.75], mat: 'glass', solid: false }); }
-        at(vx, y + 1.5, vz, 7, 0.1, 7, { color: [0.3, 0.6, 0.15], emissive: 0.3, shape: 'cylY', solid: false, noShadow: true });
-      } else {
-        const parts = [
-          at(vx, y + 1.5, vz, 6.8, 13, 6.8, { color: [0.35, 0.85, 0.2], emissive: 0.6, shape: 'cylY', dynamic: true, solid: false, noShadow: true }),
-          at(vx, y + 14.5, vz, 8.2, 1.6, 8.2, { color: [0.3, 0.32, 0.34], mat: 'metal', shape: 'cylY', dynamic: true }),
-          at(vx, y + 6, vz, 1.2, 3, 0.8, { color: [0.12, 0.2, 0.08], shape: 'sphere', dynamic: true, solid: false }),
-        ];
-        for (const a of [0.4, 2, 3.6, 5.2]) parts.push(at(vx + Math.cos(a) * 3.5, y + 1.5, vz + Math.sin(a) * 3.5, 0.45, 13, 0.45, { color: [0.35, 0.36, 0.38], mat: 'metal', dynamic: true }));
-        vats.push({ x: vx, y: y + 8, z: vz, parts });
-      }
-      seg([vx, y + 16, vz], [vx, y + HH, hz - HD + 2], 0.5, 0.5, { color: [0.4, 0.4, 0.42], mat: 'metal' });
-    }
-    // the army never left: trucks, sandbags, warning lights
-    for (const [tx, tz, yaw] of [[x + 10, z + 70, 0.3], [x - 20, z + 60, -0.2], [x + 70, z - 60, 1.2]]) {
-      rot(x * 0 + tx, y, tz, [0, yaw, 0], 2.6, 2.4, 8, { color: [0.26, 0.3, 0.2], shape: 0.15, mat: 'paint' });
-      rot(tx + Math.sin(yaw) * 1, y + 2.4, tz + Math.cos(yaw) * 1, [0, yaw, 0], 2.5, 1.6, 5, { color: [0.3, 0.34, 0.24], shape: 0.3 });
-    }
-    for (let k = 0; k < 8; k++) rot(x - 24 + k * 6.2, y, z + 82, [0, 0, 0], 6, 1.2, 1.4, { color: [0.55, 0.48, 0.34], shape: 0.5 });
-    for (const [lx, lz] of [[-F, -F], [F, -F], [F, F], [-F, F]]) { at(x + lx, y, z + lz, 0.4, 9, 0.4, { color: M, mat: 'metal' }); at(x + lx, y + 9, z + lz, 0.9, 0.9, 0.9, { color: [1, 0.55, 0.1], emissive: 1, shape: 'sphere', noShadow: true, solid: false }); }
-    burning.push([hx + 10, y + HH, hz]);
-    open.push([x, z + 75, y]);
-    return { x, z, y, roof: main, name: 'HALDEN BIOLAB', vats, hall: [hx, y, hz] };
-  }
-  // RED ROCK QUARRY: the goliath's den. A pit full of crushed, stacked cars it's carried back
-  function quarrySite(s) {
-    const { x, z, y } = s, ROCK = [[0.55, 0.42, 0.33], [0.48, 0.38, 0.3], [0.62, 0.5, 0.4]];
-    ground.town(x, z, 90, 25);
-    for (let k = 0; k < 26; k++) { const a = k / 26 * Math.PI * 2 + R() * 0.2, r = 60 + R() * 10; const bx = x + Math.cos(a) * r, bz = z + Math.sin(a) * r; rot(bx, T.heightAt(bx, bz) - 2, bz, [R(), R() * 3, R()], 9 + R() * 10, 8 + R() * 10, 9 + R() * 8, { color: ROCK[k % 3], shape: 'blob' }); }
-    // the pile of cars: flattened, stacked, some on end
-    rot(x, y - 3, z, [0, 0.4, 0], 30, 7, 26, { color: [0.3, 0.27, 0.25], shape: 'blob' });
-    for (let k = 0; k < 70; k++) {
-      const a = R() * 6.28, r = R() * (16 - Math.floor(k / 14) * 2.5), layer = Math.floor(k / 14);
-      rot(x + Math.cos(a) * r, y + 2.5 + layer * 1.0, z + Math.sin(a) * r, [R() * 0.4, R() * 6.28, R() * 0.4], 2.0, 0.6, 4.4, { color: [0.3 + R() * 0.4, 0.15 + R() * 0.3, 0.12 + R() * 0.3], shape: 0.15, mat: 'paint' });
-    }
-    for (let k = 0; k < 5; k++) rot(x + 20 + k * 5, y + 2, z - 12 + k * 3, [Math.PI / 2 - 0.2, k, 0], 1.9, 0.7, 4.3, { color: CARS[k % CARS.length], shape: 0.2, mat: 'paint' });
-    // a toppled crane and the great bones of whatever it's eaten
-    seg([x - 40, y + 1, z + 20], [x + 5, y + 6, z + 45], 1.2, 1.2, { color: [0.85, 0.65, 0.1], mat: 'paint', solid: true });
-    for (let k = 0; k < 8; k++) { const a = k * 0.8, bx = x - 25 + Math.cos(a) * 12, bz = z - 20 + Math.sin(a) * 12; seg([bx, y + 0.4, bz], [bx + Math.cos(a + 1.3) * 5, y + 0.6, bz + Math.sin(a + 1.3) * 5], 0.35, 0.35, { color: [0.86, 0.82, 0.72], solid: false }); }
-    at(x + 30, y, z + 30, 9, 4, 6, { color: [0.5, 0.5, 0.47], tex: 3 });
-    prints(x, z, 2.2, 26, 10);
-    burning.push([x + 5, y + 3, z - 5]);
-    return { x, z, y, name: 'RED ROCK QUARRY' };
-  }
-  // KESSLER CHEMICALS: the spitter's den. Burst tanks, pools of something green eating through the concrete
-  function chemSite(s) {
-    const { x, z, y } = s;
-    ground.town(x, z, 90, 25);
-    for (const [tx, tz, burst] of [[-30, -25, 0], [-5, -30, 1], [22, -22, 0], [-28, 8, 1], [30, 10, 0]]) {
-      const h = burst ? 7 : 14;
-      at(x + tx, y - 0.3, z + tz, 15, h, 15, { color: burst ? [0.4, 0.42, 0.38] : [0.82, 0.84, 0.82], shape: 'cylY', mat: 'paint' });
-      if (burst) for (let j = 0; j < 6; j++) { const a = j * 1.05; rot(x + tx + Math.cos(a) * 7, y + h - 0.5, z + tz + Math.sin(a) * 7, [0.5, -a, 0], 0.3, 3 + R() * 3, 5, { color: [0.38, 0.4, 0.36], mat: 'metal', solid: false }); }
-      else { at(x + tx, y + h, z + tz, 15.4, 0.6, 15.4, { color: [0.5, 0.52, 0.5], shape: 'cylY', mat: 'metal' }); bioSign(x + tx, y + 3, z + tz + 7.6, 0); }
-    }
-    for (const [px, pz, r] of [[-12, -8, 16], [10, 6, 11], [-24, 28, 13], [24, 32, 9], [0, 46, 7]]) at(x + px, y + 0.03, z + pz, r, 0.08, r * 0.8, { color: [0.45, 0.95, 0.15], emissive: 0.6, shape: 'cylY', solid: false, noShadow: true });
-    for (let k = 0; k < 6; k++) seg([x - 40, y + 6 + k * 0.6, z - 40 + k * 14], [x + 40, y + 6 + k * 0.6, z - 40 + k * 14], 0.4, 0.4, { color: [0.5, 0.45, 0.35], mat: 'metal' });
-    for (let k = 0; k < 24; k++) { const a = R() * 6.28, r = 20 + R() * 40; rot(x + Math.cos(a) * r, y, z + Math.sin(a) * r, [R() < 0.4 ? Math.PI / 2 : 0, a, 0], 0.9, 1.3, 0.9, { color: [0.85, 0.7, 0.1], shape: 'cylY', mat: 'paint' }); }
-    building(x - 20, z + 40, x + 20, z + 62, y, 8, 1, 'hardware');
-    prints(x, z, 4.0, 24, 8);
-    burning.push([x - 5, y + 7, z - 30]);
-    return { x, z, y, name: 'KESSLER CHEMICALS' };
-  }
-  // THE NEST: the broodmother's den. A ring of cars dragged into a wall, and inside, eggs
-  function nestSite(s) {
-    const { x, z, y } = s, FLESH = [0.7, 0.45, 0.45], EGGC = [1, 0.55, 0.25];
-    ground.town(x, z, 70, 25);
-    for (let k = 0; k < 120; k++) { const a = (k % 60) / 60 * 6.28 + (k >= 60 ? 0.05 : 0), layer = k >= 60 ? 1 : 0, r = 44 + R() * 2 - layer; rot(x + Math.cos(a) * r, y + layer * 1.5 + R() * 0.3, z + Math.sin(a) * r, [k % 2 ? Math.PI : 0.3 + R() * 0.5, -a + (R() < 0.5 ? 0 : Math.PI / 2), R() * 0.5], 1.9, 0.75, 4.3, { color: CARS[k % CARS.length].map((v) => v * 0.6), shape: 0.2, mat: 'paint' }); }
-    for (let k = 0; k < 9; k++) { const a = k * 0.7, r = 8 + (k % 4) * 7; rot(x + Math.cos(a) * r, y - 1, z + Math.sin(a) * r, [0, a, 0], 8 + (k % 3) * 3, 4 + (k % 2) * 2, 7 + (k % 3) * 2, { color: FLESH, shape: 'blob' }); }
-    for (let k = 0; k < 60; k++) { const a = R() * 6.28, r = 4 + R() * 32, sz = 0.9 + R() * 0.8; at(x + Math.cos(a) * r, y + R() * 1.5, z + Math.sin(a) * r, sz, sz * 1.2, sz, { color: EGGC, emissive: 0.6, shape: 'sphere', solid: false, noShadow: true }); }
-    for (let k = 0; k < 18; k++) { const a = R() * 6.28, b = a + (R() - 0.5) * 2; seg([x + Math.cos(a) * 10, y + 4, z + Math.sin(a) * 10], [x + Math.cos(b) * 44, y + 1.5, z + Math.sin(b) * 44], 0.08, 0.08, { color: [0.85, 0.8, 0.75], solid: false }); }
-    prints(x, z, 0.9, 20, 9);
-    return { x, z, y, name: 'THE NEST' };
-  }
   // a radio mast: a lattice tower on a hilltop, a hut full of radios, and a little pad
   function mastSite(s, n) {
     const { x, z, y } = s, H = 64, M = [0.75, 0.72, 0.7];
@@ -1231,7 +1102,7 @@ export function buildWorld(seed = 1337) {
     if (s.kind === 'airfield') { airfield = airfieldSite(s); continue; }
     if (s.kind === 'hospital') { hospital = hospitalSite(s); continue; }
     if (s.kind === 'mast') { masts.push(mastSite(s, masts.length)); continue; }
-    if (s.kind === 'lab') { lab = labSite(s); continue; }
+    if (s.kind === 'lab') continue; // Halden Biolab is gone
     if (s.kind === 'quarry' || s.kind === 'chem' || s.kind === 'nest') continue; // the giants' dens are gone
     if (s.kind === 'bridgehead') { ground.town(s.x, s.z, s.r * 0.7, 20); continue; }
     if (s.kind === 'small') { city(s.x, s.z, 230, s.y, 0.45); s.name = (TOWN_NAMES.splice(Math.floor(R() * TOWN_NAMES.length), 1)[0] || 'CITY') + ' CITY'; cities.push(s); continue; }

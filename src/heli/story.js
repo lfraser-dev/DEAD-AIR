@@ -2,7 +2,7 @@
 // as you play (rescues, crates, masts, the fort...), and pays out when it's done. After the last one it's free flight.
 // The big story jobs (the masts, the fort, St Mary's, the siege, the great horde) are made here when their chapter
 // comes round, and live in the director's list with everything else.
-import { MastEv, FortEv, Evac, Siege, GreatHorde, LabEv, VatEv, CureEv } from './events.js';
+import { MastEv, FortEv, Evac, Siege, GreatHorde, CountdownEv, PiperEv } from './events.js';
 
 export const CHAPTERS = [
   { n: 'FIRST LIGHT', reward: 600,
@@ -36,14 +36,14 @@ export const CHAPTERS = [
   { n: 'MAYDAY', reward: 4500,
     brief: "We're not the only ones flying. Other crews heard us and came looking, and some of them didn't make it. Find the crash sites, get the crews out, and bring in supplies for the new arrivals. And pilot... the crews keep talking about black ones that only come out at night. Fast. Eyes like headlights.",
     goals: [{ k: 'crash', n: 2, t: 'RESCUE 2 DOWNED CREWS' }, { k: 'crate', n: 2, t: 'BRING BACK 2 SUPPLY CRATES' }] },
-  { n: 'HALDEN', reward: 6000,
-    brief: "Pilot, the masts keep catching a weak signal from out past the farms: a distress beacon from Halden Biolab. An army research site. The black ones, the stalkers, all came from that direction. If anyone's alive in there, they'll know why. Go and look.",
-    goals: [{ k: 'lab', n: 1, t: 'GET THE SURVIVOR OUT OF HALDEN BIOLAB' }, { k: 'vat', n: 3, t: 'DESTROY THE 3 STALKER VATS IN THE HALL' }] },
-  { n: 'THE CURE', reward: 10000,
-    brief: "Dr. Hale here. With the vats gone I could finally use what was in them: it works backwards, pilot. A cure. The medics have packed it in cold cases at Halden. Fly them out to the towns, one at a time, and land in the middle. The cases warm up fast, so don't hang about.",
-    goals: [{ k: 'cure', n: 3, t: 'FLY 3 CURE CASES FROM HALDEN TO THE TOWNS' }] },
+  { n: 'COUNTDOWN', reward: 6000,
+    brief: "Pilot, bad news from the army. They've given up on one of the towns: bombers are on the way to burn it flat. There are still people on the roofs. They gave us seven minutes. Get every last one off before the bombs fall, then get clear.",
+    goals: [{ k: 'countdown', n: 1, t: 'EMPTY THE ROOFS BEFORE THE BOMBERS COME' }] },
+  { n: 'THE PIED PIPER', reward: 10000,
+    brief: "This is it, pilot. The biggest horde we've ever seen is gathering out in the hills, and when it moves, the Spire is finished. We can't shoot that many. But they follow noise. Fly low over them and your speaker will play: they'll follow you. Lead them into the army's target zone and the big guns will do the rest.",
+    goals: [{ k: 'piper', n: 1, t: 'LEAD THE HORDE INTO THE ARTILLERY ZONE' }] },
 ];
-export const ENDING = "Pilot... it's working. The towns you flew the cure to are calling in: people are standing up out there, confused, cold, but people. Dr. Hale's making more as fast as she can. The dead don't own this country any more. We do. Thank you. Keep flying.";
+export const ENDING = "Direct hit... the whole horde, gone in one go. The army says they have never seen anything like it. The roads are open, the towns are filling up again, and the radio is full of people laughing. The dead don't own this country any more. We do. Thank you, pilot. Keep flying.";
 const ENDING1 = "That's it. They're broken. The Spire's safe, Fort Calder's running, and the radio hasn't stopped: people coming in from everywhere. You did that. There are always more of them out there, though. Keep flying.";
 
 export class Story {
@@ -55,8 +55,6 @@ export class Story {
   have(g) {
     if (g.k === 'mast') return this.s.masts.length + Math.max(0, 3 - this.nMasts);
     if (g.k === 'fort') return this.s.fort ? 1 : 0;
-    if (g.k === 'vat') return (this.s.vats || []).length + Math.max(0, 3 - this.nVats);
-    if (g.k === 'lab') return this.hasLab ? (this.s.prog.lab || 0) : 1;
     if (g.k === 'bridge') return (this.s.prog.bridge || 0) + Math.max(0, 2 - this.nBridges);
     return this.s.prog[g.k] || 0;
   }
@@ -104,9 +102,8 @@ export class Story {
     if (ch.goals.some((g) => g.k === 'outbreak') && !D.list.some((e) => e.kind === 'outbreak')) D.add(game, 'outbreak');
     if (ch.goals.some((g) => g.k === 'bridge') && !D.list.some((e) => e.br)) D.add(game, 'bridge');
     if (ch.goals.some((g) => g.k === 'crash') && !D.list.some((e) => e.crash)) D.add(game, 'crash');
-    if (want('cure') && map.lab && !has('cure')) D.list.push(new CureEv(map.lab, map.towns));
-    if (want('lab') && map.lab && !has('lab')) { const e = new LabEv(map.lab); D.list.push(e); }
-    if (want('vat') && map.lab && !has('vats')) { const e = new VatEv(map.lab, this.s.vats || []); D.list.push(e); }
+    if (want('countdown') && !has('countdown')) { const e = CountdownEv.make(game); if (e) D.list.push(e); }
+    if (want('piper') && !has('piper')) { const e = PiperEv.make(game); if (e) D.list.push(e); }
     if (want('evac') && map.hospital && !has('evac')) { const e = new Evac(map.hospital); e.story = true; D.list.push(e); }
     if (want('great') && !has('great')) {
       const B = map.boro, town = { x: B.x, z: B.z, r: 260, name: 'THE BOROUGH', y: 10 };
