@@ -5,7 +5,8 @@
 // of its batch (which is rebuilt) and goes back to being drawn on its own.
 import { INST_FLOATS } from './renderer.js';
 
-const CHUNK = 56;          // m, chunk size on the xz plane
+const CHUNK = 120;         // m, chunk size on the xz plane (bigger = fewer draw calls, coarser culling)
+const LONE = 480;          // boxes alone in their chunk get grouped with others like them over this much bigger area
 const BIG_R = 40;          // boxes bigger than this go in their own per-mesh "big" chunk
 
 const snap = (b) => [b.center[0], b.center[1], b.center[2], b.scale[0], b.scale[1], b.scale[2],
@@ -42,6 +43,23 @@ export class StaticBatches {
       g.members.push(b);
       b.batched = g;
       b._snap = snap(b);
+    }
+    // boxes alone in their chunk: try again over a much bigger area, so all the odd shapes in a district share a draw call
+    const lone = [];
+    for (const [key, g] of map) if (g.members.length === 1) { lone.push(g.members[0]); this.r.freeBatch(g.batch); map.delete(key); }
+    for (const b of lone) {
+      const mesh = this.r.meshFor(b.shape, b.scale), zone = zoneOf(b);
+      const key = `${zone}|L${Math.floor(b.center[0] / LONE)},${Math.floor(b.center[2] / LONE)}|${mesh.id}`;
+      let g = map.get(key);
+      if (!g) { g = { zone, mesh, members: [], dirty: true, batch: this.r.makeBatch(mesh), center: [0, 0, 0], radius: 0 }; map.set(key, g); }
+      g.members.push(b); b.batched = g;
+    }
+    // still alone: share one batch per mesh across the whole map (always drawn, but one call instead of hundreds)
+    for (const [key, g] of map) if (g.members.length === 1 && key.includes('|L')) {
+      const b = g.members[0], k2 = `${g.zone}|ALL|${g.mesh.id}`;
+      let G = map.get(k2);
+      if (!G) { G = { zone: g.zone, mesh: g.mesh, members: [], dirty: true, batch: this.r.makeBatch(g.mesh), center: [0, 0, 0], radius: 0 }; map.set(k2, G); }
+      G.members.push(b); b.batched = G; this.r.freeBatch(g.batch); map.delete(key);
     }
     this.groups = [...map.values()].filter((g) => {
       if (g.members.length > 1) return true;

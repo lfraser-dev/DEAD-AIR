@@ -1478,7 +1478,12 @@ export class Renderer {
   resize() {
     // resScale is lowered automatically when frames run slow (see main.js), so the game stays smooth
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * (this.resScale || 1);
-    const w = Math.floor(this.canvas.clientWidth * dpr), h = Math.floor(this.canvas.clientHeight * dpr);
+    // reading the canvas size forces the browser to lay the page out: only do it when the size could have changed
+    if (!this.cssSize || this.cssDirty) {
+      if (!this.sizeWatch && typeof ResizeObserver !== 'undefined') { this.sizeWatch = new ResizeObserver(() => { this.cssDirty = true; }); this.sizeWatch.observe(this.canvas); }
+      this.cssSize = [this.canvas.clientWidth, this.canvas.clientHeight]; this.cssDirty = !this.sizeWatch;
+    }
+    const w = Math.floor(this.cssSize[0] * dpr), h = Math.floor(this.cssSize[1] * dpr);
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;

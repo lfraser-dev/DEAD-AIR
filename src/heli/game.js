@@ -63,6 +63,17 @@ function paintFor(s) {
   const p = PAINT[s.paint] || PAINT.olive, tip = TIPS.find((q) => q.id === s.tips), trim = TRIMS.find((q) => q.id === s.trimCol), tint = TINTS.find((q) => q.id === s.tint);
   return { ...p, glass: tint && tint.col ? tint.col : null, trim: trim && trim.col ? trim.col : p.trim, tips: tip ? tip.col : null, tips2: tip ? tip.col2 : null, camo: (CAMO[s.camo] || {}).k || 0, nose: s.nose && s.nose !== 'none' ? s.nose : p.shark ? 'shark' : 'none', tailArt: s.tailArt || 'none', num: s.num };
 }
+// graphics levels: resolution, shadows, how far you can see, how far the trees go
+const QLEVELS = [
+  { res: 1, shadow: true, view: 2800, trees: 1100 },
+  { res: 0.85, shadow: true, view: 2600, trees: 1000 },
+  { res: 0.72, shadow: true, view: 2300, trees: 850 },
+  { res: 0.72, shadow: false, view: 2100, trees: 750 },
+  { res: 0.6, shadow: false, view: 1700, trees: 600 },
+  { res: 0.5, shadow: false, view: 1300, trees: 420 },
+];
+const GFXNAME = { auto: 'AUTO', low: 'LOW (FAST)', potato: 'POTATO (FASTEST)' };
+const GFXNEXT = { auto: 'low', low: 'potato', potato: 'auto' };
 // where the pilot's eyes are in each aircraft (for the cockpit camera)
 const SEATS = { warhorse: [0.3, 0.25, -2.6], hornet: [0, 0.15, -0.9], reaper: [0, 0.65, -3.0], kestrel: [0.42, 0.45, -3.2], viper: [0, 0.75, -2.6], huey: [0.4, 0.35, -2.4], seaking: [0.42, 0.45, -3.9], osprey: [0.42, 0.45, -4.8], harrier: [0, 0.95, -3.3], alligator: [0, 0.65, -2.9], warthog: [0, 1.0, -3.5], spectre: [0.5, 0.5, -7.2], mule: [0.5, 0.45, -6.0] };
 const seatFor = (id) => SEATS[id] || SEATS.warhorse;
@@ -476,7 +487,7 @@ export class HeliGame {
     const opt = (label, val, fn) => { const b = el(`<button class="da-opt" type="button">${label}<b>${val}</b></button>`); b.onclick = () => { fn(); saveSave(s); this.snd.click?.(2000, 0.2); this.renderHangar(); }; opts.append(b); };
     opt('FLYING', FLIGHT[s.flight] || 'EASY', () => { s.flight = s.flight === 'easy' ? 'assist' : s.flight === 'assist' ? 'pro' : 'easy'; });
     opt('INVERT MOUSE', s.invert ? 'ON' : 'OFF', () => { s.invert = !s.invert; });
-    opt('GRAPHICS', s.gfx === 'low' ? 'LOW (FAST)' : 'AUTO', () => { s.gfx = s.gfx === 'low' ? 'auto' : 'low'; if (s.gfx !== 'low') { this.r.resScale = 1; this.noShadow = false; } });
+    opt('GRAPHICS', GFXNAME[s.gfx || 'auto'], () => { s.gfx = GFXNEXT[s.gfx || 'auto']; this.ql = null; this.pfT = 0; this.pfN = 0; });
     opt('MUSIC', s.music === false ? 'OFF' : ['QUIET', 'MEDIUM', 'LOUD'][Math.round((s.musicVol ?? 0.5) * 2 - 0.5) || 0] || 'MEDIUM', () => { if (s.music === false) { s.music = true; s.musicVol = 0.25; } else if ((s.musicVol ?? 0.5) < 0.4) s.musicVol = 0.5; else if (s.musicVol < 0.9) s.musicVol = 1; else s.music = false; });
     opt('TUTORIAL', this.tutAsk ? 'ON NEXT FLIGHT ✔' : 'PLAY IT AGAIN', () => { this.tutAsk = !this.tutAsk; });
     opt('MOUSE SPEED', `${s.sens.toFixed(1)}×`, () => { s.sens = s.sens >= 2 ? 0.5 : Math.round((s.sens + 0.25) * 100) / 100; });
@@ -1591,7 +1602,7 @@ export class HeliGame {
       const isl = Math.abs(x - C.x) < C.iw && Math.abs(z - C.z) < C.il ? 1.5 : 1;
       return (0.00028 + g.town * 0.0075 * isl) * (1 + night * 0.5);
     };
-    const cap = (this.save.gfx === 'low' ? 1900 : 4600) * (1 + night * 0.25);
+    const cap = (this.save.gfx === 'potato' ? 1200 : this.save.gfx === 'low' ? 1900 : (this.ql || 0) >= 4 ? 2800 : 4600) * (1 + night * 0.25);
     const inCity = G.at(this.heli.pos[0], this.heli.pos[2]).town > 0.3;
     const mix = () => pickType(night, t, inCity);
     const wings = this.wingSpots().filter(([x, z]) => Math.hypot(x - this.heli.pos[0], z - this.heli.pos[2]) > 400);
@@ -2079,8 +2090,8 @@ export class HeliGame {
       this.mode = this.mode === 'gunner' ? 'gpause' : this.mode === 'wing' ? 'wpause' : 'pause';
       const gun = this.mode === 'gpause' || this.mode === 'wpause';
       p.innerHTML = `<h2>PAUSED</h2><p>${this.mode === 'wpause' ? 'You\'re online: your helicopter is still out there!' : gun ? 'You\'re still in the door. The pilot keeps flying.' : this.coop ? 'Your friends are still flying with you — the game keeps going.' : 'Your chopper is hovering. Zombies are waiting.'}</p>
-        <div class="row"><button class="alt" data-x="gfx" type="button">GRAPHICS: ${this.save.gfx === 'low' ? 'LOW' : 'AUTO'}</button></div><div class="row"><button data-x="resume" type="button">RESUME</button>${gun ? '' : '<button class="alt" data-x="team" type="button">TEAM</button>'}<button class="alt" data-x="quit" type="button">${gun ? 'LEAVE' : 'QUIT TO TITLE'}</button></div>`;
-      p.querySelector('[data-x=gfx]').onclick = (e) => { this.save.gfx = this.save.gfx === 'low' ? 'auto' : 'low'; if (this.save.gfx !== 'low') { this.r.resScale = 1; this.noShadow = false; } saveSave(this.save); e.target.textContent = `GRAPHICS: ${this.save.gfx === 'low' ? 'LOW' : 'AUTO'}`; };
+        <div class="row"><button class="alt" data-x="gfx" type="button">GRAPHICS: ${GFXNAME[this.save.gfx || 'auto']}</button></div><div class="row"><button data-x="resume" type="button">RESUME</button>${gun ? '' : '<button class="alt" data-x="team" type="button">TEAM</button>'}<button class="alt" data-x="quit" type="button">${gun ? 'LEAVE' : 'QUIT TO TITLE'}</button></div>`;
+      p.querySelector('[data-x=gfx]').onclick = (e) => { this.save.gfx = GFXNEXT[this.save.gfx || 'auto']; this.ql = null; this.pfT = 0; this.pfN = 0; saveSave(this.save); e.target.textContent = `GRAPHICS: ${GFXNAME[this.save.gfx]}`; };
       p.querySelector('[data-x=resume]').onclick = () => { this.pause(false); this.lock(); };
       p.querySelector('[data-x=team]')?.addEventListener('click', () => { this.pause(false); this.openTeam(); });
       p.querySelector('[data-x=quit]').onclick = () => { this.pause(false); this.close(); };
@@ -3334,6 +3345,8 @@ export class HeliGame {
   }
   // the minimap: centred on you, north up, about 2.4 km across. M opens the whole map.
   minimap(pos, heading, list, zombies) {
+    // the minimap doesn't need redrawing every frame: 20 times a second is plenty
+    if ((this.mmT = (this.mmT || 0) + 1) % 3) return;
     const big = this.bigMap, cv = this.$(big ? 'bigmap' : 'map'), c = cv.getContext('2d'), W = cv.width;
     const G = this.map.ground, span = big ? G.span : 2400, sc = W / span;
     const ox = big ? -G.span / 2 : pos[0] - span / 2, oz = big ? -G.span / 2 : pos[2] - span / 2;
@@ -3416,7 +3429,7 @@ export class HeliGame {
     const cv = this.$('pit'), on = this.camMode === 3 && (this.mode === 'fly' || this.mode === 'wing') && !this.heli.dead;
     cv.classList.toggle('hidden', !on);
     if (!on) return;
-    const W = this.canvas.clientWidth || innerWidth, Hh = this.canvas.clientHeight || innerHeight;
+    const W = this.r.cssSize ? this.r.cssSize[0] : innerWidth, Hh = this.r.cssSize ? this.r.cssSize[1] : innerHeight;
     if (cv.width !== W || cv.height !== Hh) { cv.width = W; cv.height = Hh; }
     const c = cv.getContext('2d'), H = this.heli, S = this.S, id = this.save.heli, plane = this.engineKind(id, H) !== 'heli';
     c.clearRect(0, 0, W, Hh);
@@ -3685,17 +3698,26 @@ export class HeliGame {
 
   // ---------------------------------------------------------------- drawing
   // automatic quality: if frames are slow, draw at a lower resolution, then drop shadows; climb back when it's quick
+  // graphics quality, 0 (best) to 5 (fastest). AUTO moves it up and down to keep the game smooth; LOW and POTATO pin it.
+  applyQ(q) {
+    const L = QLEVELS[q];
+    this.ql = q; this.r.resScale = L.res; this.noShadow = !L.shadow; this.viewDist = L.view; this.treeDist = L.trees;
+  }
   perf() {
-    const now = performance.now(), low = this.save.gfx === 'low';
+    const now = performance.now(), g = this.save.gfx || 'auto';
     const dt = Math.min(0.25, (now - (this.lastDraw || now)) / 1000);
     this.lastDraw = now;
+    if (g !== 'auto') { const q = g === 'potato' ? 5 : 4; if (this.ql !== q) this.applyQ(q); return; }
+    if (this.ql == null) this.applyQ(1);
+    if (dt >= 0.2) return;                         // a hitch (loading, a tab switch): don't count it
     this.pfT = (this.pfT || 0) + dt; this.pfN = (this.pfN || 0) + 1;
-    if (low) { this.r.resScale = 0.6; this.noShadow = true; this.pfT = 0; this.pfN = 0; return; }
-    if (this.pfT < 2) return;
-    const avg = this.pfT / this.pfN; this.pfT = 0; this.pfN = 0;
-    const rs = this.r.resScale || 1;
-    if (avg > 1 / 40) { if (rs > 0.55) this.r.resScale = rs - 0.1; else this.noShadow = true; }
-    else if (avg < 1 / 56) { if (this.noShadow) this.noShadow = false; else this.r.resScale = Math.min(1, rs + 0.05); }
+    const avg = this.pfT / this.pfN;
+    // slow: drop a level quickly. Smooth for a good while: try one level better
+    if (this.pfT > 1.2 && avg > 1 / 45 && this.ql < 5) { this.applyQ(this.ql + 1); this.pfT = 0; this.pfN = 0; this.upT = 0; }
+    else if (this.pfT > 4) {
+      if (avg < 1 / 57 && this.ql > 0 && (this.upT = (this.upT || 0) + 1) >= 2) { this.applyQ(this.ql - 1); this.upT = 0; }
+      this.pfT = 0; this.pfN = 0;
+    }
   }
   draw(eye, fwd, roll, heliParts, extra, focus, fog) {
     const r = this.r;
@@ -3707,7 +3729,7 @@ export class HeliGame {
       const l = Math.hypot(...want); r.sunDir = want.map((v) => v / l);
       r.gl.useProgram(r.prog); r.gl.uniform3fv(r.u.uSunDir, r.sunDir);
     }
-    if (this.save.gfx === 'low') fog = Math.max(fog, 0.0075);
+    if ((this.ql || 0) >= 4) fog = Math.max(fog, 0.0075);
     const aspect = r.resize();
     const vfov = (64 * Math.PI) / 180;
     perspective(this.proj, vfov, aspect, 0.5, this.mode === 'hangar' ? 1100 : 4200);
@@ -3716,8 +3738,8 @@ export class HeliGame {
     r.setStudio(null); r.setRoom(null); r.setUnder(false); r.setRim(null);
     const sc = [Math.round(focus[0] / 4) * 4, 0, Math.round(focus[2] / 4) * 4];
     r.setShadowArea(sc, 80);
-    const farCull = this.mode === 'hangar' ? 400 : this.save.gfx === 'low' ? 1500 : this.viewDist || 2800;
-    this.hazeD = 0.12 * fog * (this.save.gfx === 'low' ? 1.3 : 1);
+    const farCull = this.mode === 'hangar' ? 400 : this.viewDist || 2800;
+    this.hazeD = 0.12 * fog * ((this.ql || 0) >= 4 ? 1.3 : 1);
     const tv = Math.tan(vfov / 2), kf = Math.hypot(tv, tv * aspect), kr = Math.sqrt(1 + kf * kf);
     const view = (c, rad) => {
       const dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2], d2 = dx * dx + dy * dy + dz * dz;
@@ -3742,7 +3764,7 @@ export class HeliGame {
     r.beginShadow();
     this.batches.drawShadows(0, near);
     if (outside) {
-      for (const c of this.terrain.chunks) if (near(c.center, 64)) r.shadowMesh(c.mesh, c.model);
+      for (const c of this.terrain.chunks) if (near(c.center, c.S / 2)) r.shadowMesh(c.mesh, c.model);
       for (const c of this.forest.visible) if (near(c.center, 64)) { for (const b of c.batches) r.shadowBatch(b); if (c.trunks) r.shadowBatch(c.trunks); }
     }
     for (const b of this.live) if (!b.noShadow && near(b.center, 10)) r.shadowDraw(b.model, b.shape, b.scale);
@@ -3760,7 +3782,7 @@ export class HeliGame {
     this.batches.draw(0, view);
     if (outside) {
       for (const c of this.terrain.chunks) if (view(c.center, c.radius)) r.drawMesh(c.mesh, c.model, [1, 1, 1], 60);
-      this.forest.draw = this.save.gfx === 'low' ? 650 : 1100;
+      this.forest.draw = this.treeDist || 1100;
       for (const c of this.forest.visible) if (view(c.center, c.radius)) {
         for (const b of c.batches) r.drawBatch(b);
         if (c.trunks && Math.hypot(c.center[0] - eye[0], c.center[2] - eye[2]) < 520) r.drawBatch(c.trunks);

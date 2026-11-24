@@ -203,8 +203,8 @@ export class Terrain {
   // ---- meshes, streamed round the camera. LOD 1 = every 4 m, 2 = 8 m, 4 = 16 m, 8 = 32 m. Each chunk has a skirt
   // hanging down round its edge so the cracks between a fine chunk and a coarse one never show.
   lodFor(d) { return d < 420 ? 1 : d < 1000 ? 2 : d < 2000 ? 4 : 8; }
-  buildChunk(r, cx, cz, lod) {
-    const per = CH / CELL / lod, st = CELL * lod, V = per + 1;
+  buildChunk(r, cx, cz, lod, S = CH) {
+    const per = S / CELL / lod, st = CELL * lod, V = per + 1;
     const ring = 4 * per;
     const verts = new Float32Array((V * V + ring * 2) * 6), idx = [];
     let v = 0, lo = Infinity, hi = -Infinity;
@@ -230,35 +230,43 @@ export class Terrain {
     for (const e of edge) put(verts[e * 6], verts[e * 6 + 1] - drop, verts[e * 6 + 2], [verts[e * 6 + 3], verts[e * 6 + 4], verts[e * 6 + 5]]);
     for (let j = 0; j < edge.length; j++) { const a = edge[j], b = edge[(j + 1) % edge.length], c = s0 + j, d = s0 + (j + 1) % edge.length; idx.push(a, b, c, b, d, c); }
     const mesh = r.makeMesh({ verts: verts.subarray(0, v), indices: new Uint16Array(idx) });
-    return { mesh, lod, center: [cx + CH / 2, (lo + hi) / 2, cz + CH / 2], radius: Math.hypot(CH / 2, CH / 2, (hi - lo) / 2 + 4), model: this.model, hi, lo, cx, cz };
+    return { mesh, lod, S, center: [cx + S / 2, (lo + hi) / 2, cz + S / 2], radius: Math.hypot(S / 2, S / 2, (hi - lo) / 2 + 4), model: this.model, hi, lo, cx, cz };
   }
   freeChunk(r, c) { const gl = r.gl; gl.deleteBuffer(c.mesh.vb); gl.deleteBuffer(c.mesh.ib); gl.deleteVertexArray(c.mesh.vao); r.boundMesh = null; }
-  dirtyMeshes(op) { for (const c of this.meshes.values()) if (c.cx + CH >= op.x0 && c.cx <= op.x1 && c.cz + CH >= op.z0 && c.cz <= op.z1) c.stale = true; }
+  dirtyMeshes(op) { for (const c of this.meshes.values()) if (c.cx + c.S >= op.x0 && c.cx <= op.x1 && c.cz + c.S >= op.z0 && c.cz <= op.z1) c.stale = true; }
   // call every frame: builds what's missing near the eye (a few per frame), drops what's far away
+  // a quadtree of chunks: 128 m ones close to the eye, 256 m further out, 512 m in the distance. Far fewer meshes
+  // to draw than a flat grid of small ones (the skirts hide the cracks where sizes meet)
   stream(r, eye, range = 3000, budget = 6) {
-    const want = [];
-    const ci0 = Math.max(0, Math.floor((eye[0] - range + HALF) / CH)), ci1 = Math.min(HALF * 2 / CH - 1, Math.floor((eye[0] + range + HALF) / CH));
-    const ck0 = Math.max(0, Math.floor((eye[2] - range + HALF) / CH)), ck1 = Math.min(HALF * 2 / CH - 1, Math.floor((eye[2] + range + HALF) / CH));
-    const seen = new Set();
+    const want = [], seen = new Set(), ROOT = CH * 4;
     this.chunks.length = 0;
-    for (let ck = ck0; ck <= ck1; ck++) for (let ci = ci0; ci <= ci1; ci++) {
-      const cx = -HALF + ci * CH, cz = -HALF + ck * CH;
-      const d = Math.max(0, Math.hypot(cx + CH / 2 - eye[0], cz + CH / 2 - eye[2]) - CH * 0.7);
-      if (d > range) continue;
-      const key = ck * 1000 + ci, lod = this.lodFor(d);
+    const node = (cx, cz, S) => {
+      const dx = Math.max(cx - eye[0], 0, eye[0] - (cx + S)), dz = Math.max(cz - eye[2], 0, eye[2] - (cz + S)), d = Math.hypot(dx, dz);
+      if (d > range) return;
+      if (S > CH && d < S * 1.6) { const h = S / 2; node(cx, cz, h); node(cx + h, cz, h); node(cx, cz + h, h); node(cx + h, cz + h, h); return; }
+      const dc = Math.max(0, Math.hypot(cx + S / 2 - eye[0], cz + S / 2 - eye[2]) - S * 0.7);
+      const lod = Math.min(S / CELL / 4, Math.max(S / CELL / 64, this.lodFor(dc)));
+      const key = S + ':' + cx + ':' + cz;
       seen.add(key);
       const c = this.meshes.get(key);
-      if (!c || c.lod !== lod || c.stale) want.push([d, key, cx, cz, lod]);
+      if (!c || c.lod !== lod || c.stale) want.push([d, key, cx, cz, lod, S]);
       if (c) this.chunks.push(c);
-    }
+    };
+    const r0 = Math.max(-HALF, Math.floor((eye[0] - range + HALF) / ROOT) * ROOT - HALF), r1 = Math.min(HALF, eye[0] + range);
+    const q0 = Math.max(-HALF, Math.floor((eye[2] - range + HALF) / ROOT) * ROOT - HALF), q1 = Math.min(HALF, eye[2] + range);
+    for (let cz = q0; cz < q1; cz += ROOT) for (let cx = r0; cx < r1; cx += ROOT) node(cx, cz, ROOT);
     want.sort((a, b) => a[0] - b[0]);
     for (let n = 0; n < Math.min(budget, want.length); n++) {
-      const [, key, cx, cz, lod] = want[n], old = this.meshes.get(key);
-      const c = this.buildChunk(r, cx, cz, lod);
+      const [, key, cx, cz, lod, S] = want[n], old = this.meshes.get(key);
+      const c = this.buildChunk(r, cx, cz, lod, S);
       if (old) { this.freeChunk(r, old); this.chunks[this.chunks.indexOf(old)] = c; } else this.chunks.push(c);
       this.meshes.set(key, c);
     }
-    for (const [key, c] of this.meshes) if (!seen.has(key)) { this.freeChunk(r, c); this.meshes.delete(key); }
+    // keep a mesh that's been replaced by bigger/smaller ones until its replacement is built, so no holes show
+    for (const [key, c] of this.meshes) if (!seen.has(key)) {
+      const covered = !want.some((w) => !this.meshes.has(w[1]) && w[2] < c.cx + c.S && w[2] + w[5] > c.cx && w[3] < c.cz + c.S && w[3] + w[5] > c.cz);
+      if (covered) { this.freeChunk(r, c); this.meshes.delete(key); } else this.chunks.push(c);
+    }
     return want.length;
   }
   dispose(r) { for (const c of this.meshes.values()) this.freeChunk(r, c); this.meshes.clear(); this.chunks.length = 0; }
