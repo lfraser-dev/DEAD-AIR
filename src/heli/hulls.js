@@ -117,6 +117,18 @@ const SEC = {
   ],
   bronco_c: [[-3.6, 0.42, 0.1, 0.08, 2, 2], [-3.3, 0.6, 0.9, 0.6, 2.4, 3], [-1.5, 0.85, 1.0, 0.86, 2.6, 3], [0.4, 0.8, 0.96, 0.7, 2.6, 3], [0.9, 0.6, 0.4, 0.3, 2, 2]],
   bronco_boom: [[-1.9, 0, 0.1, 0.1, 2, 2], [-1.7, 0, 0.75, 0.85, 2, 2], [0, 0, 0.75, 0.85, 2, 2], [2, 0.05, 0.5, 0.55, 2, 2], [6.5, 0.1, 0.32, 0.36, 2, 2], [6.6, 0.1, 0.05, 0.05, 2, 2]],
+  // PELICAN: a flying boat: a deep boat hull with a vee bottom and a step, the tail swept up out of the water
+  pelican: [
+    [-6.2, -0.3, 0.06, 0.06, 2, 2], [-6.0, -0.25, 1.0, 1.2, 2.2, 1.6], [-5.2, -0.1, 2.0, 2.4, 2.6, 1.5], [-3.8, 0, 2.4, 2.8, 3, 1.5],
+    [0.5, 0, 2.4, 2.8, 3, 1.5], [1.0, 0.25, 2.3, 2.3, 3, 1.8], [4.0, 0.7, 1.4, 1.4, 2.6, 2], [7.2, 1.1, 0.6, 0.6, 2, 2], [7.6, 1.15, 0.05, 0.05, 2, 2],
+  ],
+  pelican_c: [[-4.9, 1.0, 0.1, 0.08, 2, 2], [-4.6, 1.2, 1.6, 0.6, 2.4, 3], [-3.4, 1.42, 1.8, 0.62, 2.6, 3], [-2.6, 1.4, 1.6, 0.45, 2.4, 3], [-2.3, 1.35, 0.3, 0.1, 2, 2]],
+  // MOSQUITO: a slim wooden twin-engine fighter-bomber, a glass nose for the bomb aimer
+  mosquito: [
+    [-5.6, -0.5, 0.05, 0.05, 2, 2], [-5.3, -0.5, 0.8, 0.9, 2.2, 2.2], [-4.4, -0.45, 1.3, 1.45, 2.4, 2.4], [-2.5, -0.4, 1.45, 1.6, 2.6, 2.4],
+    [0.5, -0.45, 1.35, 1.5, 2.6, 2.4], [3.5, -0.3, 0.8, 0.9, 2.2, 2.2], [6.2, -0.15, 0.4, 0.5, 2, 2], [6.5, -0.15, 0.05, 0.05, 2, 2],
+  ],
+  mosquito_c: [[-3.9, 0.15, 0.1, 0.08, 2, 2], [-3.6, 0.3, 0.9, 0.5, 2.4, 3], [-2.6, 0.45, 1.0, 0.55, 2.6, 3], [-1.6, 0.35, 0.7, 0.35, 2.4, 3], [-1.3, 0.28, 0.2, 0.08, 2, 2]],
   // FALCON: a fighter: a long pointed nose, a bubble canopy, a body that blends into the wing roots
   falcon: [
     [-7.6, 0, 0.04, 0.04, 2, 2], [-7.2, 0, 0.4, 0.42, 2.2, 2.2], [-6.0, 0.02, 0.9, 0.95, 2.4, 2.4], [-4.6, 0.05, 1.2, 1.25, 2.6, 2.6],
@@ -152,7 +164,7 @@ const PANES = {
   mule: [[42, 88, -7.5, -6.62], [228, 256, -7.56, -7.02], [12, 40, -7.12, -6.3]],
   lynx: [[50, 88, -4.4, -3.0], [8, 46, -4.0, -2.7], [226, 252, -4.45, -3.7], [14, 38, -1.8, -0.6]],
   stallion: [[50, 88, -5.4, -4.1], [8, 46, -5.0, -3.9], [226, 254, -5.55, -4.8], [14, 34, -3.3, -2.5], [14, 34, -0.6, 0.4]],
-  bronco: [], falcon: [],
+  bronco: [], falcon: [], pelican: [], mosquito: [],
 };
 
 // Catmull-Rom over the section list: a smooth run of sections, n per span
@@ -249,7 +261,7 @@ export function hullGeometries() {
   for (const k of Object.keys(SEC)) G['h_' + k] = loft(SEC[k], k === 'pod' ? 24 : 48);
   for (const k of Object.keys(PANES)) if (PANES[k].length) G['g_' + k] = panes(SEC[k], PANES[k]);
   // the Reaper's canopies are glass all over
-  G.g_reaper_c1 = loft(SEC.reaper_c1, 40); G.g_reaper_c2 = loft(SEC.reaper_c2, 40); G.g_viper_c = loft(SEC.viper_c, 40); G.g_harrier_c = loft(SEC.harrier_c, 40); G.g_warthog_c = loft(SEC.warthog_c, 40); G.g_bronco_c = loft(SEC.bronco_c, 40); G.g_falcon_c = loft(SEC.falcon_c, 40); G.g_alligator_c = loft(SEC.alligator_c, 40);
+  G.g_reaper_c1 = loft(SEC.reaper_c1, 40); G.g_reaper_c2 = loft(SEC.reaper_c2, 40); G.g_viper_c = loft(SEC.viper_c, 40); G.g_harrier_c = loft(SEC.harrier_c, 40); G.g_warthog_c = loft(SEC.warthog_c, 40); G.g_bronco_c = loft(SEC.bronco_c, 40); G.g_pelican_c = loft(SEC.pelican_c, 40); G.g_mosquito_c = loft(SEC.mosquito_c, 40); G.g_falcon_c = loft(SEC.falcon_c, 40); G.g_alligator_c = loft(SEC.alligator_c, 40);
   Object.assign(G, decalGeometries());
   return G;
 }
@@ -276,6 +288,8 @@ const DEC = {
   stallion: { boom: [4.0, 9.2], num: 2.0, ns: 1.1 },
   bronco: { boom: [1.6, 2.6], num: -1.0, ns: 0.8 },
   falcon: { boom: [3.0, 6.6], num: -2.0, ns: 0.9 },
+  pelican: { boom: [3.5, 7.0], num: -1.5, ns: 1.2 },
+  mosquito: { boom: [2.5, 6.0], num: 1.0, ns: 0.85 },
 };
 export const DECAL_COLS = {
   shark: [[0.72, 0.07, 0.06], [0.93, 0.93, 0.9], [0.04, 0.04, 0.05]],

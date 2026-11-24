@@ -17,7 +17,7 @@ import { WATER } from './terrain.js';
 import { Forest } from './trees.js';
 import { Horde, TYPES, pickType } from './horde.js';
 import { hullGeometries } from './hulls.js';
-import { mountAt, AIRFRAMES, Chopper, chopperParts, qrot, qmat, droneParts } from './chopper.js';
+import { mountAt, AIRFRAMES, Chopper, chopperParts, setHullGeometries, qrot, qmat, droneParts } from './chopper.js';
 import { MODEL, SLOTS, SLOT, PAINTS, PAINT, HELIS, HELI_IDS, capEq, slotFits, loadSave, saveSave, statsFor, bars, CAMOS, CAMO, NOSEART, TAILART, TIPS, TRIMS, TINTS, BASE, BEDS, baseCut } from './data.js';
 import { Story, CHAPTERS } from './story.js';
 import { Music } from './music.js';
@@ -92,11 +92,11 @@ const gunsFor = (S) => {
   ];
 };
 // where the pilot's eyes are in each aircraft (for the cockpit camera)
-const SEATS = { warhorse: [0.3, 0.25, -2.6], hornet: [0, 0.15, -0.9], reaper: [0, 0.65, -3.0], kestrel: [0.42, 0.45, -3.2], viper: [0, 0.75, -2.6], huey: [0.4, 0.35, -2.4], seaking: [0.42, 0.45, -3.9], osprey: [0.42, 0.45, -4.8], harrier: [0, 0.95, -3.3], alligator: [0, 0.65, -2.9], warthog: [0, 1.0, -3.5], spectre: [0.5, 0.5, -7.2], mule: [0.5, 0.45, -6.0], lynx: [0.4, 0.35, -3.1], stallion: [0.42, 0.4, -4.2], bronco: [0, 0.85, -2.6], falcon: [0, 0.95, -3.6] };
+const SEATS = { pelican: [0.42, 1.3, -3.7], mosquito: [0, 0.45, -2.6], warhorse: [0.3, 0.25, -2.6], hornet: [0, 0.15, -0.9], reaper: [0, 0.65, -3.0], kestrel: [0.42, 0.45, -3.2], viper: [0, 0.75, -2.6], huey: [0.4, 0.35, -2.4], seaking: [0.42, 0.45, -3.9], osprey: [0.42, 0.45, -4.8], harrier: [0, 0.95, -3.3], alligator: [0, 0.65, -2.9], warthog: [0, 1.0, -3.5], spectre: [0.5, 0.5, -7.2], mule: [0.5, 0.45, -6.0], lynx: [0.4, 0.35, -3.1], stallion: [0.42, 0.4, -4.2], bronco: [0, 0.85, -2.6], falcon: [0, 0.95, -3.6] };
 const seatFor = (id) => SEATS[MODEL(id)] || SEATS.warhorse;
 // which tab of the hangar each upgrade is on
 const TABS = {
-  weapons: ['gun', 'barrel', 'rockets', 'warhead', 'rkx', 'bombs', 'pods', 'sniper', 'racks', 'hardpoints', 'door', 'belts', 'ammo', 'cooling', 'sight', 'tpod', 'gsgat', 'gsbof', 'gshow', 'gsmag', 'gssens', 'gsauto'],
+  weapons: ['gun', 'barrel', 'mines', 'flamer', 'nades', 'rockets', 'warhead', 'rkx', 'bombs', 'pods', 'sniper', 'racks', 'hardpoints', 'door', 'belts', 'ammo', 'cooling', 'sight', 'tpod', 'gsgat', 'gsbof', 'gshow', 'gsmag', 'gssens', 'gsauto'],
   armour: ['armor', 'frame', 'spall', 'glass', 'crash', 'repair', 'suppress', 'quiet', 'skids', 'flares'],
   flight: ['engine', 'rotor', 'tailr', 'fairing', 'strip', 'gyro', 'fuel', 'bladder', 'hover', 'flaps', 'airbrake', 'reheat', 'gear', 'radio'],
   kit: ['cabin', 'pad', 'winch', 'medbay', 'drops', 'nets', 'scav', 'flir', 'light', 'nvg'],
@@ -115,7 +115,7 @@ const DECOR = {
 export class HeliGame {
   constructor({ renderer, sounds, canvas, onExit, isDev }) {
     this.r = renderer; this.snd = sounds; this.canvas = canvas; this.onExit = onExit; this.isDev = isDev || (() => false);
-    this.r.registerShapes(hullGeometries());
+    { const HG = hullGeometries(); this.r.registerShapes(HG); setHullGeometries(HG); }
     this.active = false; this.mode = 'off';
     this.save = loadSave();
     this.keys = new Set(); this.hitKeys = new Set(); this.btn = new Set(); this.clk = new Set();
@@ -154,7 +154,7 @@ export class HeliGame {
     this.live = this.world.boxes.filter((b) => !b.batched && !b.hidden);
     const lo = this.r.meshesLo;
     this.zBatches = { box: this.r.makeBatch(this.r.cube), sphere: this.r.makeBatch(lo.sphere), cyl: this.r.makeBatch(lo.cyl), cylY: this.r.makeBatch(lo.cylY) };
-    this.r.registerShapes(hullGeometries());
+    { const HG = hullGeometries(); this.r.registerShapes(HG); setHullGeometries(HG); }
     this.smokeBatch = this.r.makeBatch(lo.sphere);
     this.smokeData = new Float32Array(32 * 1200);
     this.smokes = [];
@@ -261,6 +261,75 @@ export class HeliGame {
       else { this.bolt = { x: Math.random(), t: 0.25, seed: Math.random() }; setTimeout(() => this.thunder(0.4 + Math.random() * 0.6), 400 + Math.random() * 2600); }
     }
     if (this.bolt) { this.bolt.t -= dt; if (this.bolt.t <= 0) this.bolt = null; }
+  }
+  // ---- MINES: drop one with N; it falls, arms on the ground, and goes off when zombies walk over it
+  dropMine() {
+    const S = this.S, H = this.heli;
+    if (!S.mines) return;
+    if (!(this.minesLeft > 0)) { this.feed('NO MINES LEFT · REARM AT A BASE', 'y'); return; }
+    this.minesLeft--;
+    (this.mines = this.mines || []).push({ pos: H.toWorld([0, -1.6, 0.5]), vel: [H.vel[0] * 0.6, H.vel[1] - 2, H.vel[2] * 0.6], arm: 1.2, t: 0, lvl: S.mineLvl });
+    this.snd.bolt?.(); this.feed(`MINE AWAY · ${this.minesLeft} LEFT`, 'y');
+  }
+  weaponsTick(dt) {
+    const S = this.S, H = this.heli;
+    // mines: fall, settle, arm, wait
+    if (this.mines) for (let i = this.mines.length - 1; i >= 0; i--) {
+      const m = this.mines[i], g = this.groundAt(m.pos[0], m.pos[2]);
+      m.t += dt;
+      if (m.pos[1] > g + 0.15) { m.vel[1] -= 9.8 * dt; for (let k = 0; k < 3; k++) m.pos[k] += m.vel[k] * dt; if (m.pos[1] < g + 0.15) { m.pos[1] = g + 0.15; m.vel = [0, 0, 0]; } continue; }
+      if ((m.arm -= dt) > 0) continue;
+      if ((m.chk = (m.chk || 0) - dt) > 0) continue;
+      m.chk = 0.15;
+      if (m.t > 600 || this.horde.list.some((z) => z.alive && Math.abs(z.x - m.pos[0]) < 2.5 && Math.abs(z.z - m.pos[2]) < 2.5 && Math.abs(z.y - m.pos[1]) < 2)) {
+        const r = [0, 8, 11, 14][m.lvl] || 8, p = [m.pos[0], m.pos[1] + (m.lvl >= 2 ? 1.5 : 0.3), m.pos[2]];
+        this.blastAll(p, r, 500 + m.lvl * 200, 14, 'bomb'); this.boom(p, 1.2 + m.lvl * 0.4);
+        if (m.lvl === 3) this.fires.push({ pos: [m.pos[0], m.pos[1], m.pos[2]], r: 10, t: 8, tick: 0, big: true });
+        this.mines.splice(i, 1);
+      }
+    }
+    if (H.dead || this.mode !== 'fly') { this.flameOn = false; return; }
+    // flamethrower: hold J
+    this.flameOn = !!(S.flamer && this.keys && this.keys.has && this.keys.has('KeyJ') && this.fuel > 1);
+    if (this.flameOn) {
+      const reach = S.flamer === 2 ? 38 : 22, cone = S.flamer === 2 ? 0.32 : 0.22;
+      const o = H.toWorld([0, -1.2, -3.5]), ap = this.aimPoint().p, d = [ap[0] - o[0], ap[1] - o[1], ap[2] - o[2]], dl = Math.hypot(...d) || 1, dir = d.map((c) => c / dl);   // it pours where you aim
+      this.fuel = Math.max(0, this.fuel - dt * 1.6);
+      for (let k = 0; k < 6; k++) { const f = Math.random(), sp = (Math.random() - 0.5) * cone * 2; this.fx.flame([o[0] + dir[0] * reach * f + sp * reach * f * 0.5, o[1] + dir[1] * reach * f, o[2] + dir[2] * reach * f + sp * reach * f * 0.5], [H.vel[0] * 0.5 + dir[0] * 6, H.vel[1] * 0.5 + dir[1] * 6, H.vel[2] * 0.5 + dir[2] * 6], 1.2 + f * 2); }
+      this.flameT = (this.flameT || 0) - dt;
+      if (this.flameT <= 0) {
+        this.flameT = 0.1;
+        for (const z of this.horde.list) {
+          if (!z.alive) continue;
+          const v = [z.x - o[0], z.y + 1 - o[1], z.z - o[2]], L = Math.hypot(...v);
+          if (L > reach + 3 || L < 0.5) continue;
+          const c = (v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2]) / L;
+          if (c > 1 - cone) { z.burn = Math.max(z.burn || 0, S.flamer === 2 ? 6 : 3.5); this.horde.damage(z, 6, [dir[0] * 2, 1, dir[2] * 2], 'fire'); }
+        }
+        if (Math.random() < 0.3) this.snd.tone?.(90 + Math.random() * 40, 60, 0.12, 0.05, 'sawtooth');
+      }
+    }
+    // crew grenades: lobbed out of the door at the biggest crowd under you
+    if (S.nades && this.agl < 45) {
+      this.nadeT = (this.nadeT || 0) - dt;
+      if (this.nadeT <= 0) {
+        this.nadeT = S.nades === 2 ? 2 : 4;
+        const near = this.horde.list.filter((z) => z.alive && Math.hypot(z.x - H.pos[0], z.z - H.pos[2]) < 40);
+        if (near.length >= 3) {
+          for (let n = 0; n < (S.nades === 2 ? 2 : 1); n++) {
+            const t = near[Math.floor(Math.random() * near.length)], side = Math.random() < 0.5 ? -1 : 1, o = H.toWorld([side * 1.3, 0, 0.5]);
+            const T = 1.6, v = [(t.x - o[0]) / T, (t.y + 0.5 - o[1] + 0.5 * 9.8 * T * T) / T, (t.z - o[2]) / T];
+            this.shots.push({ kind: 'grenade', pos: o, vel: v, life: 6 });
+          }
+        }
+      }
+    }
+  }
+  minesParts(P) {
+    for (const m of this.mines || []) {
+      P(m.pos, [0, 0, 0], [0.5, 0.14, 0.5], [0.25, 0.28, 0.2], { shape: 'cylY' });
+      P([m.pos[0], m.pos[1] + 0.09, m.pos[2]], [0, 0, 0], [0.08, 0.08, 0.08], m.arm > 0 ? [1, 0.8, 0.2] : [1, 0.15, 0.1], { em: (this.t * 2) % 1 < 0.3 ? 1 : 0.15, shape: 'sphere' });
+    }
   }
   // lightning hits the ground near you: anything standing there fries and it starts a fire. Fly high in a storm and you
   // are the tallest thing around, so now and then it hits YOU: a jolt of damage and the electrics flicker.
@@ -776,7 +845,7 @@ export class HeliGame {
       this.tut = (!this.save.tutDone && (this.save.rescued || 0) < 5) || this.tutAsk ? { i: 0, t: 0, n: 0 } : null; this.tutAsk = false;
       if (this.tut) this.helpT = 0;
       this.riders = 0; this.fuel = S.fuel;
-      this.piper = null; this.shots = []; this.tracers = []; this.blasts = []; this.fires = []; this.runners = [];
+      this.piper = null; this.mines = []; this.shots = []; this.tracers = []; this.blasts = []; this.fires = []; this.runners = [];
     } else {
       // back out of the hangar at the same base, fixed up and refuelled
       this.heli.stats = S;
@@ -784,7 +853,7 @@ export class HeliGame {
     }
     this.hp = S.hp; this.fuel = Math.max(this.fuel ?? S.fuel, S.fuel);
     this.heat = 0; this.overT = 0; this.gunT = 0; this.spinV = 0; this.flashT = 0;
-    this.rockets = S.rockets; this.rocketT = 0; this.rocketRegen = 0; this.rocketSide = 0;
+    this.rockets = S.rockets; this.minesLeft = S.mines || 0; this.rocketT = 0; this.rocketRegen = 0; this.rocketSide = 0;
     this.gunCam = false; this.canvas.style.filter = ''; if (this.horde) this.horde.ir = false; this.gsRearm();
     this.bombs = S.bombs; this.bombT = 0;
     this.siren = 0; this.raid = this.raid || null;
@@ -851,7 +920,7 @@ export class HeliGame {
       return;
     }
     h.innerHTML = mode === 'easy'
-      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>Z</kbd> NIGHT VISION · <kbd>L</kbd> LIGHT · <kbd>B</kbd> SUPPLIES · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
+      ? '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>MOUSE</kbd> STEER (FORWARD = FLY FORWARD) · <kbd>A</kbd><kbd>D</kbd> SLIDE<br> <kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>Z</kbd> NIGHT VISION · <kbd>L</kbd> LIGHT · <kbd>B</kbd> SUPPLIES · <kbd>N</kbd> MINE · <kbd>J</kbd> FLAMES · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN'
       : '<kbd>W</kbd><kbd>S</kbd> UP / DOWN · <kbd>A</kbd><kbd>D</kbd> TURN · <kbd>MOUSE</kbd> TILT TO FLY<br><kbd>CLICK</kbd> GUN · <kbd>RIGHT CLICK</kbd> ROCKETS · <kbd>SPACE</kbd> BOMB · <kbd>Z</kbd> NIGHT VISION · <kbd>C</kbd> CAMERA · <kbd>M</kbd> MAP<br>LAND ON A BUILDING WITH A SIGN AND PRESS <kbd>R</kbd> TO SEND YOUR TEAM IN';
     this.helpT = on ? 22 : 0;
   }
@@ -1211,6 +1280,8 @@ export class HeliGame {
     if (this.hit('KeyZ') && S.nvg) { this.nvgOn = this.nvgOn === false; this.applyDay(); this.feed(this.nvgOn === false ? 'NIGHT VISION OFF' : 'NIGHT VISION ON', 'y'); }
     if (this.hit('KeyL') && this.S.light) { this.lightMode = this.lightMode === 'on' ? 'off' : this.lightMode === 'off' ? 'auto' : 'on'; this.feed(`SEARCHLIGHT: ${this.lightMode.toUpperCase()}`, 'y'); }
     if (this.hit('KeyB')) this.dropSupplies();
+    if (this.hit('KeyN')) this.dropMine();
+    this.weaponsTick(dt);
   }
 
   // ---- the gadgets: searchlight, belly turret, electric skids, medical bay
@@ -1872,7 +1943,7 @@ export class HeliGame {
       if (!f.fuelOnly) {
         acts.push(['Digit2', '2', this.hp >= S.hp ? 'NO DAMAGE' : this.svc === 'fix' ? `REPAIRING ${pct(this.hp / S.hp)}` : `REPAIR (${pct(this.hp / S.hp)})`, () => { this.svc = 'fix'; this.snd.click?.(1800, 0.3); }, this.hp >= S.hp]);
         const full = this.rockets >= S.rockets && this.bombs >= S.bombs && this.heat <= 0 && this.beaconsLeft >= S.beacons && this.flaresLeft >= S.flares && this.gsFull();
-        acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.gsRearm(); this.rockets = S.rockets; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); setTimeout(() => this.snd.bolt?.(), 200); this.feed('REARMED', 'g'); }, full]);
+        acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.gsRearm(); this.rockets = S.rockets; this.minesLeft = S.mines || 0; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); setTimeout(() => this.snd.bolt?.(), 200); this.feed('REARMED', 'g'); }, full]);
         acts.push(['KeyH', 'H', 'HANGAR', () => { this.session.fob = f; this.toHangar(); }, true]);
         acts.push(['KeyT', 'T', 'TEAM', () => this.openTeam(), true]);
       }
@@ -3134,10 +3205,10 @@ export class HeliGame {
     this.story = null;
     this.hp = S.hp; this.fuel = S.fuel;
     this.heat = 0; this.overT = 0; this.gunT = 0; this.spinV = 0; this.flashT = 0;
-    this.rockets = S.rockets; this.rocketT = 0; this.rocketRegen = 0; this.rocketSide = 0;
+    this.rockets = S.rockets; this.minesLeft = S.mines || 0; this.rocketT = 0; this.rocketRegen = 0; this.rocketSide = 0;
     this.bombs = S.bombs; this.bombT = 0; this.siren = 0; this.raid = null; this.riders = 0; this.gsRearm(); this.gunCam = false;
     this.shield = 0; this.shieldHit = 0; this.shieldT = 0; this.flaresLeft = S.flares; this.flareRegen = 0; this.beaconsLeft = S.beacons; this.beacons = []; this.mag = []; this.beams = [];
-    this.shots = []; this.tracers = []; this.blasts = []; this.fires = []; this.runners = []; this.splats = [];
+    this.mines = []; this.shots = []; this.tracers = []; this.blasts = []; this.fires = []; this.runners = []; this.splats = [];
     this.boardT = 0; this.unloadT = 0; this.unloading = false; this.boarding = false; this.suppressUsed = false;
     this.doorAim = [[-Math.PI / 2, -0.3], [Math.PI / 2, -0.3]]; this.doorT = [0, 0]; this.doorTgt = [null, null]; this.doorFlash = [0, 0];
     this.shake = 0; this.dmgT = 0; this.camMode = this.camMode || 0; this.camEye = null; this.camLook = null; this.scav = null; this.drop = null; this.crate = null;
@@ -3253,7 +3324,7 @@ export class HeliGame {
     const S = this.S, sp0 = this.spawnFor(S, this.client.pad || 0);
     this.heli = new Chopper();
     this.heli.reset(sp0.pos, sp0.yaw, S);
-    this.hp = S.hp; this.fuel = S.fuel; this.rockets = S.rockets; this.bombs = S.bombs; this.suppressUsed = false; this.camEye = null;
+    this.hp = S.hp; this.fuel = S.fuel; this.rockets = S.rockets; this.minesLeft = S.mines || 0; this.bombs = S.bombs; this.suppressUsed = false; this.camEye = null;
     this.feed('BACK ON THE PAD · GOOD AS NEW', 'g');
   }
   // what a wingman can do where they are: fuel and fix at a base, pick people up off roofs, drop them at a base
@@ -3284,7 +3355,7 @@ export class HeliGame {
       acts.push(['Digit1', '1', this.fuel >= S.fuel - 0.5 ? 'FUEL FULL' : `REFUEL (${pct(this.fuel / S.fuel)})`, () => { this.svc = 'fuel'; }, this.fuel >= S.fuel - 0.5]);
       acts.push(['Digit2', '2', this.hp >= S.hp ? 'NO DAMAGE' : `REPAIR (${pct(this.hp / S.hp)})`, () => { this.svc = 'fix'; }, this.hp >= S.hp]);
       const full = this.rockets >= S.rockets && this.bombs >= S.bombs;
-      acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.gsRearm(); this.rockets = S.rockets; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); this.feed('REARMED', 'g'); }, full]);
+      acts.push(['Digit3', '3', full ? 'ARMED' : 'REARM', () => { this.gsRearm(); this.rockets = S.rockets; this.minesLeft = S.mines || 0; this.bombs = S.bombs; this.beaconsLeft = S.beacons; this.flaresLeft = S.flares; this.heat = 0; this.overT = 0; this.snd.magIn?.(); this.feed('REARMED', 'g'); }, full]);
       acts.push(['KeyH', 'H', 'HANGAR', () => { if (this.riders > 0) { cl.tr.send({ k: 'drop', n: this.riders }); this.riders = 0; } this.toHangar(); }, true]);
     }
     if (!f || f.wrecked) this.svc = null;
@@ -3473,7 +3544,7 @@ export class HeliGame {
       P(L(0.12, 1.25, -0.4), [0, yaw, 0], [0.08, 0.1, m.wpn === 'pistol' ? 0.3 : 0.8], [0.1, 0.1, 0.1], { mat: 'metal' });
       if (m.flashT > 0) { m.flashT -= 1 / 60; P(L(0.12, 1.25, -0.9), [0, 0, 0], [0.2, 0.2, 0.2], [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.8 }); }
     };
-    this.birdParts(P);
+    this.birdParts(P); if (!client) this.minesParts(P);
     if (client || this.client) {
       const cl = this.client;
       for (const e of cl.evs) {
