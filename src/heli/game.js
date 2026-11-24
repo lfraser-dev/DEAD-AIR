@@ -3653,17 +3653,69 @@ export class HeliGame {
     c.fillStyle = vg; c.fillRect(0, 0, W, Hh);
     const col = g.ir ? '#fff' : '#bfffbf';
     c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 2 * u;
-    const cx = W / 2, cy = Hh / 2, b = 60 * u, e = 20 * u;
-    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { c.beginPath(); c.moveTo(cx + sx * b, cy + sy * (b - e)); c.lineTo(cx + sx * b, cy + sy * b); c.lineTo(cx + sx * (b - e), cy + sy * b); c.stroke(); }
-    c.beginPath(); c.moveTo(cx - 30 * u, cy); c.lineTo(cx - 8 * u, cy); c.moveTo(cx + 8 * u, cy); c.lineTo(cx + 30 * u, cy); c.moveTo(cx, cy - 30 * u); c.lineTo(cx, cy - 8 * u); c.moveTo(cx, cy + 8 * u); c.lineTo(cx, cy + 30 * u); c.stroke();
-    // corner frame
-    c.lineWidth = 1.5 * u; c.strokeRect(40 * u, 40 * u, W - 80 * u, Hh - 80 * u);
+    const cx = W / 2, cy = Hh / 2;
     const txt = (s2, x, y, px, al = 'left') => { c.font = `700 ${px * u}px ui-monospace, Menlo, monospace`; c.textAlign = al; c.fillText(s2, x, y); };
-    txt(g.ir ? 'IR  WHT' : 'TV', 60 * u, 70 * u, 18);
-    txt(`ZOOM ${['1×', '2×', '4×', '9×'][g.zoom]}`, 60 * u, 96 * u, 14);
-    txt(`ALT ${Math.round(H.pos[1])} M   ORBIT ${H.orbit ? Math.round(H.orbit.r) : 0} M`, W - 60 * u, 70 * u, 14, 'right');
-    const hit = this.rayHit(this.camEye || H.pos, this.camLook || [0, -1, 0], 4000);
-    txt(`RANGE ${Math.round(hit.t)} M`, W - 60 * u, 96 * u, 14, 'right');
+    const line = (x0, y0, x1, y1) => { c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); };
+    const S = this.S, eye = this.camEye || H.pos, look = this.camLook || [0, -1, 0];
+    const hit = this.rayHit(eye, look, 4000);
+    const L = 40 * u, R0 = W - 40 * u, T0 = 40 * u, B0 = Hh - 40 * u;
+    // ---- the crosshair: long lines out to the frame with a gap round the middle, and mil ticks along them
+    c.lineWidth = 1.6 * u;
+    const gap = 70 * u;
+    line(L, cy, cx - gap, cy); line(cx + gap, cy, R0, cy); line(cx, T0, cx, cy - gap); line(cx, cy + gap, cx, B0);
+    for (let k = 1; k * 22 * u < cx - L; k++) { const d = gap + k * 22 * u, t = (k % 5 ? 5 : 10) * u; if (cx + d < R0) { line(cx + d, cy - t, cx + d, cy + t); line(cx - d, cy - t, cx - d, cy + t); } if (cy + d < B0) { line(cx - t, cy + d, cx + t, cy + d); } if (cy - d > T0) line(cx - t, cy - d, cx + t, cy - d); }
+    // field-of-view brackets that close in as you zoom, and the aim box
+    const fb = [170, 120, 85, 60][g.zoom] * u, fe = 26 * u;
+    c.lineWidth = 2.2 * u;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { c.beginPath(); c.moveTo(cx + sx * fb, cy + sy * (fb - fe)); c.lineTo(cx + sx * fb, cy + sy * fb); c.lineTo(cx + sx * (fb - fe), cy + sy * fb); c.stroke(); }
+    c.lineWidth = 1.6 * u; c.strokeRect(cx - 14 * u, cy - 14 * u, 28 * u, 28 * u);
+    c.beginPath(); c.arc(cx, cy, 2.2 * u, 0, 7); c.fill();
+    // outer frame
+    c.lineWidth = 1.5 * u; c.strokeRect(L, T0, R0 - L, B0 - T0);
+    // ---- top: clock, mode, zoom; the sensor heading scale
+    const now = new Date(), hh = String(now.getUTCHours()).padStart(2, '0'), mm = String(now.getUTCMinutes()).padStart(2, '0'), ss = String(now.getUTCSeconds()).padStart(2, '0');
+    txt(`${hh}:${mm}:${ss}Z`, cx, T0 + 22 * u, 14, 'center');
+    txt(g.ir ? 'IR  WHT' : 'TV', L + 20 * u, T0 + 30 * u, 18);
+    txt(`FOV ${['WIDE', 'MED', 'NAR', 'ULTRA'][g.zoom]}  ${['1×', '2×', '4×', '9×'][g.zoom]}`, L + 20 * u, T0 + 54 * u, 13);
+    const az = ((g.yaw * 180 / Math.PI + 180) % 360 + 360) % 360, el = g.pitch * 180 / Math.PI;
+    const tapeW = 420 * u, ty = T0 + 46 * u;
+    c.save(); c.beginPath(); c.rect(cx - tapeW / 2, ty - 18 * u, tapeW, 40 * u); c.clip();
+    for (let d = Math.floor(az / 5) * 5 - 45; d <= az + 45; d += 5) {
+      const x = cx + (d - az) * tapeW / 90, dd = ((d % 360) + 360) % 360;
+      line(x, ty, x, ty + (dd % 10 ? 5 : 10) * u);
+      if (!(dd % 30)) txt(dd % 90 === 0 ? 'NESW'[dd / 90] : String(dd).padStart(3, '0'), x, ty + 22 * u, 11, 'center');
+    }
+    c.restore();
+    c.beginPath(); c.moveTo(cx, ty - 2 * u); c.lineTo(cx - 6 * u, ty - 12 * u); c.lineTo(cx + 6 * u, ty - 12 * u); c.closePath(); c.fill();
+    // ---- left: the aircraft
+    const kmh = Math.hypot(...H.vel) * 3.6, agl = Math.max(0, H.pos[1] - this.groundAt(H.pos[0], H.pos[2])), hdg = ((-H.heading * 180 / Math.PI) % 360 + 360) % 360;
+    const lx = L + 20 * u; let ly = cy - 70 * u;
+    for (const s2 of [`ALT  ${Math.round(H.pos[1])} M`, `AGL  ${Math.round(agl)} M`, `SPD  ${Math.round(kmh)} KM/H`, `HDG  ${String(Math.round(hdg)).padStart(3, '0')}`, `BANK ${Math.round(H.rollL * 57.3)}°`, H.orbit ? `ORBT ${Math.round(H.orbit.r)} M` : 'ORBT --']) { txt(s2, lx, ly, 13); ly += 22 * u; }
+    // altitude tape down the right side of the left block
+    const ax = L + 175 * u, ah = 240 * u, a0 = cy - ah / 2;
+    line(ax, a0, ax, a0 + ah);
+    for (let k = -5; k <= 5; k++) { const v = Math.round(H.pos[1] / 50) * 50 + k * 50, yy = cy - (v - H.pos[1]) / 50 * ah / 10; if (yy < a0 || yy > a0 + ah) continue; line(ax, yy, ax + (v % 100 ? 6 : 12) * u, yy); if (!(v % 100)) txt(String(v), ax + 16 * u, yy + 4 * u, 10); }
+    c.beginPath(); c.moveTo(ax - 2 * u, cy); c.lineTo(ax - 12 * u, cy - 6 * u); c.lineTo(ax - 12 * u, cy + 6 * u); c.closePath(); c.fill();
+    // ---- right: the target
+    const tx = R0 - 20 * u; let tyy = cy - 70 * u;
+    const grid = (v) => String(Math.round(v + 6000)).padStart(5, '0');
+    const W0 = gunsFor(S)[g.wpn], tof = hit.t / (W0.kind === 'how' ? 420 : 650);
+    for (const s2 of [`AZ   ${String(Math.round(az)).padStart(3, '0')}`, `EL   ${el.toFixed(1)}°`, `RNG  ${Math.round(hit.t)} M`, `TGT  ${grid(hit.p[0])} ${grid(hit.p[2])}`, `ELEV ${Math.round(hit.p[1])} M`, `TOF  ${tof.toFixed(1)} S`]) { txt(s2, tx, tyy, 13, 'right'); tyy += 22 * u; }
+    txt(hit.z ? (hit.z.boss ? '◆ BOSS' : '◆ HOSTILE') : hit.sh ? '◆ STRUCTURE' : '◇ GROUND', tx, tyy + 6 * u, 14, 'right');
+    // laser / gun status
+    const rdy = g.t[g.wpn] <= 0 && (this.gsAmmo ? this.gsAmmo[g.wpn] > 0 : true);
+    txt(`LSR ${(this.t * 2) % 1 < 0.5 ? 'ARM' : '   '}`, cx - 200 * u, B0 - 18 * u, 13, 'center');
+    txt(rdy ? `${W0.n}  RDY` : this.gsAmmo && this.gsAmmo[g.wpn] <= 0 ? `${W0.n}  EMPTY` : `${W0.n}  LOAD`, cx + 200 * u, B0 - 18 * u, 13, 'center');
+    // ---- orbit plot: the circle, where you are on it, and where you're aiming
+    if (H.orbit) {
+      const px = R0 - 90 * u, py = B0 - 150 * u, pr = 55 * u, sc = pr / Math.max(400, H.orbit.r * 1.25), O = H.orbit;
+      c.lineWidth = 1 * u; c.beginPath(); c.arc(px, py, O.r * sc, 0, 7); c.stroke();
+      line(px - 4 * u, py, px + 4 * u, py); line(px, py - 4 * u, px, py + 4 * u);
+      c.beginPath(); c.arc(px + (H.pos[0] - O.x) * sc, py + (H.pos[2] - O.z) * sc, 4 * u, 0, 7); c.fill();
+      const qx = clamp((hit.p[0] - O.x) * sc, -pr, pr), qz = clamp((hit.p[2] - O.z) * sc, -pr, pr);
+      c.strokeRect(px + qx - 4 * u, py + qz - 4 * u, 8 * u, 8 * u);
+      txt('ORBIT', px, py + pr + 18 * u, 10, 'center');
+    }
     // the guns
     gunsFor(this.S).forEach((Wp, i) => {
       const y = Hh - 150 * u + i * 34 * u, x = 60 * u, on = i === g.wpn;
@@ -3675,9 +3727,8 @@ export class HeliGame {
       txt(am > 0 ? String(am) : 'EMPTY', x + 352 * u, y, 13);
       c.globalAlpha = 1;
     });
-    const S = this.S;
     txt(`G  EXIT   ·   I  THERMAL   ·   WHEEL / X  ZOOM${S.gsSens >= 1 ? '   ·   Q  TRACK' : ''}${S.gsAuto >= 1 ? '   ·   W S  HEIGHT   ·   A D  CIRCLE   ·   O  MOVE ORBIT' : ''}`, W / 2, Hh - 22 * u, 12, 'center');
-    if (S.gsAuto >= 2) txt(g.crew ? 'CREW GUNNER · ENGAGING' : 'CREW GUNNER · LOOKING', W - 60 * u, 122 * u, 13, 'right');
+    if (S.gsAuto >= 2) txt(g.crew ? 'CREW GUNNER · ENGAGING' : 'CREW GUNNER · LOOKING', R0 - 20 * u, T0 + 30 * u, 13, 'right');
     // locked on
     if (g.lock) { c.save(); c.setLineDash([6 * u, 4 * u]); c.strokeRect(cx - 34 * u, cy - 34 * u, 68 * u, 68 * u); c.restore(); txt(g.lock.z ? (g.lock.z.boss ? 'TRACK · BOSS' : 'TRACK · TARGET') : 'TRACK · POINT', cx, cy + 56 * u, 13, 'center'); }
     // confirmed kills from the last couple of seconds
@@ -3712,10 +3763,6 @@ export class HeliGame {
       c.strokeStyle = col; c.fillStyle = col;
       txt(`${nearN} HOSTILE IN 30 M`, cx, cy + 80 * u, 12, 'center');
     }
-    // north arrow
-    const na = -g.yaw + Math.PI;
-    c.save(); c.translate(W - 90 * u, Hh - 110 * u); c.rotate(na); c.beginPath(); c.moveTo(0, -24 * u); c.lineTo(8 * u, 8 * u); c.lineTo(-8 * u, 8 * u); c.closePath(); c.fill(); c.restore();
-    txt('N', W - 90 * u, Hh - 150 * u, 12, 'center');
   }
   // THE COCKPIT, drawn over the 3D view. Three kinds:
   //  helicopter: a two-piece windscreen, overhead console, a glass panel (flight display + moving map), standby
