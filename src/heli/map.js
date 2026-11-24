@@ -1152,8 +1152,6 @@ export function buildWorld(seed = 1337) {
     for (let k = 0; k < 8; k++) rot(x - 24 + k * 6.2, y, z + 82, [0, 0, 0], 6, 1.2, 1.4, { color: [0.55, 0.48, 0.34], shape: 0.5 });
     for (const [lx, lz] of [[-F, -F], [F, -F], [F, F], [-F, F]]) { at(x + lx, y, z + lz, 0.4, 9, 0.4, { color: M, mat: 'metal' }); at(x + lx, y + 9, z + lz, 0.9, 0.9, 0.9, { color: [1, 0.55, 0.1], emissive: 1, shape: 'sphere', noShadow: true, solid: false }); }
     burning.push([hx + 10, y + HH, hz]);
-    // whatever came out of the hole walked off east, then turned
-    prints(hx + HW, hz, 0.15, 22);
     open.push([x, z + 75, y]);
     return { x, z, y, roof: main, name: 'HALDEN BIOLAB', vats, hall: [hx, y, hz] };
   }
@@ -1234,9 +1232,7 @@ export function buildWorld(seed = 1337) {
     if (s.kind === 'hospital') { hospital = hospitalSite(s); continue; }
     if (s.kind === 'mast') { masts.push(mastSite(s, masts.length)); continue; }
     if (s.kind === 'lab') { lab = labSite(s); continue; }
-    if (s.kind === 'quarry') { lairs.goliath = quarrySite(s); continue; }
-    if (s.kind === 'chem') { lairs.spitter = chemSite(s); continue; }
-    if (s.kind === 'nest') { lairs.mother = nestSite(s); continue; }
+    if (s.kind === 'quarry' || s.kind === 'chem' || s.kind === 'nest') continue; // the giants' dens are gone
     if (s.kind === 'bridgehead') { ground.town(s.x, s.z, s.r * 0.7, 20); continue; }
     if (s.kind === 'small') { city(s.x, s.z, 230, s.y, 0.45); s.name = (TOWN_NAMES.splice(Math.floor(R() * TOWN_NAMES.length), 1)[0] || 'CITY') + ' CITY'; cities.push(s); continue; }
     const t = s, y = t.y;

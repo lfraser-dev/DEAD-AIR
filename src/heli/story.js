@@ -2,7 +2,7 @@
 // as you play (rescues, crates, masts, the fort...), and pays out when it's done. After the last one it's free flight.
 // The big story jobs (the masts, the fort, St Mary's, the siege, the great horde) are made here when their chapter
 // comes round, and live in the director's list with everything else.
-import { MastEv, FortEv, Evac, Siege, GreatHorde, LabEv, VatEv } from './events.js';
+import { MastEv, FortEv, Evac, Siege, GreatHorde, LabEv, VatEv, CureEv } from './events.js';
 
 export const CHAPTERS = [
   { n: 'FIRST LIGHT', reward: 600,
@@ -34,16 +34,16 @@ export const CHAPTERS = [
     brief: "People are trapped on the bridges, walking for the city when the dead came at them from both ends. Get them off. And thin the dead out while you're at it: the more you kill, the safer the roads.",
     goals: [{ k: 'bridge', n: 2, t: 'SAVE THE PEOPLE ON 2 BRIDGES' }, { k: 'kills', n: 300, t: 'KILL 300 ZOMBIES' }] },
   { n: 'MAYDAY', reward: 4500,
-    brief: "We're not the only ones flying. Other crews heard us and came looking, and some of them didn't make it. Find the crash sites, get the crews out, and bring in supplies for the new arrivals. And pilot... one of the crews saw something walking. Something huge.",
-    goals: [{ k: 'crash', n: 2, t: 'RESCUE 2 DOWNED CREWS' }, { k: 'crate', n: 2, t: 'BRING BACK 2 SUPPLY CRATES' }, { k: 'boss', n: 1, t: 'BRING DOWN A GIANT' }] },
+    brief: "We're not the only ones flying. Other crews heard us and came looking, and some of them didn't make it. Find the crash sites, get the crews out, and bring in supplies for the new arrivals. And pilot... the crews keep talking about black ones that only come out at night. Fast. Eyes like headlights.",
+    goals: [{ k: 'crash', n: 2, t: 'RESCUE 2 DOWNED CREWS' }, { k: 'crate', n: 2, t: 'BRING BACK 2 SUPPLY CRATES' }] },
   { n: 'HALDEN', reward: 6000,
-    brief: "Pilot, the masts keep catching a weak signal from out past the farms: a distress beacon from Halden Biolab. An army research site. If anyone's alive in there, they might know where these giants came from. Go and look. And while you're out there, find where the giants are living: follow the footprints.",
-    goals: [{ k: 'lab', n: 1, t: 'GET THE SURVIVOR OUT OF HALDEN BIOLAB' }, { k: 'lair', n: 3, t: 'FIND THE 3 GIANTS\' DENS (FOLLOW THE FOOTPRINTS)' }] },
-  { n: 'PROJECT ATLAS', reward: 10000,
-    brief: "Dr. Hale here. I'm sorry for all of it. ATLAS grew them in three vats under the containment hall, and the vats are still running: every giant you kill, they'll grow another. Kill all three of the ones out there now, then destroy those vats. Then it's over. Really over.",
-    goals: [{ k: 'boss', n: 3, t: 'KILL GOLIATH, THE SPITTER AND THE BROODMOTHER' }, { k: 'vat', n: 3, t: 'DESTROY THE 3 GROWTH VATS AT HALDEN' }] },
+    brief: "Pilot, the masts keep catching a weak signal from out past the farms: a distress beacon from Halden Biolab. An army research site. The black ones, the stalkers, all came from that direction. If anyone's alive in there, they'll know why. Go and look.",
+    goals: [{ k: 'lab', n: 1, t: 'GET THE SURVIVOR OUT OF HALDEN BIOLAB' }, { k: 'vat', n: 3, t: 'DESTROY THE 3 STALKER VATS IN THE HALL' }] },
+  { n: 'THE CURE', reward: 10000,
+    brief: "Dr. Hale here. With the vats gone I could finally use what was in them: it works backwards, pilot. A cure. The medics have packed it in cold cases at Halden. Fly them out to the towns, one at a time, and land in the middle. The cases warm up fast, so don't hang about.",
+    goals: [{ k: 'cure', n: 3, t: 'FLY 3 CURE CASES FROM HALDEN TO THE TOWNS' }] },
 ];
-export const ENDING = "The vats are glass, pilot. ATLAS is over: no more giants. Dr. Hale's already working on what's in that lab with the medics at the Spire... she thinks there might be a cure in there somewhere. The dead don't own this country any more. We do. Thank you. Keep flying.";
+export const ENDING = "Pilot... it's working. The towns you flew the cure to are calling in: people are standing up out there, confused, cold, but people. Dr. Hale's making more as fast as she can. The dead don't own this country any more. We do. Thank you. Keep flying.";
 const ENDING1 = "That's it. They're broken. The Spire's safe, Fort Calder's running, and the radio hasn't stopped: people coming in from everywhere. You did that. There are always more of them out there, though. Keep flying.";
 
 export class Story {
@@ -55,7 +55,6 @@ export class Story {
   have(g) {
     if (g.k === 'mast') return this.s.masts.length + Math.max(0, 3 - this.nMasts);
     if (g.k === 'fort') return this.s.fort ? 1 : 0;
-    if (g.k === 'lair') return ['goliath', 'spitter', 'mother'].filter((k) => this.save.sites && this.save.sites[k]).length + Math.max(0, 3 - this.nLairs);
     if (g.k === 'vat') return (this.s.vats || []).length + Math.max(0, 3 - this.nVats);
     if (g.k === 'lab') return this.hasLab ? (this.s.prog.lab || 0) : 1;
     if (g.k === 'bridge') return (this.s.prog.bridge || 0) + Math.max(0, 2 - this.nBridges);
@@ -105,11 +104,7 @@ export class Story {
     if (ch.goals.some((g) => g.k === 'outbreak') && !D.list.some((e) => e.kind === 'outbreak')) D.add(game, 'outbreak');
     if (ch.goals.some((g) => g.k === 'bridge') && !D.list.some((e) => e.br)) D.add(game, 'bridge');
     if (ch.goals.some((g) => g.k === 'crash') && !D.list.some((e) => e.crash)) D.add(game, 'crash');
-    if (want('boss') && !D.list.some((e) => e.kind === 'boss')) {
-      // the last chapter wants all three: send the ones you haven't killed yet
-      const done = new Set(this.s.prog.killed || []), left = ['goliath', 'spitter', 'mother'].filter((k) => !done.has(k) && map.lairs && map.lairs[k]);
-      const e = D.add(game, 'boss', left.length && ch.goals.find((g) => g.k === 'boss').n > 1 ? { bk: left[0] } : {}); if (e) e.story = true;
-    }
+    if (want('cure') && map.lab && !has('cure')) D.list.push(new CureEv(map.lab, map.towns));
     if (want('lab') && map.lab && !has('lab')) { const e = new LabEv(map.lab); D.list.push(e); }
     if (want('vat') && map.lab && !has('vats')) { const e = new VatEv(map.lab, this.s.vats || []); D.list.push(e); }
     if (want('evac') && map.hospital && !has('evac')) { const e = new Evac(map.hospital); e.story = true; D.list.push(e); }

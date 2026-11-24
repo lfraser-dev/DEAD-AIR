@@ -2798,7 +2798,7 @@ export class HeliGame {
     const P = (this.client ? this.client.heli : this.heli)?.pos, M = this.map, seen = this.save.sites = this.save.sites || {};
     if (!P) return;
     const sites = [];
-    if (M.lab) sites.push(['lab', M.lab, "That's Halden Biolab. Army research. Look at the hall: something tore its way out through the wall. Something big. And those footprints... pilot, they're the size of cars."]);
+    if (M.lab) sites.push(['lab', M.lab, "That's Halden Biolab. Army research. Look at the hall: something clawed its way out through the wall. And the marks on the fence... those are claw marks, pilot. Like the black ones."]);
     const L = M.lairs || {};
     if (L.goliath) sites.push(['goliath', L.goliath, "Red Rock Quarry. The cars down there have been crushed flat and stacked like firewood. Something's been carrying them here. That's a den, pilot."]);
     if (L.spitter) sites.push(['spitter', L.spitter, "Kessler Chemicals. That green stuff has eaten right through the concrete... and there are tracks going in and out of it. Whatever lives here drinks it."]);

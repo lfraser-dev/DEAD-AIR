@@ -654,7 +654,7 @@ export class LabEv extends Ev {
         this.phase = 'out'; this.done = true;
         g.storyHit?.('lab', 1);
         g.banner('DR. HALE IS SAFE', 'THE SCIENTIST FROM HALDEN BIOLAB', 'good', 4);
-        setTimeout(() => g.radio?.("This is Dr. Ruth Hale. Thank you... I've been on that roof nine days. Listen to me: the giants aren't a mutation. We made them. Project ATLAS. The army wanted soldiers that couldn't die. Find where they went, and I'll tell you how to finish it.", 16), 2500);
+        setTimeout(() => g.radio?.("This is Dr. Ruth Hale. Thank you... I've been on that roof nine days. Listen to me: the black ones, the stalkers, aren't a mutation. We made them. Project ATLAS. The army wanted soldiers that could hunt in the dark. Three vats in the hall are still growing them. Smash them, and I can start on a cure.", 16), 2500);
       }
     }
   }
@@ -687,7 +687,7 @@ export class VatEv extends Ev {
     const st = g.save.story; if (st) { st.vats = st.vats || []; if (!st.vats.includes(v.i)) st.vats.push(v.i); }
     g.storyHit?.('vat', 1);
     const left = this.vats.filter((q) => q.hp > 0).length;
-    g.banner(left ? 'VAT DESTROYED' : 'PROJECT ATLAS IS OVER', left ? `${left} LEFT` : 'NO MORE GIANTS', 'good', 3);
+    g.banner(left ? 'VAT DESTROYED' : 'PROJECT ATLAS IS OVER', left ? `${left} LEFT` : 'NO MORE NEW STALKERS', 'good', 3);
     if (!left) this.done = true;
   }
   update(dt, g) {
@@ -700,6 +700,63 @@ export class VatEv extends Ev {
     return { p: [L.hall[0], L.hall[1] + 30, L.hall[2]], col: '#9aff3a', icon: '☣', text: `GROWTH VATS · ${left.length} LEFT`, sub: `${Math.round(hp * 100)}% · SHOOT THEM, BOMB THEM`, story: true };
   }
   net() { return { k: 'vats', x: this.x, z: this.z, v: this.vats.map((v) => [v.pos[0], v.pos[1], v.pos[2], Math.max(0, Math.round(v.hp))]) }; }
+}
+
+// THE CURE (story): pick up a cold case at Halden, then race it to a town before it warms up and spoils. Land in the
+// middle of town: the cure goes out on the air and every zombie nearby drops.
+export class CureEv extends Ev {
+  constructor(lab, towns) {
+    super('cure', 'THE CURE', lab.x, lab.z + 75); this.lab = lab; this.towns = towns; this.story = true;
+    this.phase = 'pick'; this.t = 0; this.to = null; this.used = []; this.warn = 0;
+  }
+  landed(g, x, z, r) {
+    const H = g.heli; if (!H || H.dead) return false;
+    const agl = H.pos[1] - g.groundAt(H.pos[0], H.pos[2]);
+    return Math.hypot(H.pos[0] - x, H.pos[2] - z) < r && agl < 4 && Math.hypot(...H.vel) < 5;
+  }
+  update(dt, g) {
+    const H = g.heli; if (!H) return;
+    if (this.phase === 'pick') {
+      if (!this.landed(g, this.x, this.z, 22)) return;
+      // the nearest town you haven't cured yet that's a proper flight away
+      const c = this.towns.filter((t) => t.name !== 'NOWHERE' && !this.used.includes(t.name)).map((t) => [t, Math.hypot(t.x - this.x, t.z - this.z)]).filter((q) => q[1] > 700).sort((a, b) => a[1] - b[1]);
+      const pick = c[Math.min(c.length - 1, Math.floor(Math.random() * 3))]; if (!pick) { this.done = true; return; }
+      this.to = pick[0]; this.t = Math.round(pick[1] / 30 + 60); this.phase = 'carry'; this.warn = 0;
+      g.banner('CURE CASE ABOARD', `GET IT TO ${this.to.name} · ${Math.floor(this.t / 60)}:${String(this.t % 60).padStart(2, '0')}`, 'good', 3);
+      g.radio?.(`Case is loaded and it's cold. Get it to ${this.to.name} and land right in the middle of town. Go, go.`, 6);
+      // the dead can smell it: they mob the town before you get there
+      for (let k = 0; k < 45; k++) { const a = Math.random() * 6.28, r = 12 + Math.random() * 50, x = this.to.x + Math.cos(a) * r, z = this.to.z + Math.sin(a) * r; if (!g.horde.blockedAt(x, z)) { const zb = g.horde.spawn(this.mix(g), x, z); zb.ev = this.id; } }
+      return;
+    }
+    if (this.phase === 'carry') {
+      this.t -= dt;
+      if (H.dead) { this.fail(g, 'THE CURE CASE WAS LOST IN THE CRASH'); return; }
+      if (this.t <= 30 && this.warn < 1) { this.warn = 1; g.feed('CURE CASE WARMING UP · 30 SECONDS', 'r'); }
+      if (this.t <= 0) { this.fail(g, 'THE CURE SPOILED · FLY BACK TO HALDEN FOR ANOTHER'); return; }
+      if (this.landed(g, this.to.x, this.to.z, 45)) {
+        // the cure goes out: every zombie close by goes down
+        let n = 0;
+        for (const z of g.horde.list) if (z.alive && Math.hypot(z.x - this.to.x, z.z - this.to.z) < 260) { g.fx?.sparks?.([z.x, z.y + 1.5, z.z], 6, [0.5, 1, 0.6], 3, 1, 0.05, 2); g.horde.damage(z, 1e5, [0, 0.5, 0], 'cure'); n++; }
+        this.used.push(this.to.name); g.storyHit?.('cure', 1); g.addScrap?.(400);
+        g.banner(`${this.to.name} IS CURED`, `${n} OF THEM DROPPED · +⚙400`, 'good', 4); g.snd?.finish?.();
+        this.phase = this.used.length >= 3 ? 'done' : 'pick'; this.to = null;
+        if (this.phase === 'done') this.done = true;
+        else g.radio?.('It worked! They just... dropped. Get back to Halden, the next case is ready.', 6);
+      }
+    }
+  }
+  fail(g, why) { g.banner('CURE LOST', why, 'bad', 3); this.phase = 'pick'; this.to = null; }
+  marker() {
+    if (this.phase === 'carry' && this.to) { const s = Math.max(0, Math.ceil(this.t)); return { p: [this.to.x, (this.to.y || 0) + 30, this.to.z], col: s < 30 ? '#ff5a4a' : '#7dffd0', icon: '❄', text: `CURE → ${this.to.name}`, sub: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · LAND IN THE MIDDLE OF TOWN`, story: true }; }
+    return { p: [this.x, (this.lab.y || 0) + 25, this.z], col: '#7dffd0', icon: '❄', text: 'CURE CASE', sub: `LAND AT HALDEN TO PICK IT UP · ${this.used.length}/3 DONE`, story: true };
+  }
+  parts(P) {
+    if (this.phase !== 'pick') return;
+    const y = this.lab.y || 0;
+    P([this.x, y + 0.5, this.z], [0, 0, 0], [1.2, 0.8, 0.8], [0.85, 0.9, 0.95], { mat: 'paint' });
+    P([this.x, y + 45, this.z], [0, 0, 0], [1.8, 90, 1.8], [0.4, 1, 0.85], { em: 1, shape: 'cylY', alpha: 0.16 });
+  }
+  net() { return { k: 'cure', x: this.x, z: this.z }; }
 }
 
 export class Director {
@@ -784,13 +841,6 @@ export class Director {
       const r = Math.random();
       const has = (k) => this.list.some((e) => e.kind === k);
       this.add(g, r < 0.1 && !this.list.some((e) => e.br) ? 'bridge' : r < 0.2 && !this.list.some((e) => e.crash) ? 'crash' : r < 0.3 && !has('outbreak') ? 'outbreak' : r < 0.4 && !has('convoy') ? 'convoy' : r < 0.78 ? 'rescue' : 'crate');
-    }
-    // a boss every so often (not in the first few minutes)
-    this.bossT = (this.bossT ?? 420) - dt;
-    if (this.bossT <= 0) {
-      const vatsGone = ((g.save.story && g.save.story.vats) || []).length >= 3;
-      this.bossT = (vatsGone ? 1000 : 480) + Math.random() * 300;
-      if (!this.list.some((e) => e.kind === 'boss')) this.add(g, 'boss');
     }
     this.hordeT = (this.hordeT ?? 200) - dt;
     if (this.hordeT <= 0 && this.list.filter((e) => e.kind === 'horde' && !e.story).length < 2) { this.hordeT = 200 + Math.random() * 160; this.add(g, 'horde'); }
