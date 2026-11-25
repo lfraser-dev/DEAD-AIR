@@ -1802,10 +1802,12 @@ export class Chopper {
       if (aoa > A_C * 0.82 && tp > 0) tp = Math.min(tp, (A_C * 0.82 - aoa) * 6);   // stall protection
       tr = (bankT - roll) * 3.0 * auth;
       ty -= beta * 2.2;                                    // auto rudder
+      ty += Math.sin(roll) * 0.45 * clamp(qb, 0, 1.5);   // bank left, turn left: the nose follows the bank
     } else {
       this.stickP *= Math.exp(-3 * dt); this.stickR *= Math.exp(-3 * dt);
       tp = this.stickP * 1.5 * auth;
       tr = this.stickR * 2.8 * auth;
+      ty += Math.sin(roll) * 0.3 * clamp(qb, 0, 1.5);    // the nose follows the bank
     }
     if (onGround) {
       // nose wheel steering; the nose only lifts once it's fast enough to rotate

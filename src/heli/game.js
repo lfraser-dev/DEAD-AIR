@@ -2848,6 +2848,7 @@ export class HeliGame {
       let q = S2 ? S2.q : T.q; if (q[0] * w.q[0] + q[1] * w.q[1] + q[2] * w.q[2] + q[3] * w.q[3] < 0) q = q.map((v) => -v);
       w.q = norm4(w.q.map((v, i) => v + (q[i] - v) * k));
       qmat(w.H, w.q, w.pos);
+      w.kind = f.kind; w.eq = f.eq; w.paint = f.paint;
       w.rpm = T.r; w.rotorA += w.rpm * 26 * dt; w.tailA += w.rpm * 70 * dt; w.fire = T.f && !T.dead; w.dead = T.dead; w.rd = T.rd; w.vs = Math.hypot(T.v[0], T.v[2]); w.v = T.v;
       if (w.fire) {
         f.trT -= dt;
@@ -3571,12 +3572,13 @@ export class HeliGame {
     }
     if (this.shake > 0) { const s = this.shake * 0.5; eye = eye.map((c) => c + (Math.random() - 0.5) * s); }
     this.eye = eye;
-    const roll = this.gunCam ? 0 : this.camMode >= 2 ? -H.rollL : -H.rollL * 0.3;
+    const roll = this.gunCam ? 0 : this.camMode >= 2 ? H.rollL : H.rollL * 0.3;
     const S = this.S, s = this.save;
     const fr = this.coop ? [...this.coop.friends.values()] : [];
     const st = {
       rotorA: H.rotorA, tailA: H.tailA, rpm: H.rpm, vs: Math.hypot(H.vel[0], H.vel[2]), tk: H.stats && H.stats.vtol ? H.tiltK : null, spin: (this.spin = (this.spin || 0) + this.spinV * dt * 40), t: this.t, install: null, riders: this.riders,
       crew: s.team.filter((m) => m.aboard && !m.raid && m.hp > 0).slice(0, 4).map((m) => ({ col: ROLES[m.role].col })),
+      ail: H.stickR || 0, elev: H.stickP || 0, rud: (H.w && H.w[1]) || 0, gearUp: !!(S.plane && (!S.vtol || H.planeMode) && !H.contacts && (this.agl || 0) > 12),
       rockets: this.rockets, rocketMax: S.rockets, bombs: this.bombs, bombMax: S.bombs, boost: H.boost, doorAim: this.doorAim, doorFlash: this.doorFlash, flash: this.flashT,
       shieldK: S.shield ? this.shield / S.shield : 0, shieldHit: this.shieldHit, flares: S.flares ? this.flaresLeft / S.flares : 0,
       tailAim: this.tailAI?.aim, tailFlash: this.tailFlash, magnetOn: this.mag.length > 0,
@@ -3586,10 +3588,129 @@ export class HeliGame {
       podFlash: this.podFlash || 0, podSide: this.podSideNow, snipeAim: this.snipeAim, snipeFlash: this.snipeFlash || 0,
       doorFriend: [0, 1].map((sd) => { const f = fr.find((q) => q.seat === sd); if (f) return { col: f.col }; const rf = s.team.filter((m) => m.aboard && !m.raid && m.hp > 0 && m.role === 'rifleman'); return sd >= (S.gunners || 0) && rf.length > sd - (S.gunners || 0) ? { col: ROLES.rifleman.col } : null; }),
     };
-    const parts = this.mode === 'down' || this.camMode === 3 ? [] : chopperParts(capEq(s.eq, s.heli), paintFor(s), st, H.H, s.heli);
-    this.lastParts = parts;
+    let parts;
+    if (this.mode === 'down') parts = [];
+    else if (this.camMode === 3) {
+      // in the seat: the cockpit around you, plus the outside of your own aircraft (nose, wings, rotor, engines, guns)
+      // so you see the real thing through the glass. The skin you're sitting inside is see-through from in here,
+      // and anything right next to your head (your own seat, your own body) is left out.
+      const outside = chopperParts(capEq(s.eq, s.heli), paintFor(s), { ...st, ail: H.stickR || 0, elev: H.stickP || 0, rud: (H.w && H.w[1]) || 0 }, H.H, s.heli), E = eye, near = this.S.plane ? 1.2 : 1.5;
+      parts = this.cockpitParts(H);
+      for (const p of outside) {
+        if (typeof p.shape === 'string' && (p.shape.startsWith('g_') || p.shape.startsWith('h_'))) continue;   // the skin and glass you sit inside
+        const m = p.model, d = Math.hypot(m[12] - E[0], m[13] - E[1], m[14] - E[2]);
+        if (d < near) continue;
+        parts.push(p);
+      }
+    } else parts = chopperParts(capEq(s.eq, s.heli), paintFor(s), st, H.H, s.heli);
+    this.lastParts = parts; this.camEyeNow = eye;
     this.draw(eye, look, roll, this.gunCam ? [] : parts, this.extraParts(false), this.gunCam ? look.map((q, i) => eye[i] + q * 300) : H.pos, 0.0038);
     if (this.gunCam) this.drawGun();
+  }
+
+  // ---- THE COCKPIT, in 3D: an instrument panel with live dials, a glare shield, the window frames, the stick (and the
+  // collective in a helicopter), side sills and an overhead panel. Built round the pilot's eye for each airframe.
+  cockpitParts(H) {
+    const out = [], id = this.save.heli, kind = this.engineKind(id, H), E = seatFor(id), S = this.S;
+    const L = new Float32Array(16);
+    const P = (p, r, sc, col, o = {}) => { compose(L, p, r, sc); const m = new Float32Array(16); mul(m, H.H, L); out.push({ model: m, scale: sc, color: col, emissive: o.em || 0, shape: o.shape, alpha: o.alpha, mat: o.mat || 'paint' }); };
+    const jet = kind === 'jet', heli = kind === 'heli', two = !jet && (S.seats || 1) > 1 && Math.abs(E[0]) > 0.15;
+    const cx = two ? E[0] * 0.35 : E[0], w = jet ? 0.95 : heli ? (two ? 1.75 : 1.3) : 1.15;
+    const PANEL = [0.16, 0.17, 0.18], FRAME = [0.07, 0.075, 0.08], BLACK = [0.02, 0.02, 0.025], RING = [0.55, 0.56, 0.58], NEEDLE = [0.95, 0.95, 0.9];
+    // the panel: a plane tilted back towards you; u across, v up it, n out of it
+    const a = -0.32, pc = [cx, E[1] - 0.52, E[2] - 0.98], Yp = [0, Math.cos(a), Math.sin(a)], Zp = [0, -Math.sin(a), Math.cos(a)];
+    const at = (u, v, n = 0) => [pc[0] + u, pc[1] + v * Yp[1] + n * Zp[1], pc[2] + v * Yp[2] + n * Zp[2]];
+    P(pc, [a, 0, 0], [w, 0.46, 0.06], PANEL, { mat: 'metal' });
+    P([cx, pc[1] + 0.26, pc[2] - 0.12], [0, 0, 0], [w + 0.1, 0.035, 0.36], BLACK, {});                                 // glare shield
+    P([cx, pc[1] - 0.32, pc[2] + 0.25], [0.5, 0, 0], [Math.min(0.42, w * 0.4), 0.06, 0.62], PANEL, { mat: 'metal' });  // centre console
+    // a dial: face, bezel ring, needle at angle th (0 = straight up, more = clockwise), optional red arc light
+    const dial = (u, v, rad, th, glow) => {
+      P(at(u, v, 0.035), [a, 0, 0], [rad * 2, rad * 2, 0.012], BLACK, { shape: 'cyl' });
+      P(at(u, v, 0.03), [a, 0, 0], [rad * 2.3, rad * 2.3, 0.01], RING, { shape: 'cyl', mat: 'metal' });
+      const l = rad * 0.85; P(at(u + Math.sin(th) * l * 0.5, v + Math.cos(th) * l * 0.5, 0.045), [a, 0, -th], [rad * 0.09, l, 0.004], NEEDLE, { em: 0.7 });
+      P(at(u, v, 0.046), [a, 0, 0], [rad * 0.25, rad * 0.25, 0.006], RING, { shape: 'cyl', mat: 'metal' });
+      if (glow) P(at(u, v - rad * 0.55, 0.044), [a, 0, 0], [rad * 0.5, rad * 0.12, 0.004], glow, { em: 1 });
+    };
+    const sp = Math.hypot(...H.vel), kmh = sp * 3.6, agl = Math.max(0, this.agl || 0), vs = H.vel[1];
+    const fuel = clamp(this.fuel / (S.fuel || 1), 0, 1), hp = clamp(this.hp / (S.hp || 1), 0, 1), rpm = clamp(H.rpm || 0, 0, 1.2);
+    const sweep = (f) => -2.4 + 4.8 * clamp(f, 0, 1);
+    const R = jet ? 0.052 : 0.062, g = jet ? 0.125 : 0.15;
+    // the attitude indicator in the middle: a horizon bar that tilts against your bank and slides with your pitch
+    const roll = H.rollL || 0, pit = clamp((H.pitch || 0) * 0.16, -0.06, 0.06), hc = at(0, 0.03, 0.04);
+    P(hc, [a, 0, 0], [0.19, 0.19, 0.012], [0.12, 0.3, 0.6], { shape: 'cyl', em: 0.15 });
+    P(at(0, 0.03, 0.03), [a, 0, 0], [0.215, 0.215, 0.01], RING, { shape: 'cyl', mat: 'metal' });
+    const hz = (dv) => at(Math.sin(roll) * dv, 0.03 + Math.cos(roll) * dv - pit, 0.046);
+    P(hz(-0.035), [a, 0, -roll], [0.17, 0.07, 0.004], [0.42, 0.26, 0.12], { em: 0.2 });                              // ground half
+    P(hz(0), [a, 0, -roll], [0.18, 0.006, 0.004], NEEDLE, { em: 0.8 });                                              // the horizon
+    P(at(0, 0.03, 0.05), [a, 0, 0], [0.09, 0.008, 0.004], [1, 0.6, 0.1], { em: 1 });                                  // the little aircraft
+    P(at(0, 0.03, 0.05), [a, 0, 0], [0.012, 0.012, 0.004], [1, 0.6, 0.1], { em: 1 });
+    // the dials round it
+    dial(-g, 0.09, R, sweep(kmh / ((S.vmax || 75) * 3.6 * 1.15)));                                                   // airspeed
+    dial(g, 0.09, R, (agl / 300) * 6.283);                                                                        // altimeter: one turn every 300 m
+    dial(-g, -0.1, R, -Math.PI / 2 + clamp(vs / 15, -1, 1) * 2.4);                                      // climb / sink
+    dial(g, -0.1, R, sweep(rpm / 1.1), rpm > 1.05 ? [1, 0.2, 0.1] : null);                                          // rpm / thrust
+    dial(-g * 2, 0.0, R * 0.8, sweep(fuel), fuel < 0.2 ? [1, 0.2, 0.1] : null);                                     // fuel
+    dial(g * 2, 0.0, R * 0.8, sweep(hp), hp < 0.3 ? [1, 0.2, 0.1] : null);                                         // damage
+    // warning and status lights along the top
+    const lit = [[fuel < 0.2, [1, 0.55, 0.1]], [hp < 0.3, [1, 0.15, 0.1]], [!!H.stalled, [1, 0.15, 0.1]], [!!this.lightOn, [0.4, 1, 0.5]], [this.rockets > 0, [0.4, 1, 0.5]], [this.bombs > 0, [0.4, 1, 0.5]]];
+    lit.forEach(([on, col], i) => P(at(-0.15 + i * 0.06, 0.2, 0.04), [a, 0, 0], [0.04, 0.025, 0.01], on ? col : [0.12, 0.12, 0.12], { em: on ? 1 : 0 }));
+    // jets: two glowing screens and a HUD glass on the shield
+    if (jet || (S.flir && w > 1)) for (const u of [-1, 1]) {
+      P(at(u * (w * 0.5 - 0.11), -0.02, 0.036), [a, 0, 0], [0.16, 0.14, 0.006], [0.05, 0.18, 0.08], { em: 0.6 });
+      for (let k = 0; k < 3; k++) P(at(u * (w * 0.5 - 0.11), 0.03 - k * 0.04, 0.04), [a, 0, 0], [0.12 - k * 0.03, 0.006, 0.004], [0.4, 1, 0.5], { em: 1 });
+    }
+    if (jet) { P([cx, pc[1] + 0.43, pc[2] - 0.2], [-0.25, 0, 0], [0.26, 0.2, 0.008], [0.4, 1, 0.5], { alpha: 0.18, em: 0.3 }); for (const d of [-0.04, 0.04]) P([cx + d, pc[1] + 0.43, pc[2] - 0.205], [-0.25, 0, 0], [0.05, 0.004, 0.004], [0.4, 1, 0.5], { em: 1 }); }
+    // the window frames
+    if (heli) {
+      for (const sd of [-1, 1]) {
+        const x = cx + sd * (w * 0.5 + 0.06);
+        P([x, E[1] + 0.12, E[2] - 0.78], [0.42, 0, 0], [0.06, 1.05, 0.07], FRAME, {});                               // front pillars
+        P([cx + sd * (w * 0.5 + 0.12), E[1] + 0.05, E[2] + 0.05], [0, 0, 0], [0.07, 1.4, 0.08], FRAME, {});              // door frames
+        P([cx + sd * (w * 0.5 + 0.1), E[1] - 0.5, E[2] - 0.35], [0, 0, 0], [0.12, 0.08, 1.2], PANEL, { mat: 'metal' }); // sills
+      }
+      if (two) P([cx, E[1] + 0.12, E[2] - 0.8], [0.42, 0, 0], [0.04, 1.0, 0.05], FRAME, {});                          // middle post
+      P([cx, E[1] + 0.6, E[2] - 0.45], [0, 0, 0], [w + 0.3, 0.07, 0.08], FRAME, {});                                // roof beam
+      P([cx, E[1] + 0.62, E[2] + 0.1], [0, 0, 0], [Math.min(0.7, w * 0.45), 0.06, 0.8], PANEL, { mat: 'metal' });    // overhead panel
+      for (let i = 0; i < 6; i++) P([cx - 0.15 + i * 0.06, E[1] + 0.585, E[2] - 0.05 + (i % 2) * 0.2], [0, 0, 0], [0.025, 0.02, 0.025], i % 3 ? [0.3, 0.3, 0.3] : [0.4, 1, 0.5], { em: i % 3 ? 0 : 1 });
+      // the collective by your left hand rises with the power
+      const col = clamp((H.coll ?? 0.5), 0, 1);
+      P([E[0] - 0.36, E[1] - 0.72, E[2] - 0.2], [-0.35 - col * 0.35, 0, 0], [0.05, 0.05, 0.55], FRAME, { mat: 'metal' });
+    } else {
+      const cw = jet ? 0.46 : 0.6;
+      for (const sd of [-1, 1]) {
+        P([cx + sd * cw, E[1] + 0.02, E[2] - 0.72], [0.55, 0, 0], [0.05, 0.7, 0.05], FRAME, {});                          // canopy bow
+        P([cx + sd * (cw + 0.04), E[1] - 0.32, E[2] - 0.1], [0, 0, 0], [0.1, 0.07, 1.3], PANEL, { mat: 'metal' });       // canopy rails
+      }
+      P([cx, E[1] + 0.3, E[2] - 0.55], [0, 0, 0], [cw * 2, 0.045, 0.05], FRAME, {});                                // bow across the top
+      if (!jet) P([cx, E[1] + 0.34, E[2] - 0.1], [0, 0, 0], [cw * 2, 0.04, 0.05], FRAME, {});
+      // throttle quadrant on the left
+      P([E[0] - 0.4, E[1] - 0.6, E[2] - 0.25], [0, 0, 0], [0.12, 0.12, 0.4], PANEL, { mat: 'metal' });
+      P([E[0] - 0.4, E[1] - 0.5, E[2] - 0.25 - clamp(H.thr ?? 0.5, 0, 1) * 0.12], [0, 0, 0], [0.05, 0.12, 0.05], FRAME, { mat: 'metal' });
+    }
+    // a row of switches under the dials, and a little moving-map screen on the console between your knees
+    for (let i = 0; i < 9; i++) { const u0 = -0.24 + i * 0.06; P(at(u0, -0.2, 0.04), [a, 0, 0], [0.02, 0.012, 0.02], RING, { mat: 'metal' }); P(at(u0, -0.188, 0.055), [a + (i % 3 === 0 ? 0.6 : -0.6), 0, 0], [0.008, 0.035, 0.008], NEEDLE, { mat: 'metal' }); }
+    P([cx, pc[1] - 0.22, pc[2] + 0.12], [0.9, 0, 0], [0.2, 0.15, 0.01], [0.03, 0.12, 0.06], { em: 0.7 });
+    P([cx, pc[1] - 0.215, pc[2] + 0.115], [0.9, 0, 0], [0.012, 0.012, 0.012], [1, 0.8, 0.2], { em: 1 });
+    // the cabin round you: side walls up to the window line, a floor, rudder pedals, the seat edges, a compass on the
+    // glare shield, a little mirror up top
+    const WALL = [0.13, 0.14, 0.15], SEAT = [0.1, 0.09, 0.08];
+    for (const sd of [-1, 1]) {
+      P([cx + sd * (w * 0.5 + 0.16), E[1] - 0.62, E[2] - 0.25], [0, 0, sd * 0.08], [0.05, 0.62, 1.9], WALL, { mat: 'metal' });
+      for (let k = 0; k < 4; k++) P([cx + sd * (w * 0.5 + 0.12), E[1] - 0.45 - k * 0.12, E[2] - 0.75 + k * 0.08], [0, 0, 0], [0.02, 0.025, 0.9], FRAME, { mat: 'metal' });
+      P([E[0] + sd * 0.16, E[1] - 1.12, E[2] - 0.98], [0.5, 0, 0], [0.11, 0.03, 0.22], BLACK, {});                    // pedals
+      P([E[0] + sd * 0.3, E[1] - 0.55, E[2] + 0.25], [0, 0, 0], [0.06, 0.3, 0.55], SEAT, {});                        // seat sides
+    }
+    P([cx, E[1] - 1.18, E[2] - 0.6], [0, 0, 0], [w + 0.2, 0.04, 1.6], [0.08, 0.085, 0.09], { mat: 'metal' });           // floor
+    P([cx, pc[1] + 0.3, pc[2] - 0.32], [0, 0, 0], [w + 0.14, 0.025, 0.03], [0.04, 0.04, 0.045], {});                   // shield lip
+    P([cx, pc[1] + 0.33, pc[2] - 0.2], [0, 0, 0], [0.08, 0.06, 0.08], BLACK, { shape: 'sphere' });                      // compass
+    P([cx, pc[1] + 0.335, pc[2] - 0.26], [0, -(H.heading || 0), 0], [0.05, 0.008, 0.01], [1, 0.85, 0.3], { em: 1 });
+    if (!jet) P([cx + 0.25, E[1] + (heli ? 0.52 : 0.3), E[2] - 0.62], [0.3, 0, 0], [0.16, 0.06, 0.012], [0.55, 0.6, 0.65], { mat: 'metal' });   // mirror
+    // the stick between your knees leans with what the aircraft is doing
+    const w0 = H.w || [0, 0, 0], lx = clamp(-(w0[0] || 0) * 0.35, -0.3, 0.3), lz = clamp((w0[2] || 0) * 0.35, -0.3, 0.3);
+    P([E[0], E[1] - 0.95, E[2] - 0.45], [0, 0, 0], [0.14, 0.05, 0.14], BLACK, { shape: 'cylY' });
+    P([E[0] + lz * 0.15, E[1] - 0.72, E[2] - 0.45 + lx * 0.15], [lx, 0, lz], [0.04, 0.45, 0.04], FRAME, { shape: 'cylY', mat: 'metal' });
+    P([E[0] + lz * 0.3, E[1] - 0.5, E[2] - 0.45 + lx * 0.3], [lx, 0, lz], [0.06, 0.1, 0.06], BLACK, { shape: 'cylY' });
+    return out;
   }
 
   // survivors, scenarios, turrets, shots, blasts, tracers
@@ -3783,6 +3904,9 @@ export class HeliGame {
       try {
         const st = { rotorA: w.rotorA, tailA: w.tailA, rpm: w.rpm, vs: w.vs || 0, spin: 0, t: this.t, riders: w.rd || 0, crew: [], rockets: 4, rocketMax: 4, bombs: 2, bombMax: 2, flash: w.fire ? 0.04 : 0, doorAim: [[-1.57, -0.3], [1.57, -0.3]], doorFlash: [0, 0] };
         for (const p of chopperParts(capEq(w.eq || {}, w.kind), w.paint || PAINT.olive, st, w.H, w.kind)) out.push(p);
+        // a friend beacon above them: bigger the further away they are, so you can find them across the sky
+        const E = this.camEyeNow || this.heli.pos, dd = Math.hypot(w.pos[0] - E[0], w.pos[1] - E[1], w.pos[2] - E[2]);
+        if (dd > 60) { const r2 = Math.min(18, dd * 0.006), m = mat4(); m[0] = m[5] = m[10] = r2; m[12] = w.pos[0]; m[13] = w.pos[1] + 4 + r2; m[14] = w.pos[2]; out.push({ model: m, scale: [r2, r2, r2], color: [0.35, 0.85, 1], emissive: 1, shape: 'sphere', mat: 'paint' }); }
       } catch (err) { console.error(err); }
     }
   }
@@ -3802,6 +3926,14 @@ export class HeliGame {
       let x = q.x, y = q.y, off = false;
       if (q.behind) { x = W - x; y = Hh - 40; off = true; }
       if (x < 40 || x > W - 40 || y < 70 || y > Hh - 40) off = true;
+      if (off && mk.friend) {
+        // friends off screen: an arrow on the edge of the screen pointing the way to them
+        const cxs = W / 2, cys = Hh / 2; let dx = q.x - cxs, dy = q.y - cys; if (q.behind) { dx = -dx; dy = Math.abs(dy) + Hh; }
+        const kk = Math.min((W / 2 - 50) / Math.max(1, Math.abs(dx)), (Hh / 2 - 60) / Math.max(1, Math.abs(dy))), ex = cxs + dx * kk, ey = cys + dy * kk, ang = Math.atan2(dy, dx);
+        const d0 = Math.round(Math.hypot(mk.p[0] - from[0], mk.p[2] - from[2]));
+        out.push(`<div class="da-mark" style="left:${ex.toFixed(0)}px;top:${ey.toFixed(0)}px;--c:${mk.col}"><b style="display:inline-block;transform:rotate(${ang.toFixed(2)}rad)">➤</b>${mk.text} · ${d0}M</div>`);
+        continue;
+      }
       if (off) continue;          // off screen: the list and the map show where it is
       const d = Math.round(Math.hypot(mk.p[0] - from[0], mk.p[2] - from[2]));
       if (mk.loot && placed.some(([px, py]) => Math.abs(px - x) < 120 && Math.abs(py - y) < 34)) continue;
@@ -4201,7 +4333,7 @@ export class HeliGame {
   cockpit() {
     // the gunship sensor screen uses the same canvas: leave it alone while that's up
     if (this.gunCam) return;
-    const cv = this.$('pit'), on = this.camMode === 3 && (this.mode === 'fly' || this.mode === 'wing') && !this.heli.dead;
+    const cv = this.$('pit'), on = false;   // the cockpit is real 3D now (cockpitParts): the old flat overlay stays hidden
     cv.classList.toggle('hidden', !on);
     if (!on) return;
     const W = this.r.cssSize ? this.r.cssSize[0] : innerWidth, Hh = this.r.cssSize ? this.r.cssSize[1] : innerHeight;
@@ -4659,7 +4791,7 @@ export class HeliGame {
     if (this.mode !== 'hangar' && this.wxv) fog *= this.wxv.fog;
     const aspect = r.resize();
     const vfov = ((this.fovDeg || 64) * Math.PI) / 180;
-    perspective(this.proj, vfov, aspect, 0.5, this.mode === 'hangar' ? 1100 : 4200);
+    perspective(this.proj, vfov, aspect, this.camMode === 3 && this.mode !== 'hangar' && !this.gunCam ? 0.22 : 0.5, this.mode === 'hangar' ? 1100 : 4200);
     lookDir(this.view, eye, fwd, [0, 1, 0], roll);
     mul(this.vp, this.proj, this.view);
     r.setStudio(null); r.setRoom(null); r.setUnder(false); r.setRim(null);
