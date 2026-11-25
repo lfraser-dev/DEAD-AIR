@@ -226,15 +226,24 @@ export const SLOTS = [
     { n: 'BOUNDING MINES', cost: 2200, d: 'They jump up before they go off: a bigger blast, and 10 mines.' },
     { n: 'FIRE MINES', cost: 4500, d: '14 mines with a napalm charge: a huge blast and the ground burns after.' },
   ] },
-  { id: 'flamer', name: 'FLAMETHROWER', icon: '♨', tiers: [
-    { n: 'NONE', cost: 0, d: 'No fire.' },
-    { n: 'FLAME GUN', cost: 1400, d: 'Hold J: a jet of burning fuel pours down in front of you and sets everything in it alight. Uses fuel. 22 m reach.' },
-    { n: 'NAPALM PROJECTOR', cost: 3600, d: 'A wider, longer jet of sticky napalm: 38 m reach, and they burn for longer.' },
+  { id: 'turret', name: 'CHIN TURRET', icon: '⊕', tiers: [
+    { n: 'FIXED GUN', cost: 0, d: 'The nose gun points where the nose points.' },
+    { n: 'SWIVEL MOUNT', cost: 1100, d: 'The nose gun swings a little on its own onto zombies close to your crosshair.' },
+    { n: 'HELMET-SIGHTED TURRET', cost: 2900, d: 'Like an Apache: the turret follows your eyes and snaps onto zombies well off the crosshair.' },
   ] },
-  { id: 'nades', name: 'CREW GRENADES', icon: '◍', tiers: [
-    { n: 'NONE', cost: 0, d: 'The crew keep their hands inside.' },
-    { n: 'HAND GRENADES', cost: 800, d: 'Fly low over a crowd and the crew lob grenades out of the door on their own, every 4 seconds.' },
-    { n: 'GRENADE BAGS', cost: 2000, d: 'A grenade every 2 seconds, and they throw two at a time.' },
+  { id: 'salvo', name: 'RIPPLE FIRE', icon: '⁂', tiers: [
+    { n: 'SINGLE SHOT', cost: 0, d: 'One rocket per click.' },
+    { n: 'PAIRS', cost: 700, d: 'A rocket from each side at once: 2 per click.' },
+    { n: 'RIPPLE OF FOUR', cost: 1900, d: 'A quick ripple of 4 rockets per click.' },
+  ] },
+  { id: 'ccip', name: 'BOMB SIGHT', icon: '⊙', tiers: [
+    { n: 'GUESSWORK', cost: 0, d: 'Drop and hope.' },
+    { n: 'CCIP BOMB SIGHT', cost: 900, d: 'A circle on the screen shows exactly where your bombs will land if you drop now.' },
+  ] },
+  { id: 'airburst', name: 'CANNON FUZES', icon: '✺', tiers: [
+    { n: 'IMPACT FUZES', cost: 0, d: 'Cannon shells go off when they hit.' },
+    { n: 'PROXIMITY FUZES', cost: 1300, d: 'Cannon shells go off just above the crowd: 50% bigger blast. Autocannons only.' },
+    { n: 'PROGRAMMABLE AIRBURST', cost: 3200, d: 'Every shell is set to burst right over them: double blast, 15% harder. Autocannons only.' },
   ] },
   { id: 'barrel', name: 'GUN BARRELS', icon: '═', tiers: [
     { n: 'STOCK BARRELS', cost: 0, d: 'The barrels it came with.' },
@@ -358,6 +367,12 @@ export const HELIS = {
     hp: 1.6, mass: 1.4, lift: 1.4, speed: 1, agility: 0.75, fuel: 2.2, plane: true, floats: true, stall: 24, vmax: 74, thrust: 7, cap: { cabin: 3, winch: 0 } },
   mosquito: { n: 'MOSQUITO', cost: 10500, d: 'A fast twin-engine fighter-bomber PLANE made of wood: four cannons under the nose, a bomb bay full of fire bombs, and two big propellers. Two seats.', seats: [2],
     hp: 1.0, mass: 1.0, lift: 1.2, speed: 1.2, agility: 1.45, fuel: 1.5, gunMul: 1.3, plane: true, stall: 32, vmax: 108, thrust: 10.5, min: { bombs: 1 }, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, sniper: 0 } },
+  gyro: { n: 'WHIRLYBIRD', cost: 2200, d: 'An AUTOGYRO: a tiny open plane with a free-spinning rotor on top instead of wings, and a pusher propeller behind your seat. It flies at walking pace and lands almost anywhere. One seat.', seats: [1],
+    hp: 0.6, mass: 0.5, lift: 1, speed: 0.8, agility: 1.3, fuel: 1.4, plane: true, stall: 10, vmax: 44, thrust: 4.6, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, armor: 1, bombs: 1, rockets: 1, sniper: 0, pods: 0, racks: 0, hardpoints: 0 } },
+  biplane: { n: 'BARNSTORMER', cost: 3200, d: 'An old BIPLANE: two wings, bracing wires, a round radial engine and an open cockpit. Slow, but it rolls and loops like nothing else and lands in any field. Two seats.', seats: [2],
+    hp: 0.85, mass: 0.7, lift: 1, speed: 0.9, agility: 2.1, fuel: 1.3, plane: true, stall: 18, vmax: 62, thrust: 6.6, cap: { cabin: 0, door: 0, winch: 0, medbay: 0, armor: 2, sniper: 0 } },
+  zeppelin: { n: 'ZEPPELIN', cost: 14000, d: 'An AIRSHIP: a huge silver gas bag with a cabin slung underneath and two door gunners. Slow and enormous, but it hangs in the sky for ages and carries 20 to 40 people.', seats: [20, 26, 32, 40],
+    hp: 2.4, mass: 2.6, lift: 2.7, speed: 0.55, agility: 0.42, fuel: 2.4, min: { door: 2 }, cap: { rotor: 0, skids: 0, engine: 2 } },
   mule: { n: 'MULE', cost: 3500, d: 'A huge twin-rotor transport. Slow and wide, but carries 16 people (32 with the cabin upgrades), flies for ages and can soak up hits.', seats: [16, 24, 32, 40],
     hp: 2.1, mass: 1.75, lift: 1.78, speed: 0.84, agility: 0.52, fuel: 1.9, cap: { gun: 1, rockets: 0, rotor: 1, engine: 3, racks: 0, pods: 0 } },
 };
@@ -372,7 +387,7 @@ Object.assign(HELIS, {
   nightstalker: VAR('stallion', { n: 'NIGHT STALKER', cost: 7800, d: 'Special forces Stallion: night vision, quiet rotors and a thermal camera fitted, door guns, and it barely makes a sound. Zombies hear you from half as far.', hp: 1.6, speed: 1.18, min: { door: 2, nvg: 1, quiet: 2, flir: 1 } }),
   hook: VAR('mule', { n: 'HOOK', cost: 6200, d: 'The super-heavy Mule: a cargo hook and big fuel tanks fitted, up to 48 seats, and even harder to knock down.', seats: [20, 30, 40, 48], hp: 2.4, lift: 1.9, speed: 0.9, min: { winch: 2, fuel: 1 } }),
 });
-const PERKS = { 'warhorse': 'FIELD PATCHING: the crew patch it up in the air, healing back up to half health.', 'hornet': 'TOO SMALL TO GRAB: zombies can barely hang on to the skids.', 'reaper': 'BATHTUB ARMOUR: takes 25% less damage from everything.', 'viper': 'SPRINT: SHIFT boost works even with the stock engine.', 'kestrel': 'THRIFTY: burns 30% less fuel.', 'huey': 'LOUD AND PROUD: the dead come running to that two-blade thump: +25% scrap from kills.', 'seaking': 'BOAT HULL: lands on water.', 'osprey': 'TILTROTOR: hovers like a helicopter, V to fly like a plane.', 'harrier': 'JUMP JET: hovers on its nozzles, V to fly like a fighter.', 'alligator': 'EJECTION SEATS: crash safety fitted, so nobody aboard is lost if you go down.', 'warthog': 'GAU-8: the biggest gun in the game.', 'spectre': 'GUNSHIP: press G above 80 m to circle and fire the side guns.', 'lynx': 'QUICK HANDS: people climb aboard twice as fast.', 'stallion': 'GUN CREW: its door gunners fire 30% faster.', 'bronco': 'LOW AND SLOW: stalls at only 80 km/h, takes off in no distance.', 'falcon': 'SUPERSONIC: afterburner fitted, the fastest thing in the sky.', 'mule': 'THE BUS: up to 40 people.', 'sparrow': 'NIGHT HUNTER: kills at night pay double scrap.', 'medic': 'MEDEVAC: every rescue pays double.', 'gunslinger': 'ARSENAL: door guns, rocket pods and gun pods all fitted.', 'apache': 'HELLFIRE: guided missiles and a laser targeting pod fitted.', 'nightstalker': 'SILENT: zombies can hardly hear it at all.', 'pelican': 'FLYING BOAT: lands and takes off on the river as well as the runway.', 'mosquito': 'BOMB TRUCK: carries twice as many bombs.', 'hook': 'SKY CRANE: cargo hook fitted, and supply crates pay double.' };
+const PERKS = { 'warhorse': 'FIELD PATCHING: the crew patch it up in the air, healing back up to half health.', 'hornet': 'TOO SMALL TO GRAB: zombies can barely hang on to the skids.', 'reaper': 'BATHTUB ARMOUR: takes 25% less damage from everything.', 'viper': 'SPRINT: SHIFT boost works even with the stock engine.', 'kestrel': 'THRIFTY: burns 30% less fuel.', 'huey': 'LOUD AND PROUD: the dead come running to that two-blade thump: +25% scrap from kills.', 'seaking': 'BOAT HULL: lands on water.', 'osprey': 'TILTROTOR: hovers like a helicopter, V to fly like a plane.', 'harrier': 'JUMP JET: hovers on its nozzles, V to fly like a fighter.', 'alligator': 'EJECTION SEATS: crash safety fitted, so nobody aboard is lost if you go down.', 'warthog': 'GAU-8: the biggest gun in the game.', 'spectre': 'GUNSHIP: press G above 80 m to circle and fire the side guns.', 'lynx': 'QUICK HANDS: people climb aboard twice as fast.', 'stallion': 'GUN CREW: its door gunners fire 30% faster.', 'bronco': 'LOW AND SLOW: stalls at only 80 km/h, takes off in no distance.', 'falcon': 'SUPERSONIC: afterburner fitted, the fastest thing in the sky.', 'mule': 'THE BUS: up to 40 people.', 'sparrow': 'NIGHT HUNTER: kills at night pay double scrap.', 'medic': 'MEDEVAC: every rescue pays double.', 'gunslinger': 'ARSENAL: door guns, rocket pods and gun pods all fitted.', 'apache': 'HELLFIRE: guided missiles and a laser targeting pod fitted.', 'nightstalker': 'SILENT: zombies can hardly hear it at all.', 'pelican': 'FLYING BOAT: lands and takes off on the river as well as the runway.', 'mosquito': 'BOMB TRUCK: carries twice as many bombs.', 'gyro': 'CAN\'T STALL: the free-spinning rotor holds it up even at walking pace.', 'biplane': 'STUNT PLANE: rolls and loops twice as fast as anything else.', 'zeppelin': 'LIGHTER THAN AIR: burns a quarter of the fuel, and if it\'s shot down it sinks gently so nobody aboard is lost.', 'hook': 'SKY CRANE: cargo hook fitted, and supply crates pay double.' };
 for (const k of Object.keys(HELIS)) HELIS[k].pk = PERKS[k] || '';
 for (const k of Object.keys(HELIS)) if (!HELIS[k].min || !Object.keys(HELIS[k].min).length) delete HELIS[k].min;
 export const MODEL = (k) => (HELIS[k] && HELIS[k].base) || k;
@@ -540,6 +555,14 @@ export function loadSave() {
     if (back > 0) { s.scrap = (s.scrap || 0) + back; s.refundMsg = (s.refundMsg || 0) + back; }
     s.refundPending = true;
   }
+  // the flamethrower and crew grenades are gone: their scrap comes back
+  if (!s.refund6) {
+    const spent = { flamer: [0, 1400, 5000], nades: [0, 800, 2800] };
+    let back = 0;
+    for (const k of Object.keys(spent)) back += spent[k][Math.min(spent[k].length - 1, (s.own && s.own[k]) || 0)];
+    s.refund6 = true;
+    if (back > 0) { s.scrap = (s.scrap || 0) + back; s.refundMsg = (s.refundMsg || 0) + back; s.refundPending = true; }
+  }
   // the Skycrane was taken out: if you bought it, you get the scrap back
   if (!s.refund4) {
     s.refund4 = true;
@@ -602,7 +625,8 @@ export function statsFor(eq0, kind = 'warhorse') {
   };
   // the extra upgrades
   const br = v('barrel', 3), wh = v('warhead', 3);
-  Object.assign(S, { mines: [0, 6, 10, 14][v('mines', 3)], mineLvl: v('mines', 3), flamer: v('flamer', 2), nades: v('nades', 2), spall: v('spall', 3), glass: v('glass', 2), gyro: v('gyro', 2), scav: v('scav', 3), nets: v('nets', 2), pad: v('pad', 2), belts: v('belts', 2) });
+  Object.assign(S, { mines: [0, 6, 10, 14][v('mines', 3)], mineLvl: v('mines', 3), turret: v('turret', 2), salvo: v('salvo', 2), ccip: v('ccip', 1), spall: v('spall', 3), glass: v('glass', 2), gyro: v('gyro', 2), scav: v('scav', 3), nets: v('nets', 2), pad: v('pad', 2), belts: v('belts', 2) });
+  const ab = v('airburst', 2); if (ab && S.gun.splash) S.gun = { ...S.gun, splash: S.gun.splash * [1, 1.5, 2][ab], dmg: Math.round(S.gun.dmg * (ab === 2 ? 1.15 : 1)) };
   if (br) S.gun = { ...S.gun, dmg: Math.round(S.gun.dmg * [1, 1.1, 1.2, 1.3][br]), spread: S.gun.spread * [1, 1, 0.8, 0.7][br], heat: S.gun.heat * (br === 3 ? 0.8 : 1) };
   if (wh) { S.rocketDmg = Math.round(S.rocketDmg * [1, 1.25, 1.5, 1.8][wh]); S.rocketR *= [1, 1.15, 1.3, 1.4][wh]; }
   S.rockets = Math.round(S.rockets * [1, 1.25, 1.5][v('rkx', 2)]);
@@ -619,6 +643,7 @@ export function statsFor(eq0, kind = 'warhorse') {
   if (S.perk === 'viper' && !S.boost) { S.boost = true; S.boostMul = 1.2; }
   if (S.perk === 'alligator') S.crash = Math.max(S.crash, 2);
   if (S.perk === 'mosquito') S.bombs *= 2;
+  if (S.perk === 'zeppelin') S.crash = Math.max(S.crash, 2);
   // planes: stall speed, top speed, thrust; flaps lower the stall, the afterburner is the boost
   if (HK.plane) {
     Object.assign(S, { plane: true, jet: !!HK.jet, gunship: !!HK.gunship, vtol: !!HK.vtol, stall: HK.stall * [1, 0.8, 0.65][S.flaps], vmax: HK.vmax * [1, 1.08, 1.16, 1.22, 1.32][en] * [1, 1.05, 1.1, 1.16][v('fairing', 3)], thrust: HK.thrust * [1, 1.1, 1.2, 1.25, 1.35][en] });
