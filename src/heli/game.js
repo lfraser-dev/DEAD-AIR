@@ -658,9 +658,17 @@ export class HeliGame {
     }
     const tiers = this.$('tiers'); tiers.replaceChildren(); tiers.classList.toggle('compact', this.sel === 'heli');
     if (this.sel === 'heli') {
-      const grp = (k) => (HELIS[k].plane && !HELIS[k].vtol ? 1 : 0);
-      for (const k of [...HELI_IDS].sort((a, b) => grp(a) - grp(b) || HELIS[a].cost - HELIS[b].cost)) {
-        if (k === HELI_IDS.filter((q) => grp(q) === grp(k)).sort((a, b) => HELIS[a].cost - HELIS[b].cost)[0]) tiers.append(el(`<div class="da-grp">${grp(k) ? '✈ PLANES' : '🚁 HELICOPTERS & VTOL'} · ${HELI_IDS.filter((q) => grp(q) === grp(k)).length}</div>`));
+      // three fold-up sections: helicopters, VTOL, planes. The one your aircraft is in starts open.
+      const grp = (k) => (HELIS[k].vtol ? 1 : HELIS[k].plane ? 2 : 0), GN = ['🚁 HELICOPTERS', '🛫 VTOL', '✈ PLANES'];
+      if (!this.grpOpen) this.grpOpen = [false, false, false];
+      if (this.grpFor !== s.heli) { this.grpFor = s.heli; this.grpOpen[grp(s.heli)] = true; }
+      for (let gi = 0; gi < 3; gi++) {
+        const ids = HELI_IDS.filter((q) => grp(q) === gi), have = ids.filter((q) => s.helis.includes(q)).length, open = this.grpOpen[gi];
+        const hd = el(`<button class="da-grp" type="button"><span>${open ? '▾' : '▸'} ${GN[gi]}</span><small>${have}/${ids.length} OWNED${ids.includes(s.heli) ? ' · FLYING ONE' : ''}</small></button>`);
+        hd.onclick = () => { this.grpOpen[gi] = !this.grpOpen[gi]; this.snd.click?.(1400, 0.2); this.renderHangar(); };
+        tiers.append(hd);
+        if (!open) continue;
+      for (const k of ids) {
         const h = HELIS[k], own = s.helis.includes(k), eq = s.heli === k;
         // one card going wrong must never hide the rest
         let facts = '';
@@ -678,6 +686,7 @@ export class HeliGame {
           saveSave(s); this.renderHangar();
         };
         tiers.append(b);
+      }
       }
     } else if (DECOR[this.sel]) {
       const D = DECOR[this.sel];
