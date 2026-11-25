@@ -17,7 +17,9 @@ export class Music {
     const c = this.snd.ctx;
     if (!c || this.out) return;
     this.out = c.createGain(); this.out.gain.value = 0;
-    this.out.connect(this.snd.master);
+    // the music has its own volume, so it skips the sound-effects volume
+    if (!this.snd.musicBus) { this.snd.musicBus = c.createGain(); this.snd.musicBus.gain.value = 0.5; this.snd.musicBus.connect(c.destination); }
+    this.out.connect(this.snd.musicBus);
     this.pad = c.createGain(); this.pad.gain.value = 1; this.pad.connect(this.out);
     this.hot = c.createGain(); this.hot.gain.value = 0; this.hot.connect(this.out);
     this.next = c.currentTime + 0.1;

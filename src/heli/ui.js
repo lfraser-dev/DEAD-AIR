@@ -66,6 +66,7 @@ export const CSS = `
 .da-tut i { display: block; font: 700 10px var(--font); font-style: normal; opacity: .55; margin-top: 6px; letter-spacing: .2em; }
 .da-tut kbd { display: inline-block; background: #ffcf3a; color: #111; border-radius: 4px; padding: 0 6px; margin: 0 2px; font: 900 14px var(--font); }
 @keyframes daTut { from { opacity: 0; transform: translate(-50%, -8px); } }
+.da-grp { grid-column: 1 / -1; font: 900 12px var(--font); letter-spacing: .16em; color: #ffcf3a; padding: 8px 2px 2px; border-bottom: 1px solid #ffcf3a44; }
 .da-wx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .da-pit { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .da-cross { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border: 2px solid rgba(255,255,255,.85); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }

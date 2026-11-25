@@ -149,6 +149,7 @@ export class Story {
     e.opPaid = true;
     const pay = this.opPay(e.opLvl || o.lvl);
     o.n++; o.best = Math.max(o.best || 0, o.lvl);
+    game.career?.ev(game, 'op');
     game.addScrap(pay);
     game.banner(`SPECIAL OP DONE · ${OPNAME[k]}`, `+⚙${pay.toLocaleString('en-GB')} · ${o.n} OPS DONE`, 'good', 4); game.snd.finish?.();
     if (o.n % 3 === 0) { o.lvl++; setTimeout(() => game.banner(`THREAT LEVEL ${o.lvl}`, 'THE OPS GET BIGGER · AND PAY MORE', 'r', 4), 4500); }
