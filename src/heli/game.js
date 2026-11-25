@@ -97,7 +97,7 @@ const SEATS = { fortress: [0.5, 1.75, -5.8], gyro: [0, 0.6, -1.1], biplane: [0, 
 const seatFor = (id) => SEATS[MODEL(id)] || SEATS.warhorse;
 // which tab of the hangar each upgrade is on
 const TABS = {
-  weapons: ['gun', 'barrel', 'turret', 'airburst', 'mines', 'rockets', 'salvo', 'warhead', 'flechette', 'rkx', 'loader', 'bombs', 'ccip', 'jdam', 'bfuze', 'pods', 'sniper', 'racks', 'hardpoints', 'door', 'belts', 'ammo', 'cooling', 'sight', 'tpod', 'gsgat', 'gsbof', 'gshow', 'gsmag', 'gssens', 'gsauto'],
+  weapons: ['gun', 'barrel', 'turret', 'airburst', 'mines', 'rockets', 'salvo', 'warhead', 'flechette', 'rkx', 'loader', 'bombs', 'jdam', 'bfuze', 'pods', 'sniper', 'racks', 'hardpoints', 'door', 'belts', 'ammo', 'cooling', 'sight', 'tpod', 'gsgat', 'gsbof', 'gshow', 'gsmag', 'gssens', 'gsauto'],
   armour: ['armor', 'frame', 'spall', 'glass', 'crash', 'repair', 'suppress', 'quiet', 'skids', 'flares'],
   flight: ['engine', 'rotor', 'tailr', 'fairing', 'strip', 'gyro', 'fuel', 'bladder', 'hover', 'flaps', 'airbrake', 'reheat', 'gear', 'radio'],
   kit: ['cabin', 'pad', 'winch', 'medbay', 'drops', 'nets', 'scav', 'flir', 'light', 'nvg'],
@@ -436,22 +436,6 @@ export class HeliGame {
       c.beginPath(); c.moveTo(x, y);
       while (y < Hh * 0.55) { x += (rnd() - 0.5) * 60; y += 20 + rnd() * 30; c.lineTo(x, y); }
       c.stroke(); c.shadowBlur = 0;
-    }
-    // CCIP: where the bombs would land if you let go now
-    if (this.mode === 'fly' && this.S.ccip && this.S.bombs && this.bombs > 0 && !this.gunCam && !this.heli.dead && this.agl > 6) {
-      const H = this.heli, p = H.toWorld([0, -1.9, 0.4]), v = [H.vel[0], H.vel[1] - 2, H.vel[2]];
-      let hit = null;
-      for (let t = 0; t < 12; t += 0.05) { v[1] -= 9.8 * 0.05; p[0] += v[0] * 0.05; p[1] += v[1] * 0.05; p[2] += v[2] * 0.05; if (p[1] <= this.groundAt(p[0], p[2])) { hit = p; break; } }
-      if (hit) {
-        const q = this.project(hit);
-        if (!q.behind) {
-          c.strokeStyle = '#7dff9a'; c.fillStyle = '#7dff9a'; c.lineWidth = 2; c.shadowColor = '#000'; c.shadowBlur = 3;
-          c.beginPath(); c.arc(q.x, q.y, 16, 0, 6.28); c.stroke();
-          c.beginPath(); c.arc(q.x, q.y, 2.5, 0, 6.28); c.fill();
-          c.beginPath(); c.moveTo(W / 2, Hh / 2); c.lineTo(q.x, q.y - 16); c.globalAlpha = 0.35; c.stroke(); c.globalAlpha = 1;
-          c.font = '900 11px system-ui'; c.textAlign = 'center'; c.fillText('BOMB', q.x, q.y + 30); c.shadowBlur = 0;
-        }
-      }
     }
     // a bird smeared across the glass: a messy splat, dragged back by the airflow, and a few cracks
     if (this.bsplat && this.bsplat.t > 0) {

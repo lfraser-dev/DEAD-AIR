@@ -236,10 +236,6 @@ export const SLOTS = [
     { n: 'PAIRS', cost: 700, d: 'A rocket from each side at once: 2 per click.' },
     { n: 'RIPPLE OF FOUR', cost: 1900, d: 'A quick ripple of 4 rockets per click.' },
   ] },
-  { id: 'ccip', name: 'BOMB SIGHT', icon: '⊙', tiers: [
-    { n: 'GUESSWORK', cost: 0, d: 'Drop and hope.' },
-    { n: 'CCIP BOMB SIGHT', cost: 900, d: 'A circle on the screen shows exactly where your bombs will land if you drop now.' },
-  ] },
   { id: 'airburst', name: 'CANNON FUZES', icon: '✺', tiers: [
     { n: 'IMPACT FUZES', cost: 0, d: 'Cannon shells go off when they hit.' },
     { n: 'PROXIMITY FUZES', cost: 1300, d: 'Cannon shells go off just above the crowd: 50% bigger blast. Autocannons only.' },
@@ -581,6 +577,8 @@ export function loadSave() {
     if (back > 0) { s.scrap = (s.scrap || 0) + back; s.refundMsg = (s.refundMsg || 0) + back; }
     s.refundPending = true;
   }
+  // the bomb sight is gone too: its scrap comes back
+  if (!s.refund7) { s.refund7 = true; if (s.own && s.own.ccip) { s.scrap = (s.scrap || 0) + 900; s.refundMsg = (s.refundMsg || 0) + 900; s.refundPending = true; } }
   // the flamethrower and crew grenades are gone: their scrap comes back
   if (!s.refund6) {
     const spent = { flamer: [0, 1400, 5000], nades: [0, 800, 2800] };
@@ -651,7 +649,7 @@ export function statsFor(eq0, kind = 'warhorse') {
   };
   // the extra upgrades
   const br = v('barrel', 3), wh = v('warhead', 3);
-  Object.assign(S, { mines: [0, 6, 10, 14][v('mines', 3)], mineLvl: v('mines', 3), turret: v('turret', 2), salvo: v('salvo', 2), ccip: v('ccip', 1), jdam: v('jdam', 2), bfuze: v('bfuze', 1), flech: v('flechette', 1), loader: v('loader', 2), spall: v('spall', 3), glass: v('glass', 2), gyro: v('gyro', 2), scav: v('scav', 3), nets: v('nets', 2), pad: v('pad', 2), belts: v('belts', 2) });
+  Object.assign(S, { mines: [0, 6, 10, 14][v('mines', 3)], mineLvl: v('mines', 3), turret: v('turret', 2), salvo: v('salvo', 2), jdam: v('jdam', 2), bfuze: v('bfuze', 1), flech: v('flechette', 1), loader: v('loader', 2), spall: v('spall', 3), glass: v('glass', 2), gyro: v('gyro', 2), scav: v('scav', 3), nets: v('nets', 2), pad: v('pad', 2), belts: v('belts', 2) });
   const ab = v('airburst', 2); if (ab && S.gun.splash) S.gun = { ...S.gun, splash: S.gun.splash * [1, 1.5, 2][ab], dmg: Math.round(S.gun.dmg * (ab === 2 ? 1.15 : 1)) };
   if (br) S.gun = { ...S.gun, dmg: Math.round(S.gun.dmg * [1, 1.1, 1.2, 1.3][br]), spread: S.gun.spread * [1, 1, 0.8, 0.7][br], heat: S.gun.heat * (br === 3 ? 0.8 : 1) };
   if (wh) { S.rocketDmg = Math.round(S.rocketDmg * [1, 1.25, 1.5, 1.8][wh]); S.rocketR *= [1, 1.15, 1.3, 1.4][wh]; }
