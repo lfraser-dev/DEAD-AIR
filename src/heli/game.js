@@ -64,6 +64,15 @@ function paintFor(s) {
   const p = PAINT[s.paint] || PAINT.olive, tip = TIPS.find((q) => q.id === s.tips), trim = TRIMS.find((q) => q.id === s.trimCol), tint = TINTS.find((q) => q.id === s.tint);
   return { ...p, glass: tint && tint.col ? tint.col : null, trim: trim && trim.col ? trim.col : p.trim, tips: tip ? tip.col : null, tips2: tip ? tip.col2 : null, camo: (CAMO[s.camo] || {}).k || 0, nose: s.nose && s.nose !== 'none' ? s.nose : p.shark ? 'shark' : 'none', tailArt: s.tailArt || 'none', num: s.num };
 }
+// quick callouts: text, colour, icon, at your crosshair (instead of where you are)
+const CALLS = [['NEED HELP!', 'r', '⚠'], ['FOLLOW ME', 'g', '➜'], ['ZOMBIES HERE', 'r', '☠', true], ['LAND HERE', 'y', '⬇', true], ['GOING HOME', 'y', '⌂'], ['NICE ONE!', 'g', '★']];
+// the daily challenge: one of these each day, at one of three sizes
+const DAILY = [
+  { k: 'kills', n: [250, 400, 600], t: 'KILL {n} ZOMBIES IN ONE FLIGHT' },
+  { k: 'rescued', n: [12, 20, 32], t: 'RESCUE {n} PEOPLE IN ONE FLIGHT' },
+  { k: 'crates', n: [2, 3, 5], t: 'DELIVER {n} SUPPLY CRATES IN ONE FLIGHT' },
+  { k: 'night', n: [80, 160, 260], t: 'KILL {n} ZOMBIES AT NIGHT IN ONE FLIGHT' },
+];
 // weather: fog multiplier, cloud cover, rain, wind (m/s), storm
 const WX = {
   clear: { fog: 1, cloud: 0, rain: 0, wind: 2, storm: 0 },
@@ -757,6 +766,7 @@ export class HeliGame {
     opt('MUSIC', s.music === false ? 'OFF' : ['QUIET', 'MEDIUM', 'LOUD'][Math.round((s.musicVol ?? 0.5) * 2 - 0.5) || 0] || 'MEDIUM', () => { if (s.music === false) { s.music = true; s.musicVol = 0.25; } else if ((s.musicVol ?? 0.5) < 0.4) s.musicVol = 0.5; else if (s.musicVol < 0.9) s.musicVol = 1; else s.music = false; });
     opt('SOUND FX', ['OFF', 'QUIET', 'MEDIUM', 'LOUD'][s.sfx === false ? 0 : s.sfxVol == null ? 2 : s.sfxVol < 0.4 ? 1 : s.sfxVol < 0.9 ? 2 : 3], () => { if (s.sfx === false) { s.sfx = true; s.sfxVol = 0.3; } else if ((s.sfxVol ?? 0.6) < 0.4) s.sfxVol = 0.6; else if ((s.sfxVol ?? 0.6) < 0.9) s.sfxVol = 1; else s.sfx = false; this.applySfx(); });
     opt('CONTROLS', 'CHANGE KEYS ⌨', () => this.openKeys());
+    { const D = this.daily(); opt('DAILY CHALLENGE', D.done ? 'DONE ✓' : `${D.best}/${D.n}`, () => this.openDaily()); }
     opt('PILOT RECORD', `${RANKS[this.career.rank].n} · 🏅${this.career.c.medals.length}/${MEDALS.length}`, () => this.openCareer());
     opt('SAVE BACKUP', 'OPEN 💾', () => this.openBackup());
     opt('TUTORIAL', this.tutAsk ? 'ON NEXT FLIGHT ✔' : 'PLAY IT AGAIN', () => { this.tutAsk = !this.tutAsk; });
@@ -815,6 +825,7 @@ export class HeliGame {
     const roofs = this.director.list.filter((e) => e.kind === 'rescue').map((e) => e.roof);
     this.horde.update(dt, { heli: this.heli, heliAlt: 1000, noHeap: true, roofs, others: this.wingSpots(), noise: 0, lure: this.piper || this.beaconLure(), lureR: this.piper ? 320 : 260 });
     this.hordeEvents();
+    this.safeTick(dt);
     this.fx.update(dt);
   }
 
@@ -840,6 +851,7 @@ export class HeliGame {
       for (const f of this.fobs) { f.hp = f.max; f.wrecked = false; }
       { const sp0 = this.spawnFor(S); this.heli.reset(sp0.pos, sp0.yaw, S); }
       this.tod = 0.3;
+      { const D = this.daily(); if (!D.done && D.wx !== 'clear') { this.wx = { kind: D.wx, t: 480, dir: Math.random() * 6.28 }; } this.feed(`DAILY CHALLENGE: ${D.text}${D.done ? ' · DONE ✓' : ` · ⚙${D.pay.toLocaleString('en-GB')}`}`, D.done ? 'g' : 'y'); }
       this.director.start(this);
       this.story = new Story(this.save, this.map);
       this.syncVats();
@@ -935,6 +947,7 @@ export class HeliGame {
   // ---------------------------------------------------------------- the frame
   frame(dt) {
     this.t += dt;
+    this.callTick();
     if (this.mode === 'hangar') this.hangarFrame(dt);
     else if (this.mode === 'fly' || this.mode === 'pause' || this.mode === 'down') this.flyFrame(this.mode === 'pause' && !this.coop ? 0 : dt);
     else if (this.mode === 'gunner' || this.mode === 'gpause') this.gunnerFrame(dt);
@@ -947,7 +960,7 @@ export class HeliGame {
     if (this.mode === 'fly' || this.mode === 'wing' || this.mode === 'gunner') { this.bossFeel(dt); this.siteTick(dt); }
     if (this.mode === 'wing' || this.mode === 'gunner') { this.wxTick(dt); this.applyDay(); }
     if (this.mode === 'fly' || this.mode === 'wing' || this.mode === 'gunner') this.birdTick(dt);
-    if (this.mode === 'fly') this.career.tick(this, dt);
+    if (this.mode === 'fly') { this.career.tick(this, dt); this.dailyTick(dt); this.safeTick(dt); }
     if (this.bsplat) this.bsplat.t -= dt; if (this.zapT > 0) this.zapT -= dt;
     this.wxDraw();
     this.musicTick(dt);
@@ -2271,7 +2284,7 @@ export class HeliGame {
         continue;
       }
       // home: hand them over
-      if (crate && e.dust) { e.dust = null; e.done = true; this.addScrap(this.cratePay()); this.career.ev(this, 'crate'); this.save.events = (this.save.events || 0) + 1; this.banner('CRATE DELIVERED BY THE DUSTOFF', `+${this.cratePay()} SCRAP`, 'good', 2.2); this.storyHit('crate', 1); }
+      if (crate && e.dust) { e.dust = null; e.done = true; this.addScrap(this.cratePay()); this.career.ev(this, 'crate'); if (this.run) this.run.crates = (this.run.crates || 0) + 1; this.save.events = (this.save.events || 0) + 1; this.banner('CRATE DELIVERED BY THE DUSTOFF', `+${this.cratePay()} SCRAP`, 'good', 2.2); this.storyHit('crate', 1); }
       if (d.riders) {
         const n = d.riders; d.riders = 0;
         if (this.run) this.run.rescued += n; this.save.rescued += n; this.addScrap(this.rescuePay(n)); this.storyHit('rescued', n);
@@ -2304,7 +2317,7 @@ export class HeliGame {
   deliverCrate() {
     const c = this.crate;
     c.carried = false; c.done = true; this.crate = null;
-    this.addScrap(this.cratePay()); this.career.ev(this, 'crate'); this.fuelUp(this.S.fuel);
+    this.addScrap(this.cratePay()); this.career.ev(this, 'crate'); if (this.run) this.run.crates = (this.run.crates || 0) + 1; this.fuelUp(this.S.fuel);
     this.save.events = (this.save.events || 0) + 1;
     this.banner('CRATE DELIVERED', `+${this.cratePay()} SCRAP · FUEL TOPPED UP`, 'good', 2.2); this.snd.finish?.();
     this.storyHit('crate', 1);
@@ -2330,7 +2343,7 @@ export class HeliGame {
     const H = this.heli, run = this.run;
     for (const ev of this.horde.events) {
       if (ev.type === 'kill') {
-        run.kills++; this.career.ev(this, 'kill');
+        run.kills++; this.career.ev(this, 'kill'); if ((this.night || 0) > 0.5) run.nightKills = (run.nightKills || 0) + 1;
         this.storyHit('kills', 1);
         if (this.gunCam) (this.gsSplash = this.gsSplash || []).push(this.t);
         if (ev.z.type === 'bloater') this.burst([ev.z.x, ev.z.y + 1.1, ev.z.z]);
@@ -2593,6 +2606,104 @@ export class HeliGame {
     if (!save || typeof save !== 'object' || typeof save.scrap !== 'number' || (save.helis && !Array.isArray(save.helis))) throw new Error("That save doesn't look right");
     return save;
   }
+  // ---- QUICK CALLOUTS: press P, then a number. Everyone flying with you sees it in the feed and as a marker in the
+  // world (and an arrow at the edge of the screen if it's off to one side).
+  callTick() {
+    if (!['fly', 'wing', 'gunner'].includes(this.mode) || this.panel) { if (this.callMenu) { this.callMenu = 0; this.drawCallMenu(); } return; }
+    if (this.hit('KeyP')) { this.callMenu = this.callMenu ? 0 : this.t + 5; this.drawCallMenu(); this.hitKeys.delete('KeyP'); }
+    if (!this.callMenu) return;
+    if (this.t > this.callMenu) { this.callMenu = 0; this.drawCallMenu(); return; }
+    for (let i = 0; i < CALLS.length; i++) if (this.hitKeys.has('Digit' + (i + 1)) || this.hitKeys.has('Numpad' + (i + 1))) {
+      this.hitKeys.delete('Digit' + (i + 1)); this.hitKeys.delete('Numpad' + (i + 1));
+      this.callMenu = 0; this.drawCallMenu(); this.sendCall(i); return;
+    }
+  }
+  drawCallMenu() {
+    let el2 = this.$('calls');
+    if (!el2) { el2 = document.createElement('div'); el2.dataset.da = 'calls'; el2.className = 'da-calls'; this.root.append(el2); }
+    el2.classList.toggle('hidden', !this.callMenu);
+    if (this.callMenu) el2.innerHTML = `<b>📣 CALL OUT</b>${CALLS.map((c, i) => `<div><kbd>${i + 1}</kbd> ${c[2]} ${c[0]}</div>`).join('')}<small>P TO CLOSE</small>`;
+  }
+  myName() { return (this.client && this.client.name) || (this.coop && this.coop.info && this.coop.info.host) || this.save.name || 'YOU'; }
+  sendCall(i) {
+    const H = this.client ? this.client.heli || this.heli : this.heli;
+    let p = H ? H.pos.slice() : [0, 0, 0];
+    if (CALLS[i][3] && this.mode === 'fly') { try { p = this.aimPoint().p.slice(); } catch { /* keep */ } }
+    p = p.map((v) => Math.round(v * 10) / 10);
+    const me = this.myName();
+    this.gotCall(me, i, p, null, true);
+    if (this.coop) for (const id of this.coop.friends.keys()) this.coop.tr.sendTo(id, { k: 'co', n: me, c: i, p });
+    else if (this.client && this.client.tr) this.client.tr.send({ k: 'co', c: i, p });
+  }
+  gotCall(name, i, p, fromId, mine) {
+    const C = CALLS[i | 0]; if (!C || !Array.isArray(p) || p.length !== 3 || !p.every(Number.isFinite)) return;
+    // the host passes it on to everyone else
+    if (this.coop && fromId != null) for (const id of this.coop.friends.keys()) if (id !== fromId) this.coop.tr.sendTo(id, { k: 'co', n: name, c: i, p });
+    this.calls = (this.calls || []).filter((c) => c.t > this.t && c.name !== name);
+    this.calls.push({ name, i, p, t: this.t + 15 });
+    this.feed(`📣 ${name}: ${C[0]}`, C[1]);
+    if (!mine) { this.snd.tone?.(880, 1320, 0.12, 0.08, 'triangle'); setTimeout(() => this.snd.tone?.(1320, 1320, 0.1, 0.06, 'triangle'), 130); }
+  }
+  callMarks() {
+    const out = [];
+    for (const c of this.calls || []) if (c.t > this.t) out.push({ p: [c.p[0], c.p[1] + 6, c.p[2]], col: { r: '#ff5a4a', g: '#7dff9a', y: '#ffd23a' }[CALLS[c.i][1]] || '#fff', icon: CALLS[c.i][2], text: `${c.name}: ${CALLS[c.i][0]}`, sub: '', friend: true });
+    return out;
+  }
+  // ---- DAILY CHALLENGE: one job a day, the same for everyone (it's picked from the date), with its own weather
+  daily() {
+    const d = new Date(), day = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    let h = 2166136261; for (const ch of day) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+    const T = DAILY[h % DAILY.length], lvl = (h >>> 8) % 3, n = T.n[lvl], wx = ['clear', 'rain', 'fog', 'storm', 'cloudy', 'clear'][(h >>> 12) % 6];
+    const sv = this.save.daily && this.save.daily.day === day ? this.save.daily : (this.save.daily = { day, best: 0, done: false });
+    return { day, k: T.k, n, lvl, wx, text: T.t.replace('{n}', n), pay: 1500 + lvl * 1000, xp: 400 + lvl * 200, best: sv.best, done: sv.done, sv };
+  }
+  dailyTick(dt) {
+    this.dailyT = (this.dailyT || 0) - dt; if (this.dailyT > 0 || !this.run) return;
+    this.dailyT = 1;
+    const D = this.daily(); if (D.done) return;
+    const have = { kills: this.run.kills || 0, rescued: this.run.rescued || 0, crates: this.run.crates || 0, night: this.run.nightKills || 0 }[D.k] || 0;
+    if (have > D.sv.best) D.sv.best = have;
+    if (have >= D.n) {
+      D.sv.done = true; D.sv.best = D.n;
+      this.addScrap(D.pay); this.career.addXP(this, D.xp);
+      this.banner('DAILY CHALLENGE DONE!', `${D.text} · +⚙${D.pay.toLocaleString('en-GB')} · A NEW ONE TOMORROW`, 'good', 5); this.snd.finish?.();
+      saveSave(this.save);
+    } else if (!this.dailyHalf && have >= D.n / 2) { this.dailyHalf = true; this.feed(`DAILY: HALFWAY · ${have}/${D.n}`, 'y'); }
+  }
+  openDaily() {
+    const panel = this.$('panel'), D = this.daily(); this.panel = 'daily'; if (this.locked) this.unlockSoft();
+    const end = new Date(); end.setHours(24, 0, 0, 0); const left = end - Date.now(), hh = Math.floor(left / 3600000), mm = Math.floor((left % 3600000) / 60000);
+    panel.innerHTML = `<button class="alt close" data-x="close" type="button">CLOSE ✕</button><h2>DAILY CHALLENGE</h2>
+      <p style="font:900 18px var(--font);color:#ffcf3a;letter-spacing:.06em">${D.text}</p>
+      <p>Everyone gets the same challenge today, so race your friends. ${D.wx !== 'clear' ? `Today's weather: <b>${D.wx.toUpperCase()}</b>. ` : ''}It's all in one flight: land at the Spire and you start again.</p>
+      <p>REWARD: <b>⚙${D.pay.toLocaleString('en-GB')}</b> and <b>${D.xp} XP</b></p>
+      <p>${D.done ? '<b style="color:#7dff9a">DONE ✓ COME BACK TOMORROW</b>' : `YOUR BEST TODAY: <b>${D.best}/${D.n}</b>`}</p>
+      <small>A NEW CHALLENGE IN ${hh}H ${mm}M</small>`;
+    panel.querySelector('[data-x=close]').onclick = () => this.closePanel();
+    panel.classList.remove('hidden');
+  }
+  // ---- SAFE ZONES: round the Spire, and inside Fort Calder once it's yours, no zombies spawn, and any that wander in
+  // get shot by the base's guns
+  safeZones() {
+    const out = [], sp = this.map.spire;
+    if (sp && !sp.wrecked) out.push({ x: sp.pos[0], z: sp.pos[2] - 22, r: 72, fob: sp, round: true });
+    for (const f of this.fobs) if (f.id === 'fort' && !f.locked && !f.wrecked && f.r) out.push({ x: f.x, z: f.z, r: f.r - 2, fob: f });
+    return out;
+  }
+  inSafe(x, z) { for (const q of this.safeZones()) if (q.round ? Math.hypot(x - q.x, z - q.z) < q.r : Math.abs(x - q.x) < q.r && Math.abs(z - q.z) < q.r) return q; return null; }
+  safeTick(dt) {
+    this.horde.noSpawn = (x, z) => !!this.inSafe(x, z);
+    this.safeT = (this.safeT || 0) - dt; if (this.safeT > 0) return;
+    this.safeT = 0.35;
+    let shots = 0;
+    for (const z of this.horde.list) {
+      if (!z.alive || z.ev || z.st === 'grab' || shots > 6) continue;
+      const q = this.inSafe(z.x, z.z); if (!q) continue;
+      const tu = (q.fob.turrets || []).reduce((b, t) => (!b || Math.hypot(t.pos[0] - z.x, t.pos[2] - z.z) < Math.hypot(b.pos[0] - z.x, b.pos[2] - z.z) ? t : b), null);
+      if (tu) { const d = [z.x - tu.pos[0], z.y + 1 - tu.pos[1], z.z - tu.pos[2]], L = Math.hypot(...d); this.tracer(tu.pos.slice(), d.map((c) => c / L), L, -1); tu.flash = 0.05; tu.yaw = Math.atan2(-d[0], -d[2]); }
+      this.horde.damage(z, 1e4, [0, 2, 0], 'turret'); shots++;
+    }
+  }
   allOwned() { return HELI_IDS.every((k) => (this.save.helis || []).includes(k)); }
   // ---- sound effects volume (the music has its own)
   applySfx() {
@@ -2757,6 +2868,7 @@ export class HeliGame {
       else if (m.k === 'hi') this.friendHello(f, m);
       else if (m.k === 'wp' && f.pilot) this.wingPose(f, m);
       else if (m.k === 'hits' && f.pilot) this.wingHits(f, m);
+      else if (m.k === 'co') this.gotCall(f.name, m.c, m.p, f.id);
       else if (m.k === 'kit' && f.pilot) {
         f.kind = HELIS[m.kind] ? m.kind : f.kind; f.eq = m.eq && typeof m.eq === 'object' ? m.eq : f.eq;
         f.paint = { ...(PAINT[m.paint] || PAINT.olive), ...(m.dc || {}), camo: (CAMO[m.dc && m.dc.camo] || {}).k || 0 };
@@ -2886,7 +2998,7 @@ export class HeliGame {
   }
   // name tags for everyone else online: where your friends' helicopters are (and the host's, if you joined)
   friendMarks() {
-    const out = [], col = '#5ad8ff';
+    const out = this.callMarks(), col = '#5ad8ff';
     const tag = (pos, name, sub) => out.push({ p: [pos[0], pos[1] + 5, pos[2]], col, icon: '🚁', text: name, sub, friend: true });
     if (this.coop) for (const f of this.coop.friends.values()) { if (f.pilot && f.wh && !f.wh.dead) tag(f.wh.pos, f.name, `${f.kills} KILLS`); }
     const cl = this.client;
@@ -3125,7 +3237,7 @@ export class HeliGame {
   }
   async joinCoop(code, name, role, onStatus) {
     const tr = makeTransport();
-    const cl = this.client = { tr, seat: 0, heli: null, zs: new Map(), evs: [], shots: [], aim: [0, -0.3], sendT: 0, fire: false, kills: 0, hs: null, role, wings: [], hz: new Map(), hbl: [] };
+    const cl = this.client = { tr, name: String(name || "FRIEND").slice(0, 16).toUpperCase(), seat: 0, heli: null, zs: new Map(), evs: [], shots: [], aim: [0, -0.3], sendT: 0, fire: false, kills: 0, hs: null, role, wings: [], hz: new Map(), hbl: [] };
     tr.onData = (m) => this.clientData(m);
     tr.onLeave = () => { if (this.client !== cl) return; this.stopCoop(); this.close(); setTimeout(() => alert('The server closed (the host left).'), 50); };
     const myId = await tr.connect(code, onStatus);
@@ -3135,6 +3247,7 @@ export class HeliGame {
     onStatus?.('WAITING FOR THE HOST…');
   }
   clientData(m) {
+    if (m && m.k === 'co') { this.gotCall(String(m.n || 'FRIEND').slice(0, 16), m.c, m.p); return; }
     const cl = this.client; if (!cl || !m) return;
     if (m.k === 'full') { const e = this.$('join').querySelector('[data-x=msg]'); if (e) e.textContent = 'THAT SERVER IS FULL.'; return; }
     if (m.k === 'kicked') { this.stopCoop(); this.close(); setTimeout(() => alert('The host removed you from the server.'), 50); return; }

@@ -971,14 +971,54 @@ export function buildWorld(seed = 1337) {
       add([hx0, y - 0.5, hz1 - 1], [hx1, y + HH, hz1], { color: M, tex: 5, mat: 'metal' });
       const rf = add([hx0 - 0.5, y + HH, hz0 - 0.5], [hx1 + 0.5, y + HH + 1.2, hz1 + 0.5], { color: [0.38, 0.4, 0.43], tex: 5, mat: 'metal' });
       roofs.push({ box: rf, top: y + HH + 1.2, x: hx, z: (hz0 + hz1) / 2, sx: hx1 - hx0, sz: hz1 - hz0, h: HH + 1.2, base: y, door: [hx, y, hz0], stair: [hx0 + 4, y + HH + 1, hz1 - 4] });
+      // a curved roof on top (made of strips), a big number, sliding doors pushed open
+      for (let k = 0; k < 7; k++) { const a = -0.9 + (k / 6) * 1.8, rr = 40; rot(hx + Math.sin(a) * rr * 0.98, y + HH + 1.2 + (Math.cos(a) - Math.cos(0.9)) * 9, (hz0 + hz1) / 2, [0, 0, -a], 12.2, 0.6, hz1 - hz0 + 1, { color: [0.42, 0.44, 0.47], tex: 5, mat: 'metal', solid: false }); }
+      for (const sx of [-1, 1]) add([hx + sx * 30 - 6, y - 0.5, hz0 - 1.4], [hx + sx * 30 + 6, y + HH - 1, hz0 - 0.4], { color: [0.55, 0.58, 0.6], tex: 5, mat: 'metal' });
+      at(hx, y + HH - 4, hz0 - 0.45, 8, 3, 0.1, { color: [0.95, 0.75, 0.15], solid: false, noShadow: true });
       for (const lx of [hx - 20, hx, hx + 20]) at(lx, y + HH - 0.6, (hz0 + hz1) / 2, 0.6, 0.3, 30, { color: [1, 0.96, 0.85], emissive: 1, noShadow: true, solid: false });
     }
-    // the control tower
-    tower(x + 10, z + 160, x + 26, z + 176, y, 18, { style: 'office', lootChance: 0 });
-    at(x + 18, y + 18, z + 168, 18, 4, 18, { color: [0.15, 0.3, 0.38], mat: 'glass' });
-    at(x + 18, y + 22, z + 168, 19, 0.6, 19, { color: [0.2, 0.2, 0.22], mat: 'metal' });
-    at(x + 18, y + 22.6, z + 168, 0.3, 5, 0.3, { color: [0.6, 0.6, 0.62], mat: 'metal' });
-    at(x + 18, y + 27.6, z + 168, 0.6, 0.6, 0.6, { color: [1, 0.15, 0.1], emissive: 1, shape: 'sphere', noShadow: true });
+    // the control tower: a terminal building at the bottom, a tall shaft, and a glass cab on top that leans out
+    const NS = { solid: false, noShadow: true }, TW = [x + 18, z + 168];
+    add([x - 20, y - 0.5, z + 158], [x + 6, y + 7, z + 184], { color: [0.78, 0.76, 0.7], tex: 3 });                   // the terminal
+    add([x - 20.2, y + 2, z + 157.8], [x + 6.2, y + 5.5, z + 158], { color: [0.12, 0.16, 0.2], mat: 'glass', ...NS });
+    add([x - 21, y + 7, z + 157], [x + 7, y + 7.8, z + 185], { color: [0.4, 0.4, 0.42], mat: 'metal' });
+    at(TW[0], y - 0.5, TW[1], 7, 30, 7, { color: [0.74, 0.73, 0.69], tex: 3 });                                         // the shaft
+    for (let k = 0; k < 5; k++) at(TW[0], y + 3 + k * 5.5, TW[1] - 3.56, 1.2, 2.2, 0.1, { color: [0.12, 0.16, 0.2], mat: 'glass', ...NS });
+    at(TW[0], y + 29.5, TW[1], 13, 1.2, 13, { color: [0.3, 0.31, 0.33], mat: 'metal' });                                // cab floor
+    for (const [sx, sz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) rot(TW[0] + sx * 5.9, y + 30.7, TW[1] + sz * 5.9, [sz * 0.22, 0, -sx * 0.22], sz ? 11.6 : 0.3, 4.2, sz ? 0.3 : 11.6, { color: [0.14, 0.32, 0.4], mat: 'glass', emissive: 0.15 });
+    at(TW[0], y + 34.9, TW[1], 14, 0.8, 14, { color: [0.24, 0.24, 0.26], mat: 'metal' });                              // cab roof
+    at(TW[0], y + 35.7, TW[1], 0.3, 6, 0.3, { color: [0.6, 0.6, 0.62], mat: 'metal', ...NS });
+    at(TW[0], y + 41.7, TW[1], 0.7, 0.7, 0.7, { color: [1, 0.15, 0.1], emissive: 1, shape: 'sphere', ...NS });
+    at(TW[0] + 4, y + 35.7, TW[1] + 3, 3, 3, 3, { color: [0.9, 0.9, 0.9], shape: 'sphere', mat: 'paint', ...NS });       // radar dome
+    at(TW[0] - 4, y + 35.7, TW[1] - 3, 0.25, 3, 0.25, { color: [0.6, 0.6, 0.62], mat: 'metal', ...NS });
+    at(TW[0] - 4, y + 38.7, TW[1] - 3, 5, 0.6, 0.5, { color: [0.85, 0.86, 0.88], mat: 'metal', ...NS });                 // radar bar
+    // runway dressing: side stripes, the runway numbers, approach lights, PAPI lights, blue taxiway lights
+    for (const sz of [-1, 1]) add([x - L + 4, y + 0.12, z + sz * (W - 1.6) - 0.5], [x + L - 4, y + 0.14, z + sz * (W - 1.6) + 0.5], { color: WH, ...NS });
+    const digit = (cx0, cz0, n, flip) => {
+      // a big painted number made of bars (7-segment style), lying on the runway, read from the approach end
+      const SEG = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' }[n] || '';
+      const L2 = 14, T2 = 2, w2 = 7, f = flip ? -1 : 1;
+      const segs = { a: [0, L2, w2, T2], g: [0, L2 / 2, w2, T2], d: [0, 0, w2, T2], f: [-w2 / 2, L2 * 0.75, T2, L2 / 2], b: [w2 / 2, L2 * 0.75, T2, L2 / 2], e: [-w2 / 2, L2 * 0.25, T2, L2 / 2], c: [w2 / 2, L2 * 0.25, T2, L2 / 2] };
+      for (const ch of SEG) { const [u, v, a2, b2] = segs[ch]; at(cx0 + f * (v - L2 / 2), y + 0.12, cz0 + f * u, b2 === T2 ? T2 : b2, 0.03, a2 === T2 ? T2 : a2, { color: WH, ...NS }); }
+    };
+    digit(x - L + 60, z - 5, 0, false); digit(x - L + 60, z + 5, 9, false);
+    digit(x + L - 60, z + 5, 2, true); digit(x + L - 60, z - 5, 7, true);
+    for (const sx of [-1, 1]) {
+      for (let k = 1; k <= 8; k++) for (let j = -2; j <= 2; j++) at(x + sx * (L + k * 14), y - 0.4, z + j * 2.4, 0.5, 0.9 + k * 0.05, 0.5, { color: [1, 0.95, 0.75], emissive: 1, ...NS });   // approach lights
+      for (let j = 0; j < 4; j++) at(x + sx * (L - 90), y, z + (W + 8 + j * 3) * -sx, 1.4, 0.8, 1, { color: j < 2 ? [1, 0.1, 0.1] : [1, 1, 1], emissive: 1, ...NS });                // PAPI
+    }
+    for (let k = 0; k < 6; k++) for (const sx of [-1, 1]) at(x - 245 + sx * 17, y + 0.1, z + W + 6 + k * 8, 0.3, 0.4, 0.3, { color: [0.2, 0.45, 1], emissive: 1, ...NS });
+    add([x - 245.6, y + 0.1, z + W], [x - 244.4, y + 0.13, z + 70], { color: [0.95, 0.75, 0.15], ...NS });              // taxiway centre line
+    // a perimeter fence with posts, old planes parked off the apron, a fuel bowser, floodlights over the apron
+    for (let k = -L; k <= L; k += 12) for (const sz of [-1, 1]) at(x + k, y - 0.5, z + sz * 230, 0.15, 3, 0.15, { color: [0.5, 0.5, 0.5], mat: 'metal', ...NS });
+    for (const sz of [-1, 1]) add([x - L, y + 0.6, z + sz * 230 - 0.03], [x + L, y + 2.4, z + sz * 230 + 0.03], { color: [0.45, 0.46, 0.45], mat: 'metal', alpha: 0.6, ...NS });
+    for (const [px, pz, ry] of [[x + 20, z + 95, 0.3], [x - 60, z + 128, -0.2]]) {
+      rot(px, y + 1.2, pz, [0, ry, 0], 2.2, 2.2, 13, { color: [0.72, 0.73, 0.75], shape: 0.6, mat: 'paint' });          // an old plane: fuselage
+      rot(px, y + 1.9, pz, [0, ry, 0], 15, 0.3, 2.4, { color: [0.7, 0.71, 0.73], mat: 'paint' });                         // wing
+      rot(px + Math.sin(ry) * 5.5, y + 3.0, pz + Math.cos(ry) * 5.5, [0, ry, 0], 0.3, 2.6, 1.8, { color: [0.75, 0.2, 0.15], mat: 'paint' });   // fin
+    }
+    rot(x - 30, y, z + 100, [0, 0.5, 0], 2.6, 2.8, 8, { color: [0.85, 0.8, 0.2], shape: 0.2, mat: 'paint' });            // the fuel bowser
+    for (const fx2 of [x - 300, x - 130, x + 40]) { at(fx2, y - 0.5, z + 152, 0.4, 16, 0.4, { color: [0.5, 0.5, 0.52], mat: 'metal', ...NS }); at(fx2, y + 15.5, z + 151, 2.4, 0.8, 1.2, { color: [1, 0.95, 0.85], emissive: 1, ...NS }); }
     // fuel farm, windsock, a couple of old wrecks
     for (let k = 0; k < 3; k++) at(x + 80 + k * 14, y - 0.5, z + 185, 10, 8, 10, { color: [0.82, 0.82, 0.8], shape: 'cylY', mat: 'paint' });
     at(x + 120, y - 0.5, z + 60, 0.2, 7, 0.2, { color: [0.7, 0.7, 0.7], mat: 'metal' });
@@ -1051,6 +1091,16 @@ export function buildWorld(seed = 1337) {
       for (const [a, b] of [[[-4, -5], [-2.6, 5]], [[2.6, -5], [4, 5]], [[-2.6, -0.7], [2.6, 0.7]]]) add([c[0] + a[0], c[1] + 0.04, c[2] + a[1]], [c[0] + b[0], c[1] + 0.06, c[2] + b[1]], { color: [0.95, 0.95, 0.92], solid: false, noShadow: true });
       pads.push({ box, at: c });
     }
+    // dressing: walls of sand-filled barriers inside the gate, floodlight masts, flags on the towers, a painted
+    // name on the parade ground, an army truck by the gate, lights along the inside of the walls
+    const NS = { solid: false, noShadow: true };
+    for (let k = 0; k < 6; k++) for (const sx of [-1, 1]) at(x + sx * (16 + k * 2.2), y - 0.5, z - W + 10, 2.1, 2.2, 2.1, { color: [0.6, 0.55, 0.4], tex: 12 });
+    for (const [fx, fz] of [[-60, -10], [60, -10], [-40, 70], [40, 30]]) { at(x + fx, y - 0.5, z + fz, 0.4, 18, 0.4, { color: [0.45, 0.47, 0.45], mat: 'metal', ...NS }); at(x + fx, y + 17.5, z + fz, 2.6, 0.9, 1.4, { color: [1, 0.95, 0.85], emissive: 1, ...NS }); }
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const tx = x + sx * (W - 3), tz = z + sz * (W - 3); at(tx, y + 13.3, tz, 0.1, 3.4, 0.1, { color: [0.7, 0.7, 0.7], mat: 'metal', ...NS }); at(tx + 0.8, y + 15.6, tz, 1.6, 1, 0.04, { color: [0.15, 0.3, 0.18], ...NS }); }
+    for (let k = -W + 10; k < W - 10; k += 20) for (const [ox, oz] of [[k, -W + 1.2], [k, W - 1.2], [-W + 1.2, k], [W - 1.2, k]]) at(x + ox, y + 4.6, z + oz, 0.4, 0.3, 0.4, { color: [1, 0.85, 0.55], emissive: 1, ...NS });
+    rot(x + 18, y, z - W + 18, [0, 0.3, 0], 2.5, 2.8, 7, { color: OL, shape: 0.12, mat: 'paint' });
+    rot(x + 18, y + 2.8, z - W + 16.6, [0, 0.3, 0], 2.4, 1.2, 4, { color: [0.32, 0.34, 0.24], ...NS });
+    for (let k = 0; k < 11; k++) at(x - 15 + k * 3, y + 0.03, z - 60, 2.2, 0.03, 4, { color: k % 2 ? [0.9, 0.9, 0.86] : [0.75, 0.2, 0.15], ...NS });
     open.push([x, z - 60, y], [x + 30, z + 10, y]);
     const turrets = [[x - W + 3, z - W + 3], [x + W - 3, z - W + 3], [x - W + 3, z + W - 3], [x + W - 3, z + W - 3]].map(([tx, tz]) => ({ pos: [tx, y + 12.6, tz], yaw: Math.PI, cd: 0, flash: 0, fort: true }));
     return { id: 'fort', name: 'FORT CALDER', pos: [x, y, z], x, z, y, r: W, pad: pads[0].box, pads, padAt: pads[0].at, hp: 1, max: 1, turrets, locked: true, foot: [x, y, z - W - 6] };
@@ -1297,8 +1347,48 @@ function buildSpire({ add, at }, x, z, base, w) {
   add([x0, base + BAY, z0], [x0 + 2, base + BAY + BH, z0 + DEP], { color: CON, tex: 3 });
   add([x1 - 2, base + BAY, z0], [x1, base + BAY + BH, z0 + DEP], { color: CON, tex: 3 });
   add([x0, base + BAY + BH, z0], [x1, base + H, z1], { color: CON, tex: 6 });
-  // setbacks and a crown on top
+  // ---- the skin: so it looks like a real tower, not a block. Floor slabs that stick out a little every 6 m, dark glass
+  // between them (some floors lit, some not), steel fins up every face, and red aviation lights up the corners.
+  const NS = { solid: false, noShadow: true }, GL = [0.08, 0.11, 0.14], SLAB = [0.55, 0.56, 0.58], FIN = [0.3, 0.32, 0.35];
+  const lit = (f, k) => ((f * 7919 + k * 104729) % 17) < 5;
+  for (let f = 0; f * 6 + 3 < H; f++) {
+    const y0 = base + 3 + f * 6;
+    if (y0 > base + BAY - 2 && y0 < base + BAY + BH) continue;                                          // the landing bay
+    add([x0 - 0.35, y0, z0 - 0.35], [x1 + 0.35, y0 + 0.7, z1 + 0.35], { color: SLAB, tex: 3, ...NS });          // slab band
+    // window band on each face
+    const faces = [[x0 - 0.2, z0, x0 - 0.15, z1], [x1 + 0.15, z0, x1 + 0.2, z1], [x0, z0 - 0.2, x1, z0 - 0.15], [x0, z1 + 0.15, x1, z1 + 0.2]];
+    faces.forEach(([ax, az, bx, bz], k) => {
+      if (k === 2 && y0 > base + BAY - 8 && y0 < base + BAY + BH + 2) return;
+      // each face in four bays, each bay lit or dark on its own
+      for (let q = 0; q < 4; q++) {
+        const on = lit(f, k * 4 + q), t0 = q / 4, t1 = (q + 1) / 4 - 0.01;
+        add([ax + (bx - ax) * t0, y0 + 1.1, az + (bz - az) * t0], [ax + (bx - ax) * t1 + (bx === ax ? 0.05 : 0), y0 + 5.4, az + (bz - az) * t1 + (bz === az ? 0.05 : 0)], { color: on ? [0.8, 0.66, 0.42] : GL, emissive: on ? 0.18 : 0, mat: 'glass', ...NS });
+      }
+    });
+  }
+  for (let k = 1; k < 6; k++) {                                                                       // fins up every face
+    const u = -S / 2 + (k * S) / 6;
+    for (const [px, pz, w2, d2] of [[x + u, z0 - 0.55, 0.5, 0.8], [x + u, z1 + 0.55, 0.5, 0.8], [x0 - 0.55, z + u, 0.8, 0.5], [x1 + 0.55, z + u, 0.8, 0.5]]) {
+      if (pz < z0 && Math.abs(u) < S / 2) { at(px, base, pz, w2, BAY - 1, d2, { color: FIN, mat: 'metal', ...NS }); at(px, base + BAY + BH + 1, pz, w2, H - BAY - BH - 1, d2, { color: FIN, mat: 'metal', ...NS }); continue; }
+      at(px, base, pz, w2, H, d2, { color: FIN, mat: 'metal', ...NS });
+    }
+  }
+  for (const [px, pz] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) for (let y = base + 20; y < base + H; y += 30) at(px, y, pz, 0.7, 0.7, 0.7, { color: [1, 0.12, 0.08], emissive: 1, shape: 'sphere', ...NS });
+  // the lobby: a wider glass base two floors high, with a canopy over the doors and barricades all round it
+  add([x0 - 4, base, z0 - 4], [x1 + 4, base + 9, z1 + 4], { color: [0.12, 0.16, 0.2], mat: 'glass', ...NS });
+  add([x0 - 4.6, base + 9, z0 - 4.6], [x1 + 4.6, base + 10.2, z1 + 4.6], { color: SLAB, tex: 3, ...NS });
+  for (let k = 0; k < 12; k++) {                                                                      // concrete barriers round the base
+    const a = (k / 12) * Math.PI * 2, r = S * 0.9 + 6, bx = x + Math.cos(a) * r, bz = z + Math.sin(a) * r;
+    if (bz < z0 - 2 && Math.abs(bx - x) < 30) continue;                                                 // not under the deck
+    at(bx, base, bz, 3.2, 1.1, 0.7, { color: [0.62, 0.62, 0.6], shape: { taper: [1, 0.5] }, ...NS });
+  }
+  // setbacks and a crown on top: two steps in, a plant room, a ring of lights, and a mast with dishes
   add([x0 + 3, base + H, z0 + 3], [x1 - 3, base + H + 14, z1 - 3], { color: DK, tex: 2 });
+  add([x0 + 2.4, base + H - 0.2, z0 + 2.4], [x1 - 2.4, base + H + 0.6, z1 - 2.4], { color: SLAB, tex: 3, ...NS });
+  add([x0 + 8, base + H + 14, z0 + 8], [x1 - 8, base + H + 20, z1 - 8], { color: [0.3, 0.31, 0.33], tex: 5, mat: 'metal', ...NS });
+  for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2; at(x + Math.cos(a) * (S / 2 - 3.6), base + H + 14, z + Math.sin(a) * (S / 2 - 3.6), 0.5, 0.5, 0.5, { color: [1, 0.92, 0.7], emissive: 1, shape: 'sphere', ...NS }); }
+  for (const [dx, dz, r0] of [[-6, -4, 0.3], [6, 3, -0.5], [0, 7, 1.6]]) { at(x + dx, base + H + 20, z + dz, 0.3, 4, 0.3, { color: [0.6, 0.6, 0.62], mat: 'metal', ...NS }); }
+  for (const [dx, dz, ry] of [[-6, -4, 0.3], [6, 3, 2.4]]) at(x + dx, base + H + 23.5, z + dz, 2.6, 2.6, 0.3, { color: [0.85, 0.86, 0.88], shape: 'cyl', mat: 'paint', ...NS });
   at(x, base + H + 14, z, 1, 26, 1, { color: [0.6, 0.6, 0.62], mat: 'metal' });
   at(x, base + H + 40, z, 1.4, 1.4, 1.4, { color: [1, 0.15, 0.1], emissive: 1, shape: 'sphere', noShadow: true });
   for (const [px, pz] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) at(px, base + 4, pz, 0.6, H - 6, 0.6, { color: [1, 0.75, 0.35], emissive: 0.7, noShadow: true, solid: false });

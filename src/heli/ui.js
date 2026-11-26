@@ -66,6 +66,9 @@ export const CSS = `
 .da-tut i { display: block; font: 700 10px var(--font); font-style: normal; opacity: .55; margin-top: 6px; letter-spacing: .2em; }
 .da-tut kbd { display: inline-block; background: #ffcf3a; color: #111; border-radius: 4px; padding: 0 6px; margin: 0 2px; font: 900 14px var(--font); }
 @keyframes daTut { from { opacity: 0; transform: translate(-50%, -8px); } }
+.da-calls { position: absolute; left: 50%; top: 52%; transform: translate(-50%, 0); background: #0a0d10dd; border: 1px solid #ffcf3a66; border-radius: 8px; padding: 10px 14px; font: 800 12px var(--font); letter-spacing: .08em; color: #fff; pointer-events: none; z-index: 5; min-width: 200px; }
+.da-calls b { display: block; color: #ffcf3a; margin-bottom: 6px; } .da-calls div { margin: 3px 0; } .da-calls kbd { display: inline-block; min-width: 18px; text-align: center; background: #ffcf3a; color: #000; border-radius: 3px; margin-right: 6px; }
+.da-calls small { display: block; margin-top: 6px; opacity: .6; font-size: 10px; } .da-calls.hidden { display: none; }
 .da-grp { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; width: 100%; font: 900 13px var(--font); letter-spacing: .14em; color: #ffcf3a; background: #ffcf3a14; border: 1px solid #ffcf3a55; border-radius: 6px; padding: 10px 12px; margin: 4px 0; cursor: pointer; text-align: left; }
 .da-grp:hover { background: #ffcf3a26; } .da-grp small { color: #cfc6a0; font-size: 10px; letter-spacing: .08em; }
 .da-wx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }

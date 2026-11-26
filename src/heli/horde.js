@@ -392,7 +392,7 @@ export class Horde {
       const a = Math.random() * 6.28, r = (Math.random() < 0.2 ? 90 : 200) + Math.sqrt(Math.random()) * 270, x = hp[0] + Math.cos(a) * r, z = hp[2] + Math.sin(a) * r;
       if (Math.abs(x) > WORLD - 10 || Math.abs(z) > WORLD - 10) continue;
       if (Math.random() * (dens(x, z) + 1e-6) < 0.00025 && Math.random() < 0.7) continue;      // spawn where it's busy
-      if (this.blockedAt(x, z)) continue;
+      if (this.blockedAt(x, z) || (this.noSpawn && this.noSpawn(x, z))) continue;
       this.spawn(mix(), x, z);
       budget--;
     }
