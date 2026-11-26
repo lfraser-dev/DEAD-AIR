@@ -122,6 +122,18 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+// browsers stop drawing a tab that's in the background, which froze the whole world for everyone in co-op when the
+// host (or a friend) clicked away. A tiny worker keeps the game ticking while the tab is hidden.
+try {
+  const bg = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 50)'], { type: 'text/javascript' })));
+  bg.onmessage = () => {
+    if (!document.hidden || !game.active || !(game.coop || game.client)) return;
+    const now = performance.now(); let dt = (now - last) / 1000;
+    if (dt < 0.045) return;
+    last = now; dt = Math.min(dt, 0.5);
+    try { while (dt > 0.0001) { const s = Math.min(dt, 0.05); game.frame(s); dt -= s; } } catch (e) { console.error(e); }
+  };
+} catch (e) { /* no workers: nothing we can do */ }
 </script>
 </body>
 </html>

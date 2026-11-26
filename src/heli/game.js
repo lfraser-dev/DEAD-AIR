@@ -794,7 +794,28 @@ export class HeliGame {
     const crew = s.team.filter((m) => m.aboard && !m.raid).slice(0, 4).map((m) => ({ col: ROLES[m.role].col }));
     const parts = chopperParts(capEq(s.eq, s.heli), paintFor(s), { ...this.hst, hangar: true, crew, rockets: st.rockets, rocketMax: st.rockets, bombs: st.bombs, bombMax: st.bombs }, H.H, s.heli);
     this.draw(eye, fwd, 0, parts, [], HANGAR, 0.002);
-    if (this.coop) this.coopHostTick(dt);
+    if (this.coop) { if (this.worldLive()) this.worldTick(dt); this.coopHostTick(dt); }
+  }
+  // is the world running? Always while you fly. In the hangar too, if you're hosting and friends are still flying in it:
+  // the world doesn't stop for them just because you went to buy something.
+  worldLive() {
+    if (this.mode !== 'hangar') return true;
+    const C = this.coop;
+    return !!(C && this.session && this.run && [...C.friends.values()].some((f) => f.pilot));
+  }
+  // the world without you in it: zombies, jobs, dustoffs, day and night, the weather, your friends' shots
+  worldTick(dt) {
+    this.run.t += dt;
+    this.updateShots(dt);
+    this.dayTick(dt);
+    this.ambientSpawns(dt);
+    this.director.update(dt, this);
+    if (this.story) this.story.update(dt, this);
+    this.dustoffTick(dt);
+    const roofs = this.director.list.filter((e) => e.kind === 'rescue').map((e) => e.roof);
+    this.horde.update(dt, { heli: this.heli, heliAlt: 1000, noHeap: true, roofs, others: this.wingSpots(), noise: 0, lure: this.piper || this.beaconLure(), lureR: this.piper ? 320 : 260 });
+    this.hordeEvents();
+    this.fx.update(dt);
   }
 
   // ---------------------------------------------------------------- flying: start, respawn
@@ -2981,7 +3002,7 @@ export class HeliGame {
   coopHostTick(dt) {
     const C = this.coop;
     if (!C || !C.friends.size) { if (this.nfx) this.nfx.length = 0; return; }
-    if (this.mode !== 'hangar') this.wingTick(dt);
+    if (this.worldLive()) this.wingTick(dt);
     const send = (m) => { for (const id of C.friends.keys()) C.tr.sendTo(id, m); };
     C.hsT -= dt; C.zsT -= dt; C.evT -= dt; C.fxT -= dt;
     const H = this.mode === 'hangar' ? this.hangarHeli : this.heli, S = this.S || statsFor(this.save.eq, this.save.heli);
@@ -3002,7 +3023,7 @@ export class HeliGame {
         hn: this.coop.info.host || 'HOST', fort: !!this.save.story.fort, masts: this.save.story.masts, st: this.story ? this.story.lines() : null, sw: this.map.spire.wrecked ? 1 : 0,
         wx: [...C.friends.values()].filter((f) => f.pilot).map((f) => [f.id, f.name, f.kind, f.eq, f.paint, f.kills]) });
     }
-    if (C.zsT <= 0 && this.mode !== 'hangar') {
+    if (C.zsT <= 0 && this.worldLive()) {
       C.zsT = 1 / 10;
       // each friend gets the zombies round them: the door gunners round this helicopter, wingmen round their own
       const groups = new Map();
@@ -3039,7 +3060,7 @@ export class HeliGame {
       // forget the numbers of zombies that are gone
       if ((C.gcT = (C.gcT || 0) + 1) % 50 === 0) for (const [n, z] of this.nidMap) if (!z.alive) this.nidMap.delete(n);
     }
-    if (C.evT <= 0 && this.mode !== 'hangar') {
+    if (C.evT <= 0 && this.worldLive()) {
       C.evT = 1 / 4;
       send({ k: 'ev', do: (this.dustoffs || []).map((d) => [...d.pos.map(q1), Math.round(d.yaw * 100), d.riders, ['in', 'load', 'out'].indexOf(d.phase), d.ev.kind === 'crate' ? 1 : 0, d.ev.id]), e: this.director.list.map((e) => ({ ...e.net(), id: e.id, mk: e.marker(this) })), sh: this.shots.filter((s) => s.kind === 'rocket' || s.kind === 'bomb' || s.kind === 'plasma').map((s) => [s.kind[0], ...s.pos.map(q1), ...s.vel.map(q1)]) });
     }
@@ -4778,6 +4799,7 @@ export class HeliGame {
     }
   }
   draw(eye, fwd, roll, heliParts, extra, focus, fog) {
+    if (typeof document !== 'undefined' && document.hidden) return;     // nobody's looking: the game keeps running for co-op, but skips the drawing
     const r = this.r;
     this.perf();
     // the hangar gets light from high up in front (through the open doors); outside, the low sunset sun
