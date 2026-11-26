@@ -2,7 +2,7 @@
 // as you play (rescues, crates, masts, the fort...), and pays out when it's done. After the last one it's free flight.
 // The big story jobs (the masts, the fort, St Mary's, the siege, the great horde) are made here when their chapter
 // comes round, and live in the director's list with everything else.
-import { MastEv, FortEv, Evac, Siege, GreatHorde, CountdownEv, PiperEv } from './events.js';
+import { MastEv, FortEv, Evac, Siege, GreatHorde, CountdownEv, PiperEv, SearchEv, VipEv, Outbreak, Convoy, convoyPath } from './events.js';
 
 export const CHAPTERS = [
   { n: 'FIRST LIGHT', reward: 600,
@@ -44,7 +44,7 @@ export const CHAPTERS = [
     goals: [{ k: 'piper', n: 1, t: 'LEAD THE HORDE INTO THE ARTILLERY ZONE' }] },
 ];
 export const ENDING = "Direct hit... the whole horde, gone in one go. The army says they have never seen anything like it. The roads are open, the towns are filling up again, and the radio is full of people laughing. The dead don't own this country any more. We do. Thank you, pilot. Keep flying.";
-const OPNAME = { countdown: 'COUNTDOWN', piper: 'THE PIED PIPER', great: 'THE GREAT HORDE', evac: "ST MARY'S EVACUATION" };
+const OPNAME = { countdown: 'COUNTDOWN', piper: 'THE PIED PIPER', great: 'THE GREAT HORDE', evac: "ST MARY'S EVACUATION", purge: 'PURGE', sar: 'SEARCH AND RESCUE', escort: 'CONVOY ESCORT', vip: 'VIP EXTRACTION' };
 const ENDING1 = "That's it. They're broken. The Spire's safe, Fort Calder's running, and the radio hasn't stopped: people coming in from everywhere. You did that. There are always more of them out there, though. Keep flying.";
 
 export class Story {
@@ -118,19 +118,27 @@ export class Story {
   // ---- SPECIAL OPS: after the story, the big jobs come back again and again, and each threat level makes them
   // bigger and better paid. Every 3 ops done, the threat level goes up.
   get ops() { return (this.save.ops = this.save.ops || { n: 0, lvl: 1, best: 0 }); }
-  opTick(dt, game) {
+  opTick(dt, game, force) {
     const D = game.director; if (!D) return;
     if (D.list.some((e) => e.op && !e.done)) return;
     this.opT = (this.opT ?? 40) - dt;
     if (this.opT > 0) return;
     this.opT = 75;
-    const o = this.ops, lvl = o.lvl, kinds = ['countdown', 'piper', 'great', 'evac'].filter((k) => k !== this.lastOp && (k !== 'evac' || game.map.hospital));
-    const k = kinds[Math.floor(Math.random() * kinds.length)];
+    const o = this.ops, lvl = o.lvl, kinds = ['countdown', 'piper', 'great', 'evac', 'purge', 'sar', 'escort', 'vip'].filter((k) => k !== this.lastOp && (k !== 'evac' || game.map.hospital));
+    const k = force || kinds[Math.floor(Math.random() * kinds.length)];
     let e = null;
     if (k === 'countdown') e = CountdownEv.make(game, lvl);
     else if (k === 'piper') e = PiperEv.make(game, lvl);
     else if (k === 'great') e = this.great(game, Math.min(4000, 1500 + 400 * lvl));
     else if (k === 'evac') { e = new Evac(game.map.hospital); e.story = true; e.roof.count = e.roof.start = Math.min(60, 25 + 5 * lvl); }
+    else if (k === 'purge') {
+      const H = game.heli.pos, T = game.map.towns.filter((t) => t.kind === 'town' && Math.hypot(t.x - H[0], t.z - H[2]) > 500 && Math.hypot(t.x - H[0], t.z - H[2]) < 3500);
+      if (T.length) { e = new Outbreak(T[Math.floor(Math.random() * T.length)]); e.hitKey = 'purge'; e.story = true; e.start = e.left = Math.min(400, 170 + 40 * lvl); e.time = 260; }
+    } else if (k === 'sar') e = SearchEv.make(game, lvl);
+    else if (k === 'escort') {
+      const path = convoyPath(game.map, game.heli.pos, 2500, 900 + 150 * lvl);
+      if (path) { e = new Convoy(path); e.hitKey = 'escort'; e.story = true; e.hp = e.max = Math.max(600, 1200 - lvl * 100); }
+    } else if (k === 'vip') e = VipEv.make(game, lvl);
     if (!e) return;
     e.op = k; e.opLvl = lvl; this.lastOp = k; D.list.push(e);
     const say = {
@@ -138,6 +146,10 @@ export class Story {
       piper: 'Another big horde is gathering in the hills. Get your speaker playing and lead them into the artillery zone.',
       great: 'A great horde is walking on the Borough again. Bigger than last time. Break it up.',
       evac: "St Mary's is full again: people keep running there for help. Empty the roof.",
+      purge: 'A whole town has turned. The army wants it clean. Get over there and kill nine in ten of them before the clock runs out. The clock only runs while you are there.',
+      sar: 'A group of survivors went quiet. All we know is roughly where. Fly low over the search area and look for their flare.',
+      escort: 'Survivors are driving out in trucks, a long way. The dead will come at them from both sides of the road. Stay over them.',
+      vip: 'Somebody the army really needs is stuck on a roof, alone, and the dead know it. Grab them, then get them to any base.',
     }[k];
     game.banner(`SPECIAL OP ${o.n + 1} · THREAT LEVEL ${lvl}`, OPNAME[k], 'r', 4);
     game.radio(`Pilot, new job. ${say} Pays ⚙${this.opPay(lvl).toLocaleString('en-GB')}.`, 9);

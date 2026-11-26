@@ -57,7 +57,7 @@ export class Rescue extends Ev {
     if (!this.near(g)) return;
     this.spawnT -= dt;
     // a steady trickle, never an impossible flood: enough to build a pile if you take your time
-    if (this.spawnT <= 0 && this.spawned < 30 + g.time / 30) { this.spawnT = 2.4; this.spawned++; this.spawnAt(g, this.mix(g), r.x, r.z, r); }
+    if (this.spawnT <= 0 && this.spawned < (this.fast ? 80 : 30) + g.time / 30) { this.spawnT = this.fast ? 0.9 : 2.4; this.spawned++; this.spawnAt(g, this.mix(g), r.x, r.z, r); }
   }
   marker(g) {
     const p = g.horde.piles.get(`roof${this.roof.box.id}`);
@@ -272,7 +272,7 @@ export class Outbreak extends Ev {
       const b = 400 + Math.round(this.start * 1.5);
       g.addScrap(b); g.save.events = (g.save.events || 0) + 1;
       g.banner('OUTBREAK CLEARED', `${this.town.name} · +⚙${b}`, 'g', 3);
-      g.storyHit?.('outbreak', 1);
+      g.storyHit?.(this.hitKey || 'outbreak', 1);
       for (const z of mine) { z.keep = false; z.ev = null; z.tgt = null; }
     } else if (this.time <= 0) {
       this.done = true;
@@ -280,7 +280,7 @@ export class Outbreak extends Ev {
       for (const z of mine) { z.keep = false; z.ev = null; z.tgt = null; z.angry = 30; }
     }
   }
-  marker() { return { p: [this.x, this.y + 30, this.z], col: '#ff6a2a', icon: '☣', text: `OUTBREAK · ${this.left}`, sub: this.real ? `CLEAR IT · ${Math.max(0, Math.ceil(this.time))}s` : this.town.name, horde: true, r: 45 }; }
+  marker() { return { p: [this.x, this.y + 30, this.z], col: '#ff6a2a', icon: '☣', text: `${this.hitKey === 'purge' ? 'PURGE' : 'OUTBREAK'} · ${this.left}`, story: !!this.op, sub: this.real ? `CLEAR IT · ${Math.max(0, Math.ceil(this.time))}s` : this.town.name, horde: true, r: 45 }; }
   net() { return { k: 'outbreak', x: this.x, z: this.z, n: this.left }; }
 }
 
@@ -317,7 +317,7 @@ export class Convoy extends Ev {
       const b = 500 + Math.round((this.hp / this.max) * 500);
       g.addScrap(b); g.save.events = (g.save.events || 0) + 1; g.save.saved = (g.save.saved || 0) + 8;
       g.banner('CONVOY SAFE', `8 SURVIVORS MADE IT · +⚙${b}`, 'g', 3);
-      g.save.rescued = (g.save.rescued || 0) + 8; g.storyHit?.('convoy', 1);
+      g.save.rescued = (g.save.rescued || 0) + 8; g.storyHit?.(this.hitKey || 'convoy', 1);
       for (const z of g.horde.list) if (z.ev === this.id) { z.keep = false; z.ev = null; z.tgt = null; }
       return;
     }
@@ -759,6 +759,108 @@ export class PiperEv extends Ev {
   net() { return { k: 'piper', x: this.x, z: this.z }; }
 }
 
+// a run of joined-up road at least minL long, starting within reach
+export function convoyPath(map, H, far, minL) {
+  const R = map.roads;
+  for (let tries = 0; tries < 60; tries++) {
+    let i = Math.floor(Math.random() * R.length);
+    if (Math.hypot(R[i][0] - H[0], R[i][1] - H[2]) > far) continue;
+    const path = [];
+    let L = 0;
+    while (i < R.length && path.length < 60) {
+      const r = R[i], len = Math.hypot(r[2] - r[0], r[3] - r[1]);
+      path.push(Object.assign([...r], { len })); L += len;
+      if (i + 1 >= R.length || Math.hypot(R[i + 1][0] - r[2], R[i + 1][1] - r[3]) > 0.5) break;
+      i++;
+    }
+    if (L > minL) return path;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- more SPECIAL OPS
+// SEARCH AND RESCUE: a group went quiet somewhere in a town. You only know the area: fly low and slow over it. When
+// you get close they fire a flare, and then it's a rescue (a big one).
+export class SearchEv extends Ev {
+  static make(g, lvl = 1) {
+    const H = g.heli.pos, M = g.map;
+    const areas = [...M.towns.filter((t) => t.kind === 'town'), ...(M.cities || []).filter((c) => c.kind !== 'city')].map((t) => ({ x: t.x, z: t.z, y: t.y || 0, r: Math.min(t.r || 200, 240), name: t.name || 'THE BOROUGH' }))
+      .filter((t) => Math.hypot(t.x - H[0], t.z - H[2]) > 600 && Math.hypot(t.x - H[0], t.z - H[2]) < 3500);
+    for (let k = 0; k < 20 && areas.length; k++) {
+      const a = areas[Math.floor(Math.random() * areas.length)];
+      const roofs = M.roofs.filter((r) => !r.loot && r.h < 45 && Math.hypot(r.x - a.x, r.z - a.z) < a.r);
+      if (!roofs.length) continue;
+      const roof = roofs[Math.floor(Math.random() * roofs.length)];
+      // the search circle is centred somewhere near them, not right on top
+      const jx = roof.x + (Math.random() - 0.5) * 220, jz = roof.z + (Math.random() - 0.5) * 220;
+      return new SearchEv(a, roof, jx, jz, lvl);
+    }
+    return null;
+  }
+  constructor(area, roof, x, z, lvl) { super('sar', 'SEARCH AND RESCUE', x, z); this.area = area; this.roof = roof; this.r = 260; this.t = 480; this.lvl = lvl; this.found = null; this.flareT = 0; this.ring = null; }
+  update(dt, g) {
+    if (!this.ring) this.ring = Array.from({ length: 28 }, (_, k) => { const a = (k / 28) * Math.PI * 2, x = this.x + Math.cos(a) * this.r, z = this.z + Math.sin(a) * this.r; return [x, g.groundAt(x, z) + 0.6, z]; });
+    if (!this.found) {
+      this.t -= dt;
+      const d = g.pilotDist ? g.pilotDist(this.roof.x, this.roof.z) : Math.hypot(g.heli.pos[0] - this.roof.x, g.heli.pos[2] - this.roof.z);
+      if (d < 130) {
+        const r = new Rescue(this.roof); r.story = true; r.roof.count = r.roof.start = Math.min(14, 6 + this.lvl * 2); r.fast = true;
+        this.found = r; g.director.list.push(r); this.flareT = 0;
+        g.banner('FOUND THEM!', 'A FLARE FROM THE ROOF · GET THEM OUT', 'good', 3); g.snd.checkpoint?.();
+      } else if (this.t <= 0) { this.done = true; g.banner('NOTHING', 'THEIR RADIO WENT QUIET FOR GOOD', 'bad', 3); }
+      return;
+    }
+    this.flareT -= dt;
+    if (this.flareT <= 0 && this.found.roof.count > 0) { this.flareT = 3; g.fx?.sparks?.([this.roof.x, this.roof.top + 2, this.roof.z], 18, [1, 0.25, 0.15], 18, 1.6, 0.1, 25); }
+    if (this.found.roof.count <= 0 || this.found.done) { this.done = true; g.storyHit?.('sar', 1); }
+  }
+  marker() {
+    if (this.found) return null;
+    const s = Math.max(0, Math.ceil(this.t));
+    return { p: [this.x, (this.area.y || 0) + 40, this.z], col: '#ffb02a', icon: '?', text: `SEARCH AREA · ${this.area.name}`, sub: `FLY LOW OVER IT AND LOOK · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`, story: true };
+  }
+  parts(P) {
+    if (this.found || !this.ring) return;
+    for (const p of this.ring) P(p, [0, 0, 0], [1.2, 1.2, 1.2], [1, 0.7, 0.15], { em: 1, shape: 'sphere' });
+  }
+  net() { return { k: 'sar', x: this.x, z: this.z }; }
+}
+
+// VIP EXTRACTION: one person the army needs, alone on a roof, and every zombie for miles knows it. Get them aboard,
+// then get them to any base.
+export class VipEv extends Ev {
+  static make(g, lvl = 1) {
+    const H = g.heli.pos;
+    const c = g.map.roofs.filter((r) => !r.loot && r.h < 50 && (r.sx || 0) >= 12 && Math.hypot(r.x - H[0], r.z - H[2]) > 800 && Math.hypot(r.x - H[0], r.z - H[2]) < 3000 && !g.director.list.some((e) => e.roof && e.roof.box === r.box));
+    if (!c.length) return null;
+    return new VipEv(g, c[Math.floor(Math.random() * c.length)], lvl);
+  }
+  constructor(g, roof, lvl) {
+    super('vip', 'VIP EXTRACTION', roof.x, roof.z);
+    this.res = new Rescue(roof); this.res.story = true; this.res.fast = true; this.res.roof.count = this.res.roof.start = 1;
+    g.director.list.push(this.res);
+    this.phase = 'pick'; this.t = Math.max(300, 480 - lvl * 30); this.base0 = 0;
+    this.who = ['DR. OKAFOR', 'CAPTAIN REYES', 'PROFESSOR LIND', 'THE MAYOR', 'DR. SATO'][Math.floor(Math.random() * 5)];
+  }
+  update(dt, g) {
+    this.t -= dt;
+    if (this.phase === 'pick') {
+      if (this.res.roof.count <= 0) { this.phase = 'carry'; this.base0 = (g.run && g.run.rescued) || 0; g.banner(`${this.who} IS ABOARD`, 'GET THEM TO ANY BASE', 'good', 3); }
+      else if (this.t <= 0) { this.done = true; this.res.done = true; this.res.roof.active = false; g.banner('TOO LATE', `THEY GOT TO ${this.who}`, 'bad', 3); }
+      return;
+    }
+    if (g.heli && g.heli.dead && !g.client) { this.done = true; g.banner('VIP LOST', `${this.who} WAS ABOARD WHEN YOU WENT DOWN`, 'bad', 3); return; }
+    if (((g.run && g.run.rescued) || 0) > this.base0) { this.done = true; g.storyHit?.('vip', 1); }
+  }
+  marker(g) {
+    const s = Math.max(0, Math.ceil(this.t)), tm = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    if (this.phase === 'pick') return { p: [this.x, this.res.roof.top + 12, this.z], col: '#ff5aff', icon: '★', text: `VIP · ${this.who}`, sub: `PICK THEM UP · ${tm}`, story: true };
+    const sp = g.map.spire.pos;
+    return { p: [sp[0], sp[1] + 90, sp[2]], col: '#ff5aff', icon: '★', text: `${this.who} ABOARD`, sub: 'LAND AT ANY BASE', story: true };
+  }
+  net() { return { k: 'vip', x: this.x, z: this.z }; }
+}
+
 export class Director {
   constructor() { this.list = []; this.newT = 6; }
   clear() { this.list.length = 0; this.newT = 6; this.bossT = 420; }
@@ -795,6 +897,9 @@ export class Director {
       const towns = map.towns.filter((t) => t.kind === 'town' && Math.hypot(t.x - H[0], t.z - H[2]) < far * 1.4 && !this.list.some((e) => e.town === t));
       if (towns.length) { const t = towns[Math.floor(Math.random() * towns.length)]; ev = new Outbreak(t); g.feed(`RADIO: OUTBREAK IN ${t.name}`, 'r'); }
     } else if (kind === 'convoy') {
+      const path = convoyPath(map, H, far, 700);
+      if (path) { ev = new Convoy(path); g.feed('RADIO: SURVIVORS ARE MAKING A RUN FOR IT · ESCORT THE CONVOY', 'y'); }
+    } else if (kind === 'convoyOLD') {
       // a run of joined-up road at least 700 m long, starting within reach
       const R = map.roads;
       for (let tries = 0; tries < 40 && !ev; tries++) {
