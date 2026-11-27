@@ -657,7 +657,10 @@ export class HeliGame {
     if (this.sel && this.sel !== 'all' && this.sel !== 'heli') this.tab = tabOf(this.sel);
     if (!this.tab) this.tab = 'weapons';
     const tabRow = el(`<div class="da-tabs">${Object.keys(TABNAME).map((k) => `<button type="button" data-t="${k}" class="${this.tab === k ? 'on' : ''}">${TABNAME[k]}</button>`).join('')}</div>`);
-    for (const tb of tabRow.querySelectorAll('button')) tb.onclick = () => { this.snd.click?.(2600, 0.2); this.tab = tb.dataset.t; if (this.sel !== 'heli') this.sel = 'all'; this.renderHangar(); };
+    const mp = el(`<button type="button" class="da-motor" title="Motor Pool - buy jeeps, trucks and tanks to drop">⛟ MOTOR POOL</button>`);
+    mp.onclick = () => { this.snd.click?.(2600, 0.2); this.openMotor(); };
+    tabRow.append(mp);
+    for (const tb of tabRow.querySelectorAll('button[data-t]')) tb.onclick = () => { this.snd.click?.(2600, 0.2); this.tab = tb.dataset.t; if (this.sel !== 'heli') this.sel = 'all'; this.renderHangar(); };
     let tabbed = false;
     for (const sl of [{ id: 'heli', name: 'AIRCRAFT', icon: '✈' }, ...all.filter((q) => tabOf(q.id) === this.tab)]) {
       const cur = sl.id === 'heli' ? HK.n : sl.id === 'paint' ? PAINT[s.paint].n : sl.decor ? (DECOR[sl.id].list.find((q) => q.id === s[DECOR[sl.id].cur]) || DECOR[sl.id].list[0]).n + (sl.id === 'tailart' && s.tailArt === 'number' ? ` ${String(s.num).padStart(2, '0')}` : '') : cap(sl.id) === 0 ? "DOESN'T FIT" : sl.tiers[Math.min(s.eq[sl.id], cap(sl.id), sl.tiers.length - 1)].n;

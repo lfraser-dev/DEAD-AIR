@@ -14,6 +14,7 @@ export const CSS = `
 .da-tabs { display: flex; flex-wrap: wrap; gap: 3px; flex: none; margin: 2px 0 4px; }
 .da-tabs button { flex: 1 1 30%; background: rgba(10,12,14,.72); border: 0; border-bottom: 3px solid transparent; color: #cfd6dc; font: 800 11px var(--font); letter-spacing: .06em; padding: 6px 2px; cursor: pointer; }
 .da-tabs button.on { color: #ffcf3a; border-bottom-color: #ffcf3a; background: rgba(40,34,10,.8); }
+.da-tabs button.da-motor { flex: 1 1 100%; background: rgba(60,48,8,.85); color: #ffcf3a; border: 1px solid #ffcf3a; font-size: 12px; }
 .da-tabs button:hover { color: #fff; }
 .da-slot { display: flex; align-items: center; gap: 10px; text-align: left; background: rgba(10,12,14,.72); border: 0; border-left: 4px solid transparent; color: #fff; padding: 5px 10px; flex: none; }
 .da-slot i { font-style: normal; width: 22px; text-align: center; font-size: 18px; color: #ffcf3a; }
