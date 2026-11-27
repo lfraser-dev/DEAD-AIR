@@ -22,9 +22,21 @@ export const VEH = {
   mortar: { n: 'MORTAR TRUCK', cost: 6000, hp: 900, spd: 11, gun: { dmg: 95, rate: 0.8, range: 230, min: 30, splash: 8, arc: true }, col: [0.42, 0.44, 0.36],
     d: 'A flatbed with a 120 mm mortar. It lobs shells high over the rooftops into the crowds far away, but it can\'t hit anything right next to it.',
     stat: 'SHELLS LAND 30 TO 230 M AWAY · HUGE BLAST · KEEP THE TEAM NEAR IT' },
-  dozer: { n: 'BULLDOZER', cost: 7000, hp: 4200, spd: 10, gun: null, ram: 140, col: [0.85, 0.62, 0.08],
+  dozer: { n: 'BULLDOZER', cost: 7000, hp: 4200, spd: 11, gun: null, ram: 400, col: [0.85, 0.62, 0.08],
     d: 'An armoured army bulldozer. No gun at all: it just drives straight through the dead and flattens them with the blade. Best with the CHARGE order.',
     stat: 'NO GUN · CRUSHES EVERYTHING IN FRONT OF THE BLADE · TOUGHEST THING IN THE POOL' },
+  quad: { n: 'QUAD BIKE', cost: 1500, hp: 320, spd: 22, turn: 2.6, gun: { dmg: 13, rate: 8, range: 55 }, col: [0.3, 0.34, 0.24],
+    d: 'A four-wheeled army quad with a light machine gun on the front rack. Fragile, but the fastest thing on the ground.',
+    stat: 'FASTEST VEHICLE · LIGHT MACHINE GUN · BREAKS EASILY' },
+  ambulance: { n: 'FIELD AMBULANCE', cost: 4000, hp: 1300, spd: 14, gun: null, heal: 9, col: [0.9, 0.9, 0.86],
+    d: 'An armoured army ambulance. No gun, but anyone in your team near it gets patched up, and it hands out fresh medkits.',
+    stat: 'NO GUN · HEALS YOUR TEAM WITHIN 18 M · REFILLS THEIR MEDKITS' },
+  quad50: { n: 'QUAD-50 TRUCK', cost: 6500, hp: 1500, spd: 12, gun: { dmg: 20, rate: 26, range: 95 }, col: [0.4, 0.42, 0.3],
+    d: 'A truck with four heavy machine guns on one turret, all firing together. It shreds a crowd in seconds.',
+    stat: 'FOUR HEAVY MACHINE GUNS AT ONCE · 26 SHOTS A SECOND · RANGE 95 M' },
+  tank: { n: 'BATTLE TANK', cost: 14000, hp: 6000, spd: 8, gun: { dmg: 160, rate: 0.45, range: 170, splash: 7 }, mg: { dmg: 20, rate: 9, range: 70 }, col: [0.36, 0.39, 0.28],
+    d: 'A main battle tank: a 120 mm main gun that blows huge holes in the horde, and a machine gun for anything that gets close. Slow and very heavy.',
+    stat: 'BIG CANNON (HUGE BLAST) + MACHINE GUN · TOUGHEST GUN VEHICLE · NEEDS 8+ SEATS' },
 };
 export const ORDERS = { follow: 'FOLLOW ME', hold: 'HOLD HERE', charge: 'CHARGE' };
 export const VEH_IDS = Object.keys(VEH);
@@ -145,7 +157,9 @@ export class Ground {
       if (this.order === 'hold' && this.holdAt) {
         const a = (u.slot || 0) * 1.3 + (veh ? 3.5 : 0), r = veh ? 9 + this.vehicles().indexOf(u) * 6 : 5;
         tx = this.holdAt[0] + Math.cos(a) * r; tz = this.holdAt[1] + Math.sin(a) * r; stopAt = veh ? 3 : 1.5;
-      } else if (this.order === 'charge' && u.prey && u.prey.alive && !(V && V.service)) {
+      } else if (V && V.ram && u.prey && u.prey.alive && this.order !== 'charge' && this.leash(u.prey)) {
+        tx = u.prey.x; tz = u.prey.z; stopAt = 0;                                   // the dozer goes for anything that comes close, wherever it is
+      } else if (this.order === 'charge' && u.prey && u.prey.alive && !(V && (V.service || V.heal))) {
         tx = u.prey.x; tz = u.prey.z;
         stopAt = V ? (V.ram ? 0 : V.gun.arc ? V.gun.min + 20 : V.gun.range * 0.45) : (INF[u.m.wpn] || INF.pistol).range * 0.5;
       } else if (goal && Math.hypot(goal[0] - u.pos[0], goal[1] - u.pos[2]) < 900) {
@@ -159,7 +173,7 @@ export class Ground {
         if (d > stopAt) {
           const want = Math.atan2(dx, dz), sp = Math.min(spd, d) * dt;
           // turn towards it (vehicles turn like vehicles), go round buildings by trying either side
-          if (veh) { let dy = ((want - u.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI; u.yaw += Math.max(-1.2 * dt, Math.min(1.2 * dt, dy)); } else u.yaw = want;
+          if (veh) { let dy = ((want - u.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI; const tr = (V.turn || (V.ram ? 2 : 1.2)) * dt; u.yaw += Math.max(-tr, Math.min(tr, dy)); } else u.yaw = want;
           for (const off of [0, 0.6, -0.6, 1.2, -1.2]) {
             const a = (veh ? u.yaw : want) + off, nx = u.pos[0] + Math.sin(a) * sp, nz = u.pos[2] + Math.cos(a) * sp;
             if (g.horde.blockedAt(nx, nz) || g.groundAt(nx, nz) < WATER + 0.2) continue;
@@ -170,7 +184,8 @@ export class Ground {
       } else u.moving = false;
       u.pos[1] = g.groundAt(u.pos[0], u.pos[2]);
       u.tgt.x = u.pos[0]; u.tgt.z = u.pos[2];
-      if (V && V.ram && u.moving) this.ramTick(u, dt);
+      if (V && V.ram) this.ramTick(u, dt);
+      if (V && V.heal) this.healTick(u, dt);
       if (V && V.service) this.serviceTick(u, dt);
       if (V && !V.gun) { this.preyTick(u, dt); continue; }
       // shoot: the nearest zombie in range (looked for a few times a second)
@@ -193,7 +208,7 @@ export class Ground {
         if (u.cd <= 0) {
           const role = !veh && u.m.role === 'rifleman' ? 1.2 : 1;
           u.cd = 1 / W.rate * (0.85 + Math.random() * 0.3);
-          const o = veh ? [u.pos[0], u.pos[1] + (u.type === 'apc' ? 2.9 : u.type === 'humvee' ? 2.6 : 2.4), u.pos[2]] : [u.pos[0], u.pos[1] + 1.3, u.pos[2]];
+          const o = veh ? [u.pos[0], u.pos[1] + ({ apc: 2.9, humvee: 2.6, tank: 2.75, quad: 1.35, quad50: 2.55 }[u.type] || 2.4), u.pos[2]] : [u.pos[0], u.pos[1] + 1.3, u.pos[2]];
           const d = [z.x - o[0], z.y + 1 - o[1], z.z - o[2]], L = Math.hypot(...d) || 1;
           if (W.arc) {
             // a mortar: the shell goes up and comes down on them a few seconds later
@@ -202,7 +217,7 @@ export class Ground {
             if (Math.hypot(o[0] - H.pos[0], o[2] - H.pos[2]) < 300) g.snd.burst?.(0.12, 160, 0.3, 'lowpass', 0.8);
             continue;
           }
-          g.tracer(o, d.map((c) => c / L), L, -1);
+          if (W.rate < 15 || Math.random() < 0.4) g.tracer(o, d.map((c) => c / L), L, -1);
           if (W.splash) { g.blastAll([z.x, z.y + 0.5, z.z], W.splash, 300, W.dmg * 0.6, 'team'); g.boom?.([z.x, z.y + 0.5, z.z], 0.6); }
           g.horde.damage(z, W.dmg * role, [d[0] / L * 2, 0.5, d[2] / L * 2], 'team');
           if (!veh) u.m.flashT = 0.06; else u.flash = 0.06;
@@ -210,27 +225,63 @@ export class Ground {
         }
       }
       if (u.flash > 0) u.flash -= dt;
+      // the tank's machine gun: for anything that gets close
+      if (V && V.mg) {
+        u.cd2 = (u.cd2 || 0) - dt;
+        if (u.cd2 <= 0) {
+          let best = null, bd = V.mg.range ** 2;
+          for (const q of g.horde.list) { if (!q.alive) continue; const dx = q.x - u.pos[0], dz = q.z - u.pos[2], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = q; } }
+          if (best) {
+            u.cd2 = 1 / V.mg.rate * (0.85 + Math.random() * 0.3);
+            const o = [u.pos[0], u.pos[1] + 2.6, u.pos[2]], d = [best.x - o[0], best.y + 1 - o[1], best.z - o[2]], L = Math.hypot(...d) || 1;
+            g.tracer(o, d.map((c) => c / L), L, -1); g.horde.damage(best, V.mg.dmg, [d[0] / L * 2, 0.5, d[2] / L * 2], 'team');
+          } else u.cd2 = 0.3;
+        }
+      }
     }
   }
   // charging: who to run at (the nearest of the dead within 200 m)
-  findPrey(u) {
-    let best = null, bd = 200 * 200;
+  // how far the dozer will go from you (or from the HOLD spot) to flatten something
+  leash(z) {
+    const H = this.g.heli, c = this.order === 'hold' && this.holdAt ? this.holdAt : H ? [H.pos[0], H.pos[2]] : null;
+    return !c || Math.hypot(z.x - c[0], z.z - c[1]) < 70;
+  }
+  findPrey(u, R = 200) {
+    let best = null, bd = R * R;
     for (const z of this.g.horde.list) { if (!z.alive) continue; const dx = z.x - u.pos[0], dz = z.z - u.pos[2], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = z; } }
     u.prey = best;
   }
   preyTick(u, dt) {
     u.seek -= dt;
-    if (u.seek <= 0) { u.seek = 0.3 + Math.random() * 0.1; if (this.order === 'charge') this.findPrey(u);
+    if (u.seek <= 0) { u.seek = 0.3 + Math.random() * 0.1; if (this.order === 'charge' || VEH[u.type].ram) this.findPrey(u, this.order === 'charge' ? 200 : 45);
       if (Math.random() < 0.4) for (const z of this.g.horde.list) if (z.alive && !z.tgt && !z.ev && Math.abs(z.x - u.pos[0]) < 40 && Math.abs(z.z - u.pos[2]) < 40) z.tgt = u.tgt; }
   }
   // the bulldozer's blade: anything in front of it gets flattened
   ramTick(u, dt) {
-    const g = this.g, V = VEH[u.type], fx = Math.sin(u.yaw), fz = Math.cos(u.yaw), bx = u.pos[0] + fx * 3.4, bz = u.pos[2] + fz * 3.4;
+    const g = this.g, V = VEH[u.type], fx = Math.sin(u.yaw), fz = Math.cos(u.yaw);
+    let hit = 0;
     for (const z of g.horde.list) {
       if (!z.alive) continue;
-      const dx = z.x - bx, dz = z.z - bz; if (dx * dx + dz * dz > 7) continue;
-      g.horde.damage(z, V.ram * dt * 6, [fx * 6 + dx, 2.5, fz * 6 + dz], 'team');
-      if (Math.random() < dt * 8) g.fx?.blood?.([z.x, z.y + 0.6, z.z], 3);
+      const dx = z.x - u.pos[0], dz = z.z - u.pos[2]; if (Math.abs(dx) > 7 || Math.abs(dz) > 7) continue;
+      const f = dx * fx + dz * fz, sd = dx * fz - dz * fx;         // forward and sideways from the dozer
+      if (f > 1.2 && f < 5.2 && Math.abs(sd) < 2.3) {
+        // the blade: flattened (and thrown aside)
+        hit++; g.horde.damage(z, V.ram * dt * (u.moving ? 3 : 1.2), [fx * 7 + Math.sign(sd || 1) * 3, 3, fz * 7], 'team');
+        if (z.alive) { z.x += fx * 4 * dt; z.z += fz * 4 * dt; }          // and shoved along in front of it
+      } else if (f > -3 && f <= 1.2 && Math.abs(sd) < 2.4 && u.moving) {
+        // under the tracks
+        g.horde.damage(z, V.ram * dt * 2, [Math.sign(sd || 1) * 3, 1, 0], 'team');
+      }
+    }
+    if (hit && this.t - (u.thud || 0) > 0.25) { u.thud = this.t; const H = g.heli, d = H ? Math.hypot(u.pos[0] - H.pos[0], u.pos[2] - H.pos[2]) : 999; if (d < 200) g.snd.burst?.(0.1, 220, 0.25 * (1 - d / 200), 'lowpass', 1); }
+  }
+  // the ambulance: patches up your team near it
+  healTick(u, dt) {
+    const V = VEH[u.type];
+    for (const t of this.team()) {
+      if (Math.hypot(t.pos[0] - u.pos[0], t.pos[2] - u.pos[2]) > 18) continue;
+      const m = t.m; m.hp = Math.min(m.max, m.hp + V.heal * dt);
+      t.kit = (t.kit || 0) + dt; if (t.kit > 20) { t.kit = 0; if ((m.medkit || 0) < 2) { m.medkit = (m.medkit || 0) + 1; this.g.feed(`AMBULANCE: ${m.name} GOT A FRESH MEDKIT`, 'g'); } }
     }
   }
   // the fuel truck: hover low over it and it fills you up
@@ -292,7 +343,65 @@ export function vehParts(P, type, x, y, z, yaw, aim, flash) {
     P([base[0] + sa * len / 2, base[1] + 0.05, base[2] + ca * len / 2], [0, aim, 0], [thick, thick, len], GM, { shape: 'cyl', mat: 'metal' });
     if (flash > 0) P([base[0] + sa * (len + 0.3), base[1] + 0.05, base[2] + ca * (len + 0.3)], [0, 0, 0], [0.5, 0.5, 0.5], [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
   };
-  if (type === 'fuel') {
+  const tracks = (half, len, h) => { for (const sd of [-1, 1]) {
+    P(W(sd * half, h / 2 + 0.05, 0), [0, yaw, 0], [0.85, h, len], DK, { shape: 0.3, mat: 'rubber' });
+    for (let i = 0; i < 5; i++) P(W(sd * (half + 0.43), h * 0.45, -len / 2 + 0.6 + i * (len - 1.2) / 4), [0, yaw, Math.PI / 2], [h * 0.62, 0.1, h * 0.62], GM, { shape: 'cylY', mat: 'metal' }); } };
+  if (type === 'quad') {
+    P(W(0, 0.75, 0), [0, yaw, 0], [1.1, 0.4, 1.9], col, { shape: 0.2, mat: 'paint' });
+    P(W(0, 1.0, -0.35), [0, yaw, 0], [0.5, 0.2, 0.8], [0.1, 0.1, 0.1], { shape: 0.3 });                                     // seat
+    P(W(0, 1.15, 0.55), [0, yaw, 0], [1.0, 0.07, 0.07], GM, { shape: 'cyl', r: [0, Math.PI / 2, 0], mat: 'metal' });          // bars
+    P(W(0, 1.15, 0.55), [0, yaw + Math.PI / 2, 0], [0.07, 0.07, 1.0], GM, { shape: 'cyl', mat: 'metal' });
+    P(W(0, 0.95, 0.95), [0, yaw, 0], [1.1, 0.1, 0.5], GM, { mat: 'metal' });                                                  // front rack
+    P(W(0, 0.95, -1.0), [0, yaw, 0], [1.1, 0.1, 0.5], GM, { mat: 'metal' });                                                  // back rack
+    P(W(0.3, 1.0, -1.0), [0, yaw, 0], [0.4, 0.3, 0.4], [0.32, 0.34, 0.24], { mat: 'cloth' });                               // a jerry can
+    for (const lz of [-0.65, 0.65]) for (const sd of [-1, 1]) wheel(sd * 0.62, lz, 0.36);
+    gun(0, 1.25, 0.95, 1.1, 0.07);
+    P(W(0, 0.9, 1.0), [0, yaw, 0], [0.3, 0.12, 0.05], [1, 0.95, 0.75], { em: 1 });
+  } else if (type === 'ambulance') {
+    const red = [0.82, 0.08, 0.08];
+    P(W(0, 0.85, 0), [0, yaw, 0], [2.2, 0.4, 5.4], DK.map((v) => v * 2), { mat: 'metal' });
+    P(W(0, 1.65, 1.85), [0, yaw, 0], [2.1, 1.2, 1.6], col, { shape: 0.12, mat: 'paint' });                                    // cab
+    P(W(0, 1.9, 2.66), [0.2, yaw, 0], [1.8, 0.55, 0.04], [0.1, 0.13, 0.16], { mat: 'glass' });
+    P(W(0, 2.0, -0.75), [0, yaw, 0], [2.3, 2.1, 3.6], col, { shape: 0.06, mat: 'paint' });                                    // the box
+    for (const sd of [-1, 1]) { P(W(sd * 1.16, 2.1, -0.75), [0, yaw, 0], [0.03, 0.8, 0.25], red, {}); P(W(sd * 1.16, 2.1, -0.75), [0, yaw, 0], [0.03, 0.25, 0.8], red, {}); }
+    P(W(0, 3.06, -0.75), [0, yaw, 0], [0.8, 0.03, 0.25], red, {}); P(W(0, 3.06, -0.75), [0, yaw, 0], [0.25, 0.03, 0.8], red, {});
+    P(W(0, 2.1, -2.56), [0, yaw, 0], [0.25, 0.8, 0.03], red, {}); P(W(0, 2.1, -2.56), [0, yaw, 0], [0.8, 0.25, 0.03], red, {});
+    P(W(0, 1.4, 1.0), [0, yaw, 0], [2.3, 0.1, 0.1], red, {});                                                                 // stripe
+    for (const sd of [-1, 1]) P(W(sd * 0.6, 2.32, 1.9), [0, yaw, 0], [0.4, 0.14, 0.22], sd < 0 ? [0.2, 0.4, 1] : [1, 0.15, 0.1], { em: 0.9 });  // lights
+    for (const lz of [-1.7, 1.7]) for (const sd of [-1, 1]) wheel(sd * 1.0, lz, 0.5);
+    for (const sd of [-1, 1]) P(W(sd * 0.75, 1.25, 2.66), [0, yaw, 0], [0.3, 0.16, 0.05], [1, 0.95, 0.75], { em: 1 });
+  } else if (type === 'quad50') {
+    P(W(0, 0.95, 0), [0, yaw, 0], [2.2, 0.55, 5.6], col, { shape: 0.08, mat: 'paint' });
+    P(W(0, 1.75, 1.85), [0, yaw, 0], [2.1, 1.1, 1.6], col, { shape: 0.12, mat: 'paint' });                                    // cab
+    P(W(0, 1.95, 2.66), [0.2, yaw, 0], [1.8, 0.5, 0.04], [0.1, 0.13, 0.16], { mat: 'glass' });
+    for (const sd of [-1, 1]) P(W(sd * 1.08, 1.45, -1.0), [0, yaw, 0], [0.08, 0.55, 3.2], col.map((v) => v * 0.8), { mat: 'paint' });
+    P(W(0, 1.45, -1.0), [0, yaw, 0], [1.4, 0.35, 1.4], GM, { shape: 'cylY', mat: 'metal' });                                  // mount
+    { const ca = Math.cos(aim), sa = Math.sin(aim), b = W(0, 2.15, -1.0);
+      P(b, [0, aim, 0], [1.5, 0.8, 0.9], col.map((v) => v * 0.85), { shape: 0.1, mat: 'paint' });                               // the gunner's box
+      for (const sx of [-0.6, 0.6]) for (const sy of [-0.2, 0.22]) {
+        const bx = b[0] + ca * sx, bz = b[2] - sa * sx;
+        P([bx + sa * 1.05, b[1] + sy, bz + ca * 1.05], [0, aim, 0], [0.09, 0.09, 1.6], GM, { shape: 'cyl', mat: 'metal' });
+        if (flash > 0) P([bx + sa * 1.95, b[1] + sy, bz + ca * 1.95], [0, 0, 0], [0.35, 0.35, 0.35], [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
+      }
+      for (const sx of [-0.85, 0.85]) P([b[0] + ca * sx, b[1] - 0.1, b[2] - sa * sx], [0, aim, 0], [0.3, 0.45, 0.6], [0.3, 0.32, 0.22], { mat: 'metal' });  // ammo boxes
+    }
+    for (const lz of [-1.8, -0.8, 1.8]) for (const sd of [-1, 1]) wheel(sd * 1.02, lz, 0.5);
+    for (const sd of [-1, 1]) P(W(sd * 0.75, 1.3, 2.66), [0, yaw, 0], [0.3, 0.16, 0.05], [1, 0.95, 0.75], { em: 1 });
+  } else if (type === 'tank') {
+    tracks(1.55, 6.6, 1.15);
+    P(W(0, 1.55, 0), [0, yaw, 0], [2.4, 0.85, 6.4], col, { shape: 0.12, mat: 'paint' });                                       // hull
+    P(W(0, 1.4, 3.25), [0.6, yaw, 0], [2.4, 0.7, 0.7], col, { shape: 0.08, mat: 'paint' });                                   // sloped glacis
+    for (const sd of [-1, 1]) P(W(sd * 1.6, 1.55, 0), [0, yaw, 0], [0.12, 0.65, 6.2], col.map((v) => v * 0.9), { mat: 'paint' });   // side skirts
+    { const ca = Math.cos(aim), sa = Math.sin(aim), b = W(0, 2.35, -0.4);
+      P(b, [0, aim, 0], [2.5, 0.75, 3.2], col.map((v) => v * 0.95), { shape: 0.12, mat: 'paint' });                             // turret
+      P([b[0] - sa * 1.8, b[1], b[2] - ca * 1.8], [0, aim, 0], [2.2, 0.6, 0.6], col.map((v) => v * 0.85), { shape: 0.1, mat: 'paint' });  // bustle
+      P([b[0] + sa * 3.4, b[1] + 0.05, b[2] + ca * 3.4], [0, aim, 0], [0.22, 0.22, 4.2], GM, { shape: 'cyl', mat: 'metal' });  // the main gun
+      P([b[0] + sa * 2.4, b[1] + 0.05, b[2] + ca * 2.4], [0, aim, 0], [0.34, 0.34, 0.7], GM, { shape: 'cyl', mat: 'metal' });  // evacuator
+      P([b[0] + ca * 0.6, b[1] + 0.5, b[2] - sa * 0.6], [0, aim, 0], [0.6, 0.3, 0.6], GM, { shape: 'cylY', mat: 'metal' });    // commander's hatch
+      P([b[0] + ca * 0.6 + sa * 0.6, b[1] + 0.75, b[2] - sa * 0.6 + ca * 0.6], [0, aim, 0], [0.07, 0.07, 1.1], GM, { shape: 'cyl', mat: 'metal' });  // its MG
+      if (flash > 0) P([b[0] + sa * 5.8, b[1] + 0.05, b[2] + ca * 5.8], [0, 0, 0], [1.2, 1.2, 1.2], [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 }); }
+    for (const sd of [-1, 1]) P(W(sd * 1.0, 1.75, 3.2), [0, yaw, 0], [0.25, 0.15, 0.05], [1, 0.95, 0.75], { em: 1 });
+  } else if (type === 'fuel') {
     // a tanker: cab up front, a long round tank behind, a hose reel at the back
     P(W(0, 0.85, 0), [0, yaw, 0], [2.1, 0.5, 6.2], DK.map((v) => v * 2), { mat: 'metal' });                                 // chassis
     P(W(0, 1.65, 2.25), [0, yaw, 0], [2.1, 1.3, 1.7], col, { shape: 0.12, mat: 'paint' });                                  // cab
