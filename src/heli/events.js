@@ -861,6 +861,39 @@ export class VipEv extends Ev {
   net() { return { k: 'vip', x: this.x, z: this.z }; }
 }
 
+// IRONSIDE: the mountain army base, overrun. Get there and clear it (nine in ten of them) and it's yours: a base to
+// refuel and rearm at, its guns on the walls, and the army's motor pool sells you vehicles for less.
+export class IronsideEv extends Ev {
+  constructor(base) { super('ironside', 'IRONSIDE', base.x, base.z); this.base = base; this.real = false; this.start = 340; this.pool = 340; this.left = 340; this.unspawned = 0; this.story = true; }
+  update(dt, g) {
+    const d = this.dist(g), B = this.base;
+    if (!this.real) {
+      if (d < 800) { this.real = true; this.unspawned = this.pool; g.feed(`IRONSIDE: ${this.pool} OF THEM INSIDE THE WALLS · CLEAR THE BASE`, 'r'); g.radio?.("Pilot, that's Ironside. The army's mountain base. It's full of them, but if we can clear it, it's ours: the walls, the guns, and the motor pool.", 8); }
+      return;
+    }
+    const mine = g.horde.list.filter((z) => z.ev === this.id && z.alive);
+    for (let k = 0; k < 40 && this.unspawned > 0; k++) {
+      const x = B.x + (Math.random() - 0.5) * 2 * (B.r - 14), z = B.z + (Math.random() - 0.5) * 2 * (B.r - 14);
+      if (g.horde.blockedAt(x, z)) continue;
+      const zb = g.horde.spawn(this.mix(g), x, z); zb.ev = this.id; zb.keep = true; this.unspawned--;
+    }
+    this.left = mine.length + this.unspawned;
+    if (d > 1300) { this.pool = this.left; this.real = false; for (const z of mine) z.alive = false; return; }   // you left: they stay put
+    if (this.left <= Math.ceil(this.start * 0.1)) {
+      this.done = true;
+      g.save.iron = true; B.locked = false;
+      g.addScrap(3000); g.career?.addXP(g, 800);
+      g.banner('IRONSIDE IS OURS!', 'A NEW BASE · GUNS ON THE WALLS · MOTOR POOL 40% OFF · +⚙3,000', 'good', 5); g.snd.finish?.();
+      for (const z of mine) { z.keep = false; z.ev = null; }
+      g.saveNow?.();
+    }
+  }
+  marker() {
+    return { p: [this.x, (this.base.y || 0) + 45, this.z], col: '#ff6a2a', icon: '⚑', text: this.real ? `IRONSIDE · ${this.left} LEFT` : 'IRONSIDE ARMY BASE', sub: this.real ? `CLEAR THE BASE · ${Math.max(0, this.left - Math.ceil(this.start * 0.1))} TO GO` : 'OVERRUN · TAKE IT BACK', story: true };
+  }
+  net() { return { k: 'ironside', x: this.x, z: this.z }; }
+}
+
 export class Director {
   constructor() { this.list = []; this.newT = 6; }
   clear() { this.list.length = 0; this.newT = 6; this.bossT = 420; }

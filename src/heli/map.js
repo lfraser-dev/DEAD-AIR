@@ -257,6 +257,17 @@ export function buildWorld(seed = 1337) {
     }
     if (b) { const y = flatTarget(b[0], b[1]); T.flatten(b[0], b[1], 150, y, 120); spots.push({ x: b[0], z: b[1], r: 140, kind: 'fort', y }); }
   }
+  // IRONSIDE: an army base high up in the mountains, up in the snow. Overrun. Take it back.
+  { let b = null, bh = -Infinity;
+    for (let t = 0; t < 260; t++) {
+      const a = R() * Math.PI * 2, d = 2300 + R() * 2200, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+      if (Math.abs(x) > TH - 520 || Math.abs(z) > TH - 520 || !free(x, z, 200, 260)) continue;
+      const r = rough(x, z, 170); if (r > 130) continue;
+      const sc = T.natural(x, z) - r * 0.6;
+      if (sc > bh) { bh = sc; b = [x, z]; }
+    }
+    if (b) { const y = flatTarget(b[0], b[1]); T.flatten(b[0], b[1], 195, y, 170); spots.push({ x: b[0], z: b[1], r: 185, kind: 'ironside', y }); }
+  }
   // THE AIRFIELD: a long runway (east-west) on the flattest ground round the city, for the planes
   { let bestA = null, bs = Infinity;
     for (let t = 0; t < 400; t++) {
@@ -943,7 +954,7 @@ export function buildWorld(seed = 1337) {
     }
   }
 
-  let spire = null, fort = null, hospital = null, airfield = null, lab = null;
+  let spire = null, fort = null, hospital = null, airfield = null, lab = null, ironside = null;
   const lairs = {};
   // THE AIRFIELD: a 1.3 km runway with markings and edge lights, a taxiway, an apron, two hangars, a control tower,
   // fuel tanks and a windsock. Planes start here, and land here to refuel, repair and rearm.
@@ -1029,6 +1040,85 @@ export function buildWorld(seed = 1337) {
   }
   const cities = [], masts = [];
   // FORT CALDER: a walled army base. Barracks and an armoury to raid, hangars, fuel, watchtowers, and two pads
+  // IRONSIDE: a big mountain army base: tall concrete walls topped with wire, guard towers, a motor pool full of
+  // armour, barracks, a headquarters with a radar dome, a comms mast, fuel and ammo bunkers, three helipads, snow.
+  function ironBase(s) {
+    const { x, z, y } = s, W = 150, CON = [0.6, 0.6, 0.58], OL = [0.34, 0.37, 0.27], SNOW = [0.93, 0.95, 0.97], NS = { solid: false, noShadow: true };
+    ground.town(x, z, W + 8, 18);
+    for (const [ax, az, bx, bz] of [[-W, -W, W, -W], [-W, W, W, W], [-W, -W, -W, W], [W, -W, W, W]]) {
+      if (az === -W && bz === -W) {                    // the gate in the south wall
+        at(x - (W + 14) / 2 - 1, y - 0.5, z - W, W - 14, 7.5, 1.8, { color: CON, tex: 3 });
+        at(x + (W + 14) / 2 + 1, y - 0.5, z - W, W - 14, 7.5, 1.8, { color: CON, tex: 3 });
+        for (const sx of [-1, 1]) at(x + sx * 10, y - 0.5, z - W, 4, 10, 4, { color: CON, tex: 3 });
+        at(x, y + 8.5, z - W, 24, 1.6, 2.4, { color: [0.3, 0.32, 0.26], mat: 'metal', ...NS });
+        continue;
+      }
+      at(x + (ax + bx) / 2, y - 0.5, z + (az + bz) / 2, Math.abs(bx - ax) + 1.8, 7.5, Math.abs(bz - az) + 1.8, { color: CON, tex: 3 });
+      at(x + (ax + bx) / 2, y + 7.3, z + (az + bz) / 2, Math.abs(bx - ax) + 2, 0.5, Math.abs(bz - az) + 2, { color: SNOW, ...NS });
+      for (const off of [-0.5, 0.5]) at(x + (ax + bx) / 2 + (az === bz ? 0 : off), y + 7.6, z + (az + bz) / 2 + (az === bz ? off : 0), Math.abs(bx - ax) + 0.6, 0.5, Math.abs(bz - az) + 0.6, { color: [0.3, 0.3, 0.3], mat: 'metal', ...NS });
+    }
+    // guard towers: concrete, tall, a snow-capped roof
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 1], [-1, 0], [1, 0]]) {
+      const tx = x + sx * (W - 4), tz = z + sz * (W - 4);
+      at(tx, y - 0.5, tz, 5, 15, 5, { color: CON, tex: 3 });
+      at(tx, y + 14.5, tz, 6.4, 3, 6.4, { color: [0.12, 0.16, 0.2], mat: 'glass' });
+      at(tx, y + 17.5, tz, 7, 0.6, 7, { color: [0.3, 0.3, 0.32], mat: 'metal' });
+      at(tx, y + 18.1, tz, 7, 0.3, 7, { color: SNOW, ...NS });
+      at(tx, y + 18.4, tz, 1.6, 0.6, 1.6, { color: [1, 0.95, 0.85], emissive: 1, ...NS });
+    }
+    ground.road(x, z - W, x, z + W - 20); ground.road(x - W + 10, z, x + W - 10, z); ground.road(x - W + 10, z + 70, x + W - 10, z + 70);
+    // HQ: a wide three-storey block, a radar dome and a comms mast on the roof (raidable)
+    tower(x - 30, z + 85, x + 30, z + 120, y, 13, { style: 'office', kind: 'police', lootChance: 0 });
+    at(x - 14, y + 12.5, z + 102, 9, 9, 9, { color: [0.92, 0.92, 0.9], shape: 'sphere', mat: 'paint', ...NS });
+    at(x + 18, y + 12.5, z + 102, 0.5, 26, 0.5, { color: [0.75, 0.75, 0.75], mat: 'metal', ...NS });
+    for (let k = 0; k < 3; k++) at(x + 18, y + 18 + k * 6, z + 102 + (k % 2 ? 1 : -1), 2.4, 2.4, 0.3, { color: [0.88, 0.88, 0.86], shape: 'cyl', mat: 'paint', ...NS });
+    at(x + 18, y + 38.5, z + 102, 0.6, 0.6, 0.6, { color: [1, 0.12, 0.08], emissive: 1, shape: 'sphere', ...NS });
+    // barracks rows (two raidable)
+    for (let k = 0; k < 4; k++) {
+      const bz0 = z - 120 + k * 32;
+      tower(x - 130, bz0, x - 70, bz0 + 18, y, 7, { style: 'office', kind: k % 2 ? 'flats' : null, lootChance: 0 });
+      at(x - 100, y + 7, bz0 + 9, 61, 0.4, 19, { color: SNOW, ...NS });
+    }
+    // the motor pool: a long open shed on posts, armour parked in rows under it, more out in the snow
+    const MX0 = x + 60, MX1 = x + 135, MZ0 = z - 125, MZ1 = z - 45;
+    for (let k = 0; k <= 5; k++) for (const mz of [MZ0, MZ1]) at(MX0 + (k * (MX1 - MX0)) / 5, y - 0.5, mz, 0.6, 9, 0.6, { color: [0.4, 0.42, 0.4], mat: 'metal' });
+    const shed = add([MX0 - 1, y + 8.5, MZ0 - 1], [MX1 + 1, y + 9.5, MZ1 + 1], { color: [0.36, 0.38, 0.36], tex: 5, mat: 'metal' });
+    add([MX0 - 1, y + 9.5, MZ0 - 1], [MX1 + 1, y + 10, MZ1 + 1], { color: SNOW, ...NS });
+    roofs.push({ box: shed, top: y + 10, x: (MX0 + MX1) / 2, z: (MZ0 + MZ1) / 2, sx: MX1 - MX0, sz: MZ1 - MZ0, h: 10, base: y });
+    const armour = (px, pz, ry, big) => {
+      rot(px, y, pz, [0, ry, 0], big ? 3 : 2.3, big ? 1.9 : 1.6, big ? 7 : 4.8, { color: OL, shape: 0.12, mat: 'paint' });
+      rot(px, y + (big ? 1.9 : 1.6), pz, [0, ry, 0], big ? 1.8 : 1.1, 0.6, big ? 2 : 1.1, { color: OL.map((v) => v * 0.9), mat: 'paint' });
+      rot(px + Math.sin(ry) * (big ? 1.8 : 0.9), y + (big ? 2.2 : 1.9), pz + Math.cos(ry) * (big ? 1.8 : 0.9), [0, ry, 0], 0.18, 0.18, big ? 2.6 : 1.4, { color: [0.15, 0.16, 0.17], mat: 'metal', solid: false });
+    };
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) armour(MX0 + 10 + i * 17, MZ0 + 20 + j * 38, j ? Math.PI : 0, (i + j) % 2 === 0);
+    for (let i = 0; i < 3; i++) armour(x + 30 + i * 9, z - 30, 1.5 + i * 0.1, i === 1);
+    // fuel farm and ammo bunkers (earth mounds with doors)
+    for (let k = 0; k < 6; k++) at(x + 75 + (k % 3) * 18, y - 0.5, z + 20 + Math.floor(k / 3) * 18, 11, 8, 11, { color: [0.78, 0.78, 0.74], shape: 'cylY', mat: 'paint' });
+    for (let k = 0; k < 4; k++) {
+      const bx = x - 125 + k * 26, bz = z + 125;
+      at(bx, y - 0.5, bz, 18, 6, 14, { color: [0.85, 0.87, 0.9], shape: { taper: [0.55, 0.55] }, tex: 12 });
+      at(bx, y - 0.5, bz - 7.2, 5, 3.6, 0.4, { color: [0.3, 0.32, 0.28], mat: 'metal' });
+    }
+    // a layer of snow over the whole yard
+    add([x - W + 1, y + 0.04, z - W + 1], [x + W - 1, y + 0.1, z + W - 1], { color: SNOW, ...NS });
+    // snow drifts against the walls and round the yard
+    for (let k = 0; k < 26; k++) { const a = (k / 26) * Math.PI * 2, rr = W - 8 - (k % 3) * 6; at(x + Math.cos(a) * rr, y - 0.8, z + Math.sin(a) * rr, 9 + (k % 4) * 3, 1.4, 5 + (k % 3) * 2, { color: SNOW, shape: { taper: [0.5, 0.5] }, ...NS }); }
+    // floodlights
+    for (const [fx, fz] of [[-60, -60], [60, 0], [-40, 60], [100, -20], [0, -100]]) { at(x + fx, y - 0.5, z + fz, 0.4, 20, 0.4, { color: [0.45, 0.47, 0.45], mat: 'metal', ...NS }); at(x + fx, y + 19.5, z + fz, 2.6, 0.9, 1.4, { color: [1, 0.95, 0.85], emissive: 1, ...NS }); }
+    // the helipads
+    const PADS = [[-20, 20], [20, 20], [-20, -55]], pads = [];
+    for (const [ox, oz] of PADS) {
+      const c = [x + ox, y + 0.55, z + oz];
+      const box = add([c[0] - 10, y - 0.5, c[2] - 10], [c[0] + 10, y + 0.55, c[2] + 10], { color: [0.24, 0.24, 0.25], tex: 7, tag: 'pad' });
+      add([c[0] - 9, c[1], c[2] - 9], [c[0] + 9, c[1] + 0.02, c[2] + 9], { color: [0.95, 0.75, 0.15], ...NS });
+      add([c[0] - 8.4, c[1], c[2] - 8.4], [c[0] + 8.4, c[1] + 0.04, c[2] + 8.4], { color: [0.24, 0.24, 0.25], ...NS });
+      for (const [a, b] of [[[-4, -5], [-2.6, 5]], [[2.6, -5], [4, 5]], [[-2.6, -0.7], [2.6, 0.7]]]) add([c[0] + a[0], c[1] + 0.04, c[2] + a[1]], [c[0] + b[0], c[1] + 0.06, c[2] + b[1]], { color: [0.95, 0.95, 0.92], ...NS });
+      pads.push({ box, at: c });
+    }
+    open.push([x, z - 20, y], [x - 60, z + 40, y]);
+    const turrets = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => ({ pos: [x + sx * (W - 4), y + 16, z + sz * (W - 4)], yaw: Math.PI, cd: 0, flash: 0, fort: true }));
+    return { id: 'ironside', name: 'IRONSIDE', pos: [x, y, z], x, z, y, r: W, pad: pads[0].box, pads, padAt: pads[0].at, hp: 1, max: 1, turrets, locked: true, foot: [x, y, z - W - 6] };
+  }
   function fortress(s) {
     const { x, z, y } = s, W = 112, WALL = [0.55, 0.54, 0.5], OL = [0.32, 0.35, 0.24];
     ground.town(x, z, W + 6, 16);
@@ -1149,6 +1239,7 @@ export function buildWorld(seed = 1337) {
     if (s.kind === 'borough') { borough(); cities.push(s); continue; }
     if (s.kind === 'port') continue;
     if (s.kind === 'fort') { fort = fortress(s); continue; }
+    if (s.kind === 'ironside') { ironside = ironBase(s); continue; }
     if (s.kind === 'airfield') { airfield = airfieldSite(s); continue; }
     if (s.kind === 'hospital') { hospital = hospitalSite(s); continue; }
     if (s.kind === 'mast') { masts.push(mastSite(s, masts.length)); continue; }
@@ -1331,7 +1422,7 @@ export function buildWorld(seed = 1337) {
   at(hx + 15, 0.1, hz + 14, 3, 1.1, 1.2, { color: [0.75, 0.15, 0.1], mat: 'paint', shape: 0.08 });
   for (let s = -9; s <= 9; s++) for (const zz of [-19.6, 19.6]) at(hx + s * 2, 0.12, hz + zz, 1, 0.02, 0.4, { color: s % 2 ? [0.95, 0.75, 0.1] : [0.08, 0.08, 0.08], noShadow: true, solid: false });
 
-  return { world, terrain: T, ground, roofs, burning, open, loot, roads, towns, cities, city: { x: cx, z: cz, r: CITY_R, y: cityY, iw: IW, il: IL, park: cityPark }, boro, bridges, grids, spire, fort, hospital, masts, airfield, lab, lairs, fobs: [spire, fort, airfield].filter(Boolean) };
+  return { world, terrain: T, ground, roofs, burning, open, loot, roads, towns, cities, city: { x: cx, z: cz, r: CITY_R, y: cityY, iw: IW, il: IL, park: cityPark }, boro, bridges, grids, spire, fort, ironside, hospital, masts, airfield, lab, lairs, fobs: [spire, fort, airfield, ironside].filter(Boolean) };
 }
 
 // THE SPIRE: a tower 170 m tall with a landing bay cut into one side 70 m up, and a big flight deck sticking out over

@@ -679,6 +679,7 @@ export function statsFor(eq0, kind = 'warhorse') {
   S.hp = Math.round(S.hp * HK.hp); S.mass *= HK.mass; S.lift *= HK.lift; S.speed *= HK.speed; S.agility *= HK.agility;
   S.fuel = Math.round(S.fuel * HK.fuel);
   S.seats = HK.seats[Math.min(HK.seats.length - 1, v('cabin', 3))];
+  S.seatsMax = HK.seats[HK.seats.length - 1];
   if (HK.gunMul) S.gun = { ...S.gun, dmg: Math.round(S.gun.dmg * HK.gunMul) };
   if (HK.rocketMul) S.rockets = Math.round(S.rockets * HK.rocketMul);
   if ((HK.cap.door ?? 9) === 0) S.gunners = 0;
