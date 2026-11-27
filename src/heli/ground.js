@@ -16,7 +16,17 @@ export const VEH = {
     d: 'An armoured army truck with a gunner in a roof turret. Fast, and tough enough for a real fight.' },
   apc: { n: 'APC', cost: 8500, hp: 2800, spd: 9, gun: { dmg: 60, rate: 4, range: 110, splash: 4.5 }, col: [0.38, 0.42, 0.32],
     d: 'An eight-wheeled armoured carrier with a 25 mm cannon. Slow, but every shell blows a hole in the crowd, and it barely notices bites.' },
+  fuel: { n: 'FUEL TRUCK', cost: 3500, hp: 1100, spd: 12, gun: { dmg: 12, rate: 5, range: 45 }, col: [0.62, 0.52, 0.16], service: true,
+    d: 'A tanker truck with a pump and a toolbox. Hover low over it and it fills your tank, tops up your rockets and bombs, and patches the holes.',
+    stat: 'REFUELS + REARMS + REPAIRS YOU WHEN YOU HOVER OVER IT (UNDER 12 M) · SMALL GUN' },
+  mortar: { n: 'MORTAR TRUCK', cost: 6000, hp: 900, spd: 11, gun: { dmg: 95, rate: 0.8, range: 230, min: 30, splash: 8, arc: true }, col: [0.42, 0.44, 0.36],
+    d: 'A flatbed with a 120 mm mortar. It lobs shells high over the rooftops into the crowds far away, but it can\'t hit anything right next to it.',
+    stat: 'SHELLS LAND 30 TO 230 M AWAY · HUGE BLAST · KEEP THE TEAM NEAR IT' },
+  dozer: { n: 'BULLDOZER', cost: 7000, hp: 4200, spd: 10, gun: null, ram: 140, col: [0.85, 0.62, 0.08],
+    d: 'An armoured army bulldozer. No gun at all: it just drives straight through the dead and flattens them with the blade. Best with the CHARGE order.',
+    stat: 'NO GUN · CRUSHES EVERYTHING IN FRONT OF THE BLADE · TOUGHEST THING IN THE POOL' },
 };
+export const ORDERS = { follow: 'FOLLOW ME', hold: 'HOLD HERE', charge: 'CHARGE' };
 export const VEH_IDS = Object.keys(VEH);
 // how hard each kind of gun hits, per shot, for the team on the ground
 const INF = { pistol: { dmg: 14, rate: 2.2, range: 40 }, smg: { dmg: 12, rate: 7, range: 45 }, shotgun: { dmg: 40, rate: 1.4, range: 28 }, rifle: { dmg: 30, rate: 2.6, range: 70 }, lmg: { dmg: 22, rate: 8, range: 65 } };
@@ -24,8 +34,21 @@ const INF = { pistol: { dmg: 14, rate: 2.2, range: 40 }, smg: { dmg: 12, rate: 7
 export function canSling(S, H) { return S && (!S.plane || (S.vtol && H && !H.planeMode)) && S.seatsMax >= 8; }
 
 export class Ground {
-  constructor(g) { this.g = g; this.units = []; this.sling = null; this.t = 0; }
-  reset() { for (const m of (this.g.save && this.g.save.team) || []) if (m.ground) { m.ground = false; m.aboard = true; } this.units = []; this.sling = null; }
+  constructor(g) { this.g = g; this.units = []; this.sling = null; this.t = 0; this.order = 'follow'; this.holdAt = null; this.shells = []; }
+  reset() { for (const m of (this.g.save && this.g.save.team) || []) if (m.ground) { m.ground = false; m.aboard = true; } this.units = []; this.sling = null; this.order = 'follow'; this.holdAt = null; this.shells = []; }
+  // ---- 4 / 5 / 6: orders for everything on the ground
+  orderKey(o) {
+    const g = this.g;
+    if (!this.units.length) { g.feed('NOBODY ON THE GROUND · U DROPS THE TEAM, J DROPS A VEHICLE', 'y'); return; }
+    this.order = o;
+    if (o === 'hold') {
+      // they hold where they are now (the middle of the group)
+      let x = 0, z = 0; for (const u of this.units) { x += u.pos[0]; z += u.pos[2]; }
+      this.holdAt = [x / this.units.length, z / this.units.length];
+    } else this.holdAt = null;
+    g.feed(o === 'follow' ? 'ORDER: FOLLOW ME · THEY STAY UNDER YOU' : o === 'hold' ? 'ORDER: HOLD HERE · THEY DIG IN AND DEFEND THIS SPOT' : 'ORDER: CHARGE · THEY GO AFTER THE NEAREST DEAD', 'g');
+    g.snd.click?.(1800, 0.25);
+  }
   vehicles() { return this.units.filter((u) => u.kind === 'veh'); }
   team() { return this.units.filter((u) => u.kind === 'inf'); }
   // ---- J: set the vehicle down, or hook it back up
@@ -40,7 +63,7 @@ export class Ground {
       const u = { kind: 'veh', type: this.sling, pos: [x, g.groundAt(x, z), z], yaw: Math.atan2(-H.fwd[0], -H.fwd[2]) + Math.PI, hp: V.hp, max: V.hp, cd: 0, aim: 0, seek: 0, id: Math.random().toString(36).slice(2, 7) };
       u.tgt = { kind: 'chase', r: 2.4, alive: true, x, z, unit: u };
       this.units.push(u); this.sling = null;
-      g.feed(`${V.n} IS DOWN · IT FOLLOWS YOU AND SHOOTS ON ITS OWN · J TO HOOK IT BACK`, 'g'); g.snd.slam?.(0.4);
+      g.feed(`${V.n} IS DOWN · IT FIGHTS ON ITS OWN · 4 FOLLOW · 5 HOLD · 6 CHARGE · J TO HOOK IT BACK`, 'g'); g.snd.slam?.(0.4);
       return;
     }
     const v = this.vehicles().find((u) => Math.hypot(u.pos[0] - H.pos[0], u.pos[2] - H.pos[2]) < 14);
@@ -76,7 +99,7 @@ export class Ground {
       m.aboard = false; m.ground = true;
       this.units.push(u);
     });
-    g.feed(`${crew.length} ON THE GROUND · THEY FOLLOW YOU AND FIGHT · U TO TAKE THEM BACK`, 'g'); g.snd.grappleRelease?.();
+    g.feed(`${crew.length} ON THE GROUND · THEY FIGHT · 4 FOLLOW · 5 HOLD · 6 CHARGE · U TO TAKE THEM BACK`, 'g'); g.snd.grappleRelease?.();
   }
   // a zombie got its teeth into one of them
   hurt(u, dmg) {
@@ -103,10 +126,11 @@ export class Ground {
   // your aircraft went down or you went home: the team makes its own way back, vehicles go back to the motor pool
   recall() {
     for (const u of this.units) { if (u.tgt) u.tgt.alive = false; if (u.kind === 'inf') { u.m.aboard = true; u.m.ground = false; } }
-    this.units = []; this.sling = null;
+    this.units = []; this.sling = null; this.order = 'follow'; this.holdAt = null; this.shells = [];
   }
   tick(dt) {
     const g = this.g, H = g.heli; this.t += dt;
+    this.shellTick(dt);
     if (!this.units.length) return;
     // where they're heading: the ground under you, if you're close and not too high; otherwise they hold where they are
     const follow = H && !H.dead && (g.agl ?? 99) < 160;
@@ -117,12 +141,19 @@ export class Ground {
       if (u.rope > 0) { u.rope = Math.max(0, u.rope - dt * 9); continue; }
       // move
       let tx = null, tz = null, stopAt = veh ? 22 : 4;
-      if (goal && Math.hypot(goal[0] - u.pos[0], goal[1] - u.pos[2]) < 900) {
+      const V = veh ? VEH[u.type] : null;
+      if (this.order === 'hold' && this.holdAt) {
+        const a = (u.slot || 0) * 1.3 + (veh ? 3.5 : 0), r = veh ? 9 + this.vehicles().indexOf(u) * 6 : 5;
+        tx = this.holdAt[0] + Math.cos(a) * r; tz = this.holdAt[1] + Math.sin(a) * r; stopAt = veh ? 3 : 1.5;
+      } else if (this.order === 'charge' && u.prey && u.prey.alive && !(V && V.service)) {
+        tx = u.prey.x; tz = u.prey.z;
+        stopAt = V ? (V.ram ? 0 : V.gun.arc ? V.gun.min + 20 : V.gun.range * 0.45) : (INF[u.m.wpn] || INF.pistol).range * 0.5;
+      } else if (goal && Math.hypot(goal[0] - u.pos[0], goal[1] - u.pos[2]) < 900) {
         if (!veh && lead && Math.hypot(lead.pos[0] - u.pos[0], lead.pos[2] - u.pos[2]) < 120) {
-          const a = u.slot * 1.3 + 0.6; tx = lead.pos[0] + Math.cos(a) * 6; tz = lead.pos[2] + Math.sin(a) * 6;
-        } else { const a = u.slot * 1.3; tx = goal[0] + Math.cos(a) * (veh ? 0 : 7); tz = goal[1] + Math.sin(a) * (veh ? 0 : 7); }
+          const a = (u.slot || 0) * 1.3 + 0.6; tx = lead.pos[0] + Math.cos(a) * 6; tz = lead.pos[2] + Math.sin(a) * 6;
+        } else { const a = (u.slot || 0) * 1.3; tx = goal[0] + Math.cos(a) * (veh ? 0 : 7); tz = goal[1] + Math.sin(a) * (veh ? 0 : 7); }
       }
-      const busy = u.target && u.target.alive && !veh;            // the team stop to shoot
+      const busy = u.target && u.target.alive && !veh && this.order !== 'charge';   // the team stop to shoot (unless they're charging)
       if (tx != null && !busy) {
         const dx = tx - u.pos[0], dz = tz - u.pos[2], d = Math.hypot(dx, dz);
         if (d > stopAt) {
@@ -139,14 +170,18 @@ export class Ground {
       } else u.moving = false;
       u.pos[1] = g.groundAt(u.pos[0], u.pos[2]);
       u.tgt.x = u.pos[0]; u.tgt.z = u.pos[2];
+      if (V && V.ram && u.moving) this.ramTick(u, dt);
+      if (V && V.service) this.serviceTick(u, dt);
+      if (V && !V.gun) { this.preyTick(u, dt); continue; }
       // shoot: the nearest zombie in range (looked for a few times a second)
       const W = veh ? VEH[u.type].gun : INF[u.m.wpn] || INF.pistol;
       u.seek -= dt;
       if (u.seek <= 0) {
         u.seek = 0.25 + Math.random() * 0.1;
-        let best = null, bd = W.range * W.range;
-        for (const z of g.horde.list) { if (!z.alive) continue; const dx = z.x - u.pos[0], dz = z.z - u.pos[2], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = z; } }
+        let best = null, bd = W.range * W.range; const mn = (W.min || 0) ** 2;
+        for (const z of g.horde.list) { if (!z.alive) continue; const dx = z.x - u.pos[0], dz = z.z - u.pos[2], d2 = dx * dx + dz * dz; if (d2 < bd && d2 >= mn) { bd = d2; best = z; } }
         u.target = best;
+        if (this.order === 'charge') this.findPrey(u);
         // and they draw the dead in: anything close with nothing better to do comes for them
         if (Math.random() < 0.4) for (const z of g.horde.list) if (z.alive && !z.tgt && !z.ev && Math.abs(z.x - u.pos[0]) < 40 && Math.abs(z.z - u.pos[2]) < 40) z.tgt = u.tgt;
       }
@@ -160,6 +195,13 @@ export class Ground {
           u.cd = 1 / W.rate * (0.85 + Math.random() * 0.3);
           const o = veh ? [u.pos[0], u.pos[1] + (u.type === 'apc' ? 2.9 : u.type === 'humvee' ? 2.6 : 2.4), u.pos[2]] : [u.pos[0], u.pos[1] + 1.3, u.pos[2]];
           const d = [z.x - o[0], z.y + 1 - o[1], z.z - o[2]], L = Math.hypot(...d) || 1;
+          if (W.arc) {
+            // a mortar: the shell goes up and comes down on them a few seconds later
+            this.shells.push({ from: o, to: [z.x, z.y, z.z], z, t: 0, T: 1.2 + L / 110, W });
+            u.flash = 0.12; g.boom?.([o[0], o[1] + 0.6, o[2]], 0.35);
+            if (Math.hypot(o[0] - H.pos[0], o[2] - H.pos[2]) < 300) g.snd.burst?.(0.12, 160, 0.3, 'lowpass', 0.8);
+            continue;
+          }
           g.tracer(o, d.map((c) => c / L), L, -1);
           if (W.splash) { g.blastAll([z.x, z.y + 0.5, z.z], W.splash, 300, W.dmg * 0.6, 'team'); g.boom?.([z.x, z.y + 0.5, z.z], 0.6); }
           g.horde.damage(z, W.dmg * role, [d[0] / L * 2, 0.5, d[2] / L * 2], 'team');
@@ -170,12 +212,66 @@ export class Ground {
       if (u.flash > 0) u.flash -= dt;
     }
   }
+  // charging: who to run at (the nearest of the dead within 200 m)
+  findPrey(u) {
+    let best = null, bd = 200 * 200;
+    for (const z of this.g.horde.list) { if (!z.alive) continue; const dx = z.x - u.pos[0], dz = z.z - u.pos[2], d2 = dx * dx + dz * dz; if (d2 < bd) { bd = d2; best = z; } }
+    u.prey = best;
+  }
+  preyTick(u, dt) {
+    u.seek -= dt;
+    if (u.seek <= 0) { u.seek = 0.3 + Math.random() * 0.1; if (this.order === 'charge') this.findPrey(u);
+      if (Math.random() < 0.4) for (const z of this.g.horde.list) if (z.alive && !z.tgt && !z.ev && Math.abs(z.x - u.pos[0]) < 40 && Math.abs(z.z - u.pos[2]) < 40) z.tgt = u.tgt; }
+  }
+  // the bulldozer's blade: anything in front of it gets flattened
+  ramTick(u, dt) {
+    const g = this.g, V = VEH[u.type], fx = Math.sin(u.yaw), fz = Math.cos(u.yaw), bx = u.pos[0] + fx * 3.4, bz = u.pos[2] + fz * 3.4;
+    for (const z of g.horde.list) {
+      if (!z.alive) continue;
+      const dx = z.x - bx, dz = z.z - bz; if (dx * dx + dz * dz > 7) continue;
+      g.horde.damage(z, V.ram * dt * 6, [fx * 6 + dx, 2.5, fz * 6 + dz], 'team');
+      if (Math.random() < dt * 8) g.fx?.blood?.([z.x, z.y + 0.6, z.z], 3);
+    }
+  }
+  // the fuel truck: hover low over it and it fills you up
+  serviceTick(u, dt) {
+    const g = this.g, H = g.heli, S = g.S; if (!H || H.dead || !S) return;
+    const near = Math.hypot(H.pos[0] - u.pos[0], H.pos[2] - u.pos[2]) < 16 && (g.agl ?? 99) < 12;
+    if (!near) { u.svcOn = false; return; }
+    if (!u.svcOn) { u.svcOn = true; g.feed('FUEL TRUCK: REFUELLING, REARMING AND PATCHING YOU UP · STAY LOW', 'g'); }
+    g.fuelUp?.(S.fuel * 0.12 * dt);
+    g.hp = Math.min(S.hp, g.hp + S.hp * 0.05 * dt);
+    u.ammoT = (u.ammoT || 0) + dt;
+    if (u.ammoT > 1.5) { u.ammoT = 0;
+      if (S.rockets && g.rockets < S.rockets) g.rockets++;
+      if (S.bombs && g.bombs < S.bombs) g.bombs++;
+      if (S.mines && g.minesLeft < S.mines) g.minesLeft++; }
+  }
+  // mortar shells in the air
+  shellTick(dt) {
+    const g = this.g;
+    for (const s of this.shells) {
+      s.t += dt;
+      if (s.z && s.z.alive && s.t < s.T * 0.8) { s.to[0] = s.z.x; s.to[1] = s.z.y; s.to[2] = s.z.z; }   // the spotter walks it onto them
+      if (s.t >= s.T) { s.done = true; const p = [s.to[0], g.groundAt(s.to[0], s.to[2]) + 0.4, s.to[2]];
+        g.blastAll(p, s.W.splash, 300, s.W.dmg, 'team'); g.boom?.(p, 1.3);
+        const H = g.heli, d = H ? Math.hypot(p[0] - H.pos[0], p[2] - H.pos[2]) : 999;
+        if (d < 400) g.snd.burst?.(0.3, 120, 0.5 * (1 - d / 400), 'lowpass', 0.7); }
+    }
+    this.shells = this.shells.filter((s) => !s.done);
+  }
+  shellPos(s) {
+    const k = s.t / s.T, h = 25 + Math.hypot(s.to[0] - s.from[0], s.to[2] - s.from[2]) * 0.35;
+    return [s.from[0] + (s.to[0] - s.from[0]) * k, s.from[1] + (s.to[1] - s.from[1]) * k + Math.sin(k * Math.PI) * h, s.from[2] + (s.to[2] - s.from[2]) * k];
+  }
+  shellParts(P) { for (const s of this.shells) P(this.shellPos(s), [0, 0, 0], [0.35, 0.35, 0.35], [1, 0.75, 0.4], { em: 1, shape: 'sphere' }); }
   // markers: where your vehicles and team are (arrows at the edge of the screen when they're off it)
   marks() {
     const out = [];
     for (const u of this.vehicles()) out.push({ p: [u.pos[0], u.pos[1] + 6, u.pos[2]], col: '#c8ff5a', icon: '⛟', text: `${VEH[u.type].n} ${Math.ceil((u.hp / u.max) * 100)}%`, sub: '', friend: true });
     const T = this.team();
     if (T.length) { let x = 0, y = 0, z = 0; for (const u of T) { x += u.pos[0]; y += u.pos[1]; z += u.pos[2]; } out.push({ p: [x / T.length, y / T.length + 5, z / T.length], col: '#c8ff5a', icon: '☺', text: `TEAM · ${T.length}`, sub: T.map((u) => `${u.m.name} ${Math.ceil(u.m.hp)}`).join(' · '), friend: true }); }
+    if (this.order === 'hold' && this.holdAt) { const [x, z] = this.holdAt; out.push({ p: [x, this.g.groundAt(x, z) + 3, z], col: '#ffcf3a', icon: '⚑', text: 'HOLD HERE', sub: '4 FOLLOW · 6 CHARGE', friend: true }); }
     return out;
   }
   // for friends: what's on the ground
@@ -196,7 +292,51 @@ export function vehParts(P, type, x, y, z, yaw, aim, flash) {
     P([base[0] + sa * len / 2, base[1] + 0.05, base[2] + ca * len / 2], [0, aim, 0], [thick, thick, len], GM, { shape: 'cyl', mat: 'metal' });
     if (flash > 0) P([base[0] + sa * (len + 0.3), base[1] + 0.05, base[2] + ca * (len + 0.3)], [0, 0, 0], [0.5, 0.5, 0.5], [1, 0.8, 0.4], { em: 1, shape: 'sphere', alpha: 0.85 });
   };
-  if (type === 'apc') {
+  if (type === 'fuel') {
+    // a tanker: cab up front, a long round tank behind, a hose reel at the back
+    P(W(0, 0.85, 0), [0, yaw, 0], [2.1, 0.5, 6.2], DK.map((v) => v * 2), { mat: 'metal' });                                 // chassis
+    P(W(0, 1.65, 2.25), [0, yaw, 0], [2.1, 1.3, 1.7], col, { shape: 0.12, mat: 'paint' });                                  // cab
+    P(W(0, 1.95, 3.12), [0.2, yaw, 0], [1.8, 0.6, 0.04], [0.1, 0.13, 0.16], { mat: 'glass' });
+    P(W(0, 1.75, -0.8), [0, yaw, 0], [2.0, 1.6, 4.3], [0.82, 0.82, 0.8], { shape: 'cyl', mat: 'metal' });                   // tank
+    for (const lz of [-2.6, 1.05]) P(W(0, 1.75, lz), [0, yaw, 0], [2.06, 1.66, 0.12], col, { shape: 'cyl', mat: 'paint' }); // bands
+    P(W(0, 2.62, -0.8), [0, yaw, 0], [0.5, 0.12, 0.5], GM, { shape: 'cylY', mat: 'metal' });                                // hatch
+    P(W(0, 1.3, -3.25), [0, yaw, Math.PI / 2], [0.7, 1.6, 0.7], [0.12, 0.12, 0.12], { shape: 'cylY', mat: 'rubber' });     // hose reel
+    for (const lz of [-2.3, -1.3, 2.2]) for (const sd of [-1, 1]) wheel(sd * 1.0, lz, 0.48);
+    P(W(0, 2.55, 2.0), [0, aim, 0], [0.12, 0.5, 0.12], GM, { mat: 'metal' });
+    gun(0, 2.85, 2.0, 1.0, 0.07);
+    for (const sd of [-1, 1]) P(W(sd * 0.75, 1.3, 3.12), [0, yaw, 0], [0.3, 0.16, 0.05], [1, 0.95, 0.75], { em: 1 });
+    P(W(0, 2.35, 2.25), [0, yaw, 0], [1.2, 0.12, 0.2], [1, 0.6, 0.1], { em: 0.6 });                                         // amber beacon bar
+  } else if (type === 'mortar') {
+    // a flatbed truck with a big tube on a baseplate, pointing up
+    P(W(0, 0.9, 0), [0, yaw, 0], [2.2, 0.55, 5.6], col, { shape: 0.08, mat: 'paint' });
+    P(W(0, 1.75, 1.85), [0, yaw, 0], [2.1, 1.1, 1.6], col, { shape: 0.12, mat: 'paint' });                                  // cab
+    P(W(0, 1.95, 2.66), [0.2, yaw, 0], [1.8, 0.5, 0.04], [0.1, 0.13, 0.16], { mat: 'glass' });
+    for (const sd of [-1, 1]) P(W(sd * 1.08, 1.45, -1.0), [0, yaw, 0], [0.08, 0.55, 3.2], col.map((v) => v * 0.8), { mat: 'paint' });
+    P(W(0, 1.25, -1.0), [0, aim, 0], [1.3, 0.15, 1.3], GM, { shape: 'cylY', mat: 'metal' });                                 // baseplate
+    { const ca = Math.cos(aim), sa = Math.sin(aim), b = W(0, 1.35, -1.0), el = 1.05, len = 2.4;                              // the tube, steep
+      P([b[0] + sa * Math.cos(el) * len / 2, b[1] + Math.sin(el) * len / 2, b[2] + ca * Math.cos(el) * len / 2], [-el, aim, 0], [0.32, 0.32, len], GM, { shape: 'cyl', mat: 'metal' });
+      P([b[0] + sa * 0.5, b[1] + 0.5, b[2] + ca * 0.5], [0, aim, 0], [0.08, 1.0, 0.08], GM, { mat: 'metal' });              // bipod
+      if (flash > 0) P([b[0] + sa * Math.cos(el) * len, b[1] + Math.sin(el) * len + 0.2, b[2] + ca * Math.cos(el) * len], [0, 0, 0], [0.9, 0.9, 0.9], [1, 0.8, 0.45], { em: 1, shape: 'sphere', alpha: 0.8 }); }
+    for (const i of [0, 1, 2]) P(W(0.7, 1.4, -2.4 + i * 0.35), [0, yaw, 0], [0.3, 0.3, 0.3], [0.3, 0.32, 0.22], { mat: 'metal' });  // shell crates
+    for (const lz of [-1.8, -0.8, 1.8]) for (const sd of [-1, 1]) wheel(sd * 1.02, lz, 0.5);
+    for (const sd of [-1, 1]) P(W(sd * 0.75, 1.3, 2.66), [0, yaw, 0], [0.3, 0.16, 0.05], [1, 0.95, 0.75], { em: 1 });
+  } else if (type === 'dozer') {
+    // an armoured bulldozer: tracks, a boxy armoured cab, a huge blade up front
+    for (const sd of [-1, 1]) {
+      P(W(sd * 1.35, 0.6, 0), [0, yaw, 0], [0.8, 1.1, 4.4], DK, { shape: 0.3, mat: 'rubber' });                              // tracks
+      for (const lz of [-1.6, -0.55, 0.55, 1.6]) P(W(sd * 1.78, 0.55, lz), [0, yaw, Math.PI / 2], [0.7, 0.1, 0.7], GM, { shape: 'cylY', mat: 'metal' });
+    }
+    P(W(0, 1.45, -0.3), [0, yaw, 0], [2.0, 0.9, 3.6], col, { shape: 0.1, mat: 'paint' });                                    // body
+    P(W(0, 2.45, -0.6), [0, yaw, 0], [1.7, 1.2, 1.7], col.map((v) => v * 0.85), { shape: 0.08, mat: 'paint' });              // armoured cab
+    for (const sd of [-1, 1]) P(W(sd * 0.86, 2.55, -0.6), [0, yaw, 0], [0.04, 0.25, 1.1], [0.1, 0.13, 0.16], { mat: 'glass' }); // slit windows
+    P(W(0, 2.55, 0.26), [0, yaw, 0], [1.2, 0.22, 0.04], [0.1, 0.13, 0.16], { mat: 'glass' });
+    P(W(0, 2.4, -2.1), [0, yaw, 0], [0.18, 1.3, 0.18], GM, { shape: 'cylY', mat: 'metal' });                                 // exhaust
+    P(W(0, 1.05, 3.05), [0.25, yaw, 0], [3.6, 1.7, 0.3], [0.5, 0.5, 0.48], { shape: 0.05, mat: 'metal' });                  // the blade
+    P(W(0, 0.25, 3.25), [0, yaw, 0], [3.6, 0.15, 0.3], [0.7, 0.7, 0.68], { mat: 'metal' });                                  // cutting edge
+    for (const sd of [-1, 1]) P(W(sd * 1.0, 1.2, 2.2), [0.5, yaw, 0], [0.2, 0.2, 1.6], GM, { shape: 'cyl', mat: 'metal' });   // rams
+    for (const sd of [-1, 1]) P(W(sd * 0.6, 3.1, 0.2), [0, yaw, 0], [0.25, 0.15, 0.05], [1, 0.95, 0.75], { em: 1 });
+    P(W(0, 3.1, -0.6), [0, yaw, 0], [0.3, 0.2, 0.3], [1, 0.55, 0.1], { em: 0.7, shape: 'sphere' });
+  } else if (type === 'apc') {
     P(W(0, 1.35, 0), [0, yaw, 0], [2.9, 1.5, 7.2], col, { shape: 0.12, mat: 'paint' });
     P(W(0, 1.25, 3.85), [0.55, yaw, 0], [2.8, 1.1, 0.9], col, { shape: 0.08, mat: 'paint' });                   // sloped nose
     P(W(0, 2.15, -0.6), [0, yaw, 0], [2.95, 0.12, 4.8], col.map((v) => v * 0.85), { mat: 'metal' });

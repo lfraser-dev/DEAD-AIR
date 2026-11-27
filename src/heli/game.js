@@ -1325,6 +1325,7 @@ export class HeliGame {
     if (this.hit('KeyN')) this.dropMine();
     if (this.hit('KeyJ')) this.ground.vehicleKey();
     if (!this.raid && this.hit('KeyU')) this.ground.teamKey();
+    if (!this.raid && !this.panel) { if (this.hit('Digit4')) this.ground.orderKey('follow'); if (this.hit('Digit5')) this.ground.orderKey('hold'); if (this.hit('Digit6')) this.ground.orderKey('charge'); }
     // carrying a vehicle and coming in to land: set it down first (once you've actually been up and away with it)
     if (this.ground.sling && (this.agl ?? 99) > 25) this.ground.flown = true;
     if (this.ground.sling && this.ground.flown && this.heli.pos[1] - this.groundAt(this.heli.pos[0], this.heli.pos[2]) < 7 && Math.hypot(this.heli.vel[0], this.heli.vel[2]) < 9) { this.ground.flown = false; this.ground.vehicleKey(); }
@@ -2745,10 +2746,10 @@ export class HeliGame {
     const S = statsFor(s.eq, s.heli), ok = canSling(S, null);
     const draw = () => {
       panel.innerHTML = `<button class="alt close" data-x="close" type="button">CLOSE ✕</button><h2>MOTOR POOL ⛟</h2>
-        <p>A vehicle rides slung under a big helicopter (8+ seats). Come down low and slow and press <kbd>J</kbd> to set it down: it follows you and its gun fights on its own. <kbd>J</kbd> again over it to hook it back up. Press <kbd>U</kbd> to fast-rope your team down to fight too.</p>
+        <p>A vehicle rides slung under a big helicopter (8+ seats). Come down low and slow and press <kbd>J</kbd> to set it down: it follows you and its gun fights on its own. <kbd>J</kbd> again over it to hook it back up. Press <kbd>U</kbd> to fast-rope your team down to fight too. Give them orders with <kbd>4</kbd> FOLLOW ME · <kbd>5</kbd> HOLD HERE · <kbd>6</kbd> CHARGE.</p>
         <p style="color:${ok ? '#7dff9a' : '#ffcf3a'}">${ok ? `YOUR ${HELIS[s.heli].n} CAN CARRY ONE` : `YOUR ${HELIS[s.heli].n} IS TOO SMALL TO CARRY ONE`}</p>
         <div style="display:grid;gap:8px">${VEH_IDS.map((k) => { const V = VEH[k], own = M.owned.includes(k), br = M.broken[k], sel = M.sel === k, fix = Math.round(V.cost * 0.25), price = Math.round(V.cost * (s.iron ? 0.6 : 1));
-          return `<div style="border:1px solid ${sel ? '#ffcf3a' : '#444'};padding:8px 10px;display:flex;gap:12px;align-items:center"><div style="flex:1"><b>${V.n}</b>${br ? ' <span style="color:#ff6a5a">WRECKED</span>' : ''}<br><small>${V.d}</small><br><small>HEALTH ${V.hp} · GUN ${V.gun.dmg} × ${V.gun.rate}/s · RANGE ${V.gun.range} M</small></div>
+          return `<div style="border:1px solid ${sel ? '#ffcf3a' : '#444'};padding:8px 10px;display:flex;gap:12px;align-items:center"><div style="flex:1"><b>${V.n}</b>${br ? ' <span style="color:#ff6a5a">WRECKED</span>' : ''}<br><small>${V.d}</small><br><small>HEALTH ${V.hp} · ${V.stat || `GUN ${V.gun.dmg} × ${V.gun.rate}/s · RANGE ${V.gun.range} M`}</small></div>
           <button data-v="${k}" type="button">${!own ? `BUY ⚙ ${price.toLocaleString('en-GB')}${s.iron ? ' (IRONSIDE PRICE)' : ''}` : br ? `REPAIR ⚙ ${fix.toLocaleString('en-GB')}` : sel ? 'TAKING IT ✓' : 'TAKE IT'}</button></div>`; }).join('')}</div>
         <div class="row" style="margin-top:10px"><button class="alt" data-x="none" type="button">${M.sel ? 'TAKE NO VEHICLE' : 'NO VEHICLE ✓'}</button></div>`;
       panel.querySelector('[data-x=close]').onclick = () => this.closePanel();
@@ -2783,7 +2784,7 @@ export class HeliGame {
     const panel = this.$('panel'), s = this.save; s.keys = s.keys || {};
     this.panel = 'keys'; if (this.locked) this.unlockSoft();
     const ACTIONS = [['KeyW', 'CLIMB / THROTTLE UP'], ['KeyS', 'DESCEND / THROTTLE DOWN'], ['KeyA', 'TURN LEFT'], ['KeyD', 'TURN RIGHT'], ['ShiftLeft', 'BOOST'], ['Space', 'DROP BOMB'], ['KeyE', 'PICK UP / WINCH'],
-      ['KeyR', 'RELOAD / REARM'], ['KeyB', 'DROP SUPPLIES'], ['KeyN', 'DROP MINE'], ['KeyG', 'GUNSHIP MODE'], ['KeyV', 'HOVER / PLANE MODE'], ['KeyC', 'CAMERA'], ['KeyF', 'SEARCHLIGHT'], ['KeyH', 'HOVER HOLD'], ['KeyM', 'MAP'], ['KeyT', 'TEAM']];
+      ['KeyR', 'RELOAD / REARM'], ['KeyB', 'DROP SUPPLIES'], ['KeyN', 'DROP MINE'], ['KeyG', 'GUNSHIP MODE'], ['KeyV', 'HOVER / PLANE MODE'], ['KeyC', 'CAMERA'], ['KeyF', 'SEARCHLIGHT'], ['KeyH', 'HOVER HOLD'], ['KeyM', 'MAP'], ['KeyT', 'TEAM'], ['KeyJ', 'DROP / HOOK VEHICLE'], ['KeyU', 'DROP / PICK UP TEAM'], ['Digit4', 'ORDER: FOLLOW ME'], ['Digit5', 'ORDER: HOLD HERE'], ['Digit6', 'ORDER: CHARGE']];
     const nice = (c) => (c || '').replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'SHIFT').replace('ShiftRight', 'R-SHIFT').replace('ControlLeft', 'CTRL').replace('Space', 'SPACE').replace(/^Arrow/, '↑').toUpperCase();
     const draw = () => {
       panel.innerHTML = `<button class="alt close" data-x="close" type="button">CLOSE ✕</button><h2>CONTROLS ⌨</h2><p>Click an action, then press the key you want for it.</p>
@@ -3945,6 +3946,7 @@ export class HeliGame {
         else if (u.rope > 0) { soldier(u.pos[0], u.pos[1] + u.rope, u.pos[2], u.yaw, u.m); P([u.pos[0], u.pos[1] + u.rope + 8, u.pos[2]], [0, 0, 0], [0.05, 16, 0.05], [0.15, 0.12, 0.08], {}); }
         else soldier(u.pos[0], u.pos[1], u.pos[2], u.yaw, u.m);
       }
+      this.ground.shellParts(P);
       if (this.ground.sling && this.mode === 'fly' && !this.heli.dead) this.slungParts(P, this.heli.pos, this.ground.sling, this.heli.heading || 0);
     } else if (this.client) {
       for (const q of this.client.gu || []) {
